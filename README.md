@@ -78,25 +78,13 @@ Prefer **simple piano, melody, acoustic, or solo-instrument arrangements**. Very
 
 ## Public Windows download
 
-The recommended download for normal users is the portable release ZIP:
+Open the latest GitHub Release and download:
 
-`BPSR-MIDI-Lite-Windows-x64.zip`
+`BPSR-MIDI-Lite.exe`
 
-Extract it, run `BPSR-MIDI-Lite.exe`, accept the Administrator prompt, and follow `END_USER_GUIDE.md`. Python is already bundled and is not required on the user's PC.
+No ZIP extraction, Python installation, or setup wizard is required. Run the EXE, accept the Administrator prompt, then click **Open Folder** to access the automatically created MIDI folder.
 
-## Build the EXE
-
-### GitHub Actions
-
-Upload the source files to a GitHub repository, then run:
-
-`Actions → Build Windows EXE → Run workflow`
-
-Download the generated artifact after the workflow succeeds.
-
-### Local Windows build
-
-Install 64-bit Python 3.12, then double-click `build_exe.bat`. The result appears in `dist\BPSR-MIDI-Lite.exe`.
+Requirements: **Windows 10 or Windows 11, 64-bit**.
 
 ## Credits and licence
 

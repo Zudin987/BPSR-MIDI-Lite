@@ -2,8 +2,8 @@
 
 ## First setup
 
-1. Extract the downloaded Windows ZIP.
-2. Put `BPSR-MIDI-Lite.exe` in its own folder.
+1. Download `BPSR-MIDI-Lite.exe` from the latest GitHub Release.
+2. Put the EXE in any convenient folder.
 3. Run it and accept the Administrator prompt.
 4. Click **Open Folder**.
 5. Copy `.mid` or `.midi` files into the opened `MIDI` folder.

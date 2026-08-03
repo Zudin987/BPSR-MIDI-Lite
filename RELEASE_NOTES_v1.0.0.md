@@ -19,4 +19,4 @@ Prefer simple piano, melody, acoustic, or solo-instrument MIDI files. Dense orch
 
 ## Download
 
-Normal users should download `BPSR-MIDI-Lite-Windows-x64.zip`, extract it, and run `BPSR-MIDI-Lite.exe`.
+Normal users should download `BPSR-MIDI-Lite.exe` directly from the Release assets and run it. No ZIP extraction or Python installation is required.
