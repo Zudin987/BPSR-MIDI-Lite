@@ -8,3 +8,7 @@ dist/
 release/
 portable/
 bpsr_midi_lite.json
+
+# Keep personal song files out of Git while preserving the folder.
+MIDI/*
+!MIDI/PUT_MIDI_FILES_HERE.txt
