@@ -1,7 +1,0 @@
-When updating an existing v0.5.2 GitHub repository, delete these obsolete files:
-
-online_sequencer.py
-online_sequencer_dialog.py
-tests/test_online_sequencer.py
-
-They are no longer imported or included in the EXE, but deleting them keeps the repository clean.
