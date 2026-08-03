@@ -22,9 +22,9 @@ They do not install Python.
 
 # Part 1 — Prepare the project folder
 
-1. Download the `BPSR-MIDI-Lite-source-v0.4.1.zip` supplied to you.
+1. Download the `BPSR-MIDI-Lite-source-v0.4.2.zip` supplied to you.
 2. Right-click it and choose **Extract All**.
-3. Open the extracted `BPSR-MIDI-Lite-v0.4.1` folder.
+3. Open the extracted `BPSR-MIDI-Lite-v0.4.2` folder.
 4. Confirm that you can see files such as:
 
 ```text
@@ -86,7 +86,7 @@ A lightweight MIDI keyboard player for Blue Protocol: Star Resonance
 7. In **Commit changes**, enter:
 
 ```text
-Upload BPSR MIDI Lite v0.4.1
+Upload BPSR MIDI Lite v0.4.2
 ```
 
 8. Choose **Commit directly to the main branch**.
@@ -150,14 +150,14 @@ After testing the EXE:
 3. Enter this in **release_version**:
 
 ```text
-v0.4.1
+v0.4.2
 ```
 
 4. Click **Run workflow**.
 5. Wait for the green check mark.
 6. Return to the repository main page.
 7. On the right side, open **Releases**.
-8. You should see `BPSR MIDI Lite v0.4.1` with these files:
+8. You should see `BPSR MIDI Lite v0.4.2` with these files:
 
 ```text
 BPSR-MIDI-Lite.exe
@@ -170,7 +170,7 @@ Share the Release page with users instead of sharing the temporary Actions artif
 For a later update, use a new version such as:
 
 ```text
-v0.4.1
+v0.4.2
 v0.5.0
 v1.0.0
 ```
@@ -227,7 +227,7 @@ Outputs:
 ```text
 dist\BPSR-MIDI-Lite.exe
 release\BPSR-MIDI-Lite.exe
-release\BPSR-MIDI-Lite-v0.4.1-Windows-x64.zip
+release\BPSR-MIDI-Lite-v0.4.2-Windows-x64.zip
 release\SHA256SUMS.txt
 ```
 
@@ -243,15 +243,22 @@ For early private testing, users should only trust the EXE from your official Gi
 
 Never tell users to disable antivirus globally.
 
-## Updating an existing v0.4 repository to v0.4.1
+## Updating an existing v0.4 repository to v0.4.2
 
 1. Extract the new source ZIP.
 2. In your GitHub repository, choose **Add file → Upload files**.
-3. Drag everything from inside the extracted `BPSR-MIDI-Lite-v0.4.1` folder onto the upload page.
+3. Drag everything from inside the extracted `BPSR-MIDI-Lite-v0.4.2` folder onto the upload page.
 4. Confirm that `app.py`, `version_info.txt`, `build_exe.bat`, `tests/test_library.py`, and `.github/workflows/build-windows.yml` are included.
-5. Commit with `Update to v0.4.1 MIDI library`.
+5. Commit with `Update to v0.4.2 MIDI library`.
 6. Run **Actions → Build Windows EXE → Run workflow** again.
-7. For a permanent release, enter `v0.4.1` in the release-version box.
+7. For a permanent release, enter `v0.4.2` in the release-version box.
 
 Do not upload your personal `.mid` files. The included `.gitignore` excludes everything inside `MIDI` except the instruction text file.
 
+
+
+## v0.4.2 input fix
+
+Make sure `BPSR-MIDI-Lite.spec` is uploaded before rebuilding. The line `uac_admin=True` is what makes the finished EXE request Administrator access. If this file remains on an older version, the game may receive no input.
+
+The update ZIP also contains `WORKFLOW_build-windows.yml.txt` as a visible copy. Because Windows may hide `.github`, open your existing workflow on GitHub and paste the contents of that text file into it.

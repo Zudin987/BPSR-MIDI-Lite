@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.2
+
+- Fixed the most likely cause of the game receiving no keyboard input.
+- Windows EXE now requests Administrator access through its embedded manifest.
+- Added an `A S D F` input test with a three-second countdown.
+- Added a visible Administrator-status indicator.
+- Corrected the Windows `SendInput` ctypes declarations for 64-bit builds.
+- Playback now refuses to start without Administrator access instead of silently doing nothing.
+
 ## 0.4.1
 
 - Replaced the single-file Browse field with a saved MIDI library folder.

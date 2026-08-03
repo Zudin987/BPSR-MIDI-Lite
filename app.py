@@ -7,6 +7,7 @@ import queue
 import re
 import subprocess
 import sys
+import threading
 import time
 import tkinter as tk
 from pathlib import Path
@@ -14,11 +15,11 @@ from tkinter import filedialog, messagebox, ttk
 
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
 from player import MidiPlayer
-from win_input import f10_is_pressed
+from win_input import WindowsKeySender, f10_is_pressed, is_running_as_admin
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.4.1"
+APP_VERSION = "0.4.2"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
 MODE_LABELS = {
@@ -106,6 +107,7 @@ class App(tk.Tk):
         self.current_plan = None
         self.ui_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._last_f10 = False
+        self._input_test_running = False
 
         self.file_var = tk.StringVar()
         self.midi_folder_var = tk.StringVar(value=str(_default_midi_folder()))
@@ -127,9 +129,15 @@ class App(tk.Tk):
         self.status_var = tk.StringVar(value="Choose a MIDI from the library.")
         self.analysis_var = tk.StringVar(value="")
         self.notice_var = tk.StringVar()
+        self.admin_var = tk.StringVar(value="Administrator access: checking…")
 
         self._build_ui()
         self._load_config()
+        self.admin_var.set(
+            "Administrator access: Yes — game input injection enabled"
+            if is_running_as_admin()
+            else "Administrator access: No — rebuild v0.4.2 or run as Administrator"
+        )
         self._mode_changed()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._drain_ui_queue)
@@ -147,7 +155,12 @@ class App(tk.Tk):
         ttk.Label(
             outer,
             text="Single-purpose MIDI keyboard player for Blue Protocol: Star Resonance",
-        ).pack(anchor="w", pady=(0, 12))
+        ).pack(anchor="w")
+        ttk.Label(
+            outer,
+            textvariable=self.admin_var,
+            foreground="#555555",
+        ).pack(anchor="w", pady=(2, 12))
 
         notice = ttk.LabelFrame(outer, text="Before playback", padding=10)
         notice.pack(fill="x", pady=(0, 12))
@@ -313,6 +326,12 @@ class App(tk.Tk):
             state="disabled",
         )
         self.stop_button.pack(side="left", padx=(8, 0))
+        self.test_button = ttk.Button(
+            controls,
+            text="Test input (3s)",
+            command=self._test_input,
+        )
+        self.test_button.pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Reset defaults", command=self._reset_defaults).pack(side="right")
 
         self.progress = ttk.Progressbar(outer, maximum=1.0, mode="determinate")
@@ -324,7 +343,8 @@ class App(tk.Tk):
             outer,
             text=(
                 "F10 is an emergency stop. Choose the unlock tier that matches your character. "
-                "For best input compatibility, run both the game and this app normally, not as Administrator."
+                "This app requests Administrator access because BPSR may run at elevated integrity; "
+                "Windows blocks lower-privilege programs from injecting input into elevated games."
             ),
             wraplength=710,
             foreground="#555555",
@@ -644,9 +664,59 @@ class App(tk.Tk):
                 self.status_var.set("Ready. Unsafe page jumps are remapped without changing the timeline.")
         self._save_config()
 
+    def _require_admin_for_input(self) -> bool:
+        if is_running_as_admin():
+            return True
+        messagebox.showerror(
+            APP_NAME,
+            "BPSR MIDI Lite is not running as Administrator.\n\n"
+            "Windows can block keyboard injection when the game or its launcher is elevated. "
+            "Close this app, then right-click the EXE and choose 'Run as administrator'.\n\n"
+            "The v0.4.2 EXE is built to request Administrator access automatically.",
+        )
+        return False
+
+    def _test_input(self) -> None:
+        """Send A-S-D-F after a countdown to verify Windows input injection."""
+        if os.name != "nt":
+            messagebox.showerror(APP_NAME, "Keyboard injection is supported only on Windows.")
+            return
+        if self.player.is_playing or self._input_test_running:
+            messagebox.showinfo(APP_NAME, "Stop playback before running the input test.")
+            return
+        if not self._require_admin_for_input():
+            return
+
+        self._input_test_running = True
+        self.test_button.configure(state="disabled")
+        self.start_button.configure(state="disabled")
+        self.status_var.set(
+            "Input test starts in 3 seconds. Focus the game piano or Notepad; it will press A S D F."
+        )
+        if self.minimize_var.get():
+            self.after(250, self.iconify)
+
+        def worker() -> None:
+            error: str | None = None
+            try:
+                for remaining in (3, 2, 1):
+                    self.ui_queue.put(("test_status", f"Input test in {remaining}… focus the target window"))
+                    time.sleep(1.0)
+                sender = WindowsKeySender()
+                for key in ("a", "s", "d", "f"):
+                    sender.tap(key, hold_seconds=0.080, gap_seconds=0.120)
+                sender.release_all()
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
+            self.ui_queue.put(("test_finished", error))
+
+        threading.Thread(target=worker, daemon=True).start()
+
     def _start(self) -> None:
         if os.name != "nt":
             messagebox.showerror(APP_NAME, "Playback is supported only on Windows.")
+            return
+        if not self._require_admin_for_input():
             return
         self._analyze()
         if self.current_plan is None:
@@ -666,6 +736,7 @@ class App(tk.Tk):
 
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
+        self.test_button.configure(state="disabled")
         self.progress["value"] = 0
         self._save_config()
         if self.minimize_var.get():
@@ -689,9 +760,25 @@ class App(tk.Tk):
                     text, progress = payload  # type: ignore[misc]
                     self.status_var.set(str(text))
                     self.progress["value"] = float(progress)
+                elif kind == "test_status":
+                    self.status_var.set(str(payload))
+                elif kind == "test_finished":
+                    self._input_test_running = False
+                    self.start_button.configure(state="normal")
+                    self.test_button.configure(state="normal")
+                    self.deiconify()
+                    self.lift()
+                    if payload:
+                        self.status_var.set(f"Input test error: {payload}")
+                        messagebox.showerror(APP_NAME, str(payload))
+                    else:
+                        self.status_var.set(
+                            "Input test sent A S D F. If nothing appeared, confirm the target was focused."
+                        )
                 elif kind == "finished":
                     self.start_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
+                    self.test_button.configure(state="normal")
                     self.deiconify()
                     self.lift()
                     if payload:

@@ -9,8 +9,10 @@ from ctypes import wintypes
 
 if os.name == "nt":
     user32 = ctypes.WinDLL("user32", use_last_error=True)
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
 else:
     user32 = None
+    shell32 = None
 
 
 # Windows virtual-key constants.
@@ -33,13 +35,23 @@ MAPVK_VK_TO_VSC = 0
 VK_F10 = 0x79
 
 
+def is_running_as_admin() -> bool:
+    """Return True when this process has an elevated Windows token."""
+    if os.name != "nt" or shell32 is None:
+        return False
+    try:
+        return bool(shell32.IsUserAnAdmin())
+    except OSError:
+        return False
+
+
 class KEYBDINPUT(ctypes.Structure):
     _fields_ = [
         ("wVk", wintypes.WORD),
         ("wScan", wintypes.WORD),
         ("dwFlags", wintypes.DWORD),
         ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+        ("dwExtraInfo", ctypes.c_size_t),
     ]
 
 
@@ -53,6 +65,15 @@ class INPUT(ctypes.Structure):
         ("type", wintypes.DWORD),
         ("union", INPUT_UNION),
     ]
+
+
+if os.name == "nt" and user32 is not None:
+    user32.MapVirtualKeyW.argtypes = (wintypes.UINT, wintypes.UINT)
+    user32.MapVirtualKeyW.restype = wintypes.UINT
+    user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int)
+    user32.SendInput.restype = wintypes.UINT
+    user32.GetAsyncKeyState.argtypes = (ctypes.c_int,)
+    user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
 class WindowsKeySender:
@@ -83,7 +104,7 @@ class WindowsKeySender:
                 wScan=scan,
                 dwFlags=flags,
                 time=0,
-                dwExtraInfo=None,
+                dwExtraInfo=0,
             ),
         )
         sent = user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(INPUT))

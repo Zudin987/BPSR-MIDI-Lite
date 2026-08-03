@@ -8,7 +8,7 @@
 4. Return to the app and click **Reload**.
 5. Choose a song from the dropdown.
 
-Use **Choose Folder…** to select a different permanent library. The folder and last song are saved automatically. If the folder dialog seems missing while the game is open, v0.4.1 forces it in front of the app.
+Use **Choose Folder…** to select a different permanent library. The folder and last song are saved automatically. If the folder dialog seems missing while the game is open, v0.4.2 forces it in front of the app.
 
 
 This guide is for people who only want to play MIDI files. They do not need to install Python.
@@ -80,3 +80,14 @@ Raise **Note length** gradually. Keep repeated-note protection enabled through t
 ## Full-range song pauses too much
 
 Lower **Page-switch delay** in small steps, such as 220 ms to 200 ms. If notes rush or occur before the page finishes changing, raise it again.
+
+
+## First keyboard-input test
+
+1. Launch the EXE and accept the Windows Administrator prompt.
+2. Click **Test input (3s)**.
+3. During the countdown, focus Notepad or open/focus the in-game piano.
+4. The app sends `A S D F`.
+5. If Notepad receives the letters but the game does not, verify that the piano interface is active and that no chat box is focused.
+6. If the app says Administrator access is `No`, close it and use **Run as administrator**.
+

@@ -37,3 +37,6 @@ MIDI library validation:
 - Recursive .mid/.midi scan: passed
 - Natural numbered sorting: passed
 - Missing-folder behavior: passed
+
+
+v0.4.2: Added Administrator manifest and input-test path. Windows injection still requires real-game validation on a Windows PC.

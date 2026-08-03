@@ -29,6 +29,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    uac_admin=True,
     icon=str(project / "assets" / "app.ico"),
     version=str(project / "version_info.txt"),
 )

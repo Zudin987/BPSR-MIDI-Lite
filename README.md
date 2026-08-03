@@ -1,8 +1,16 @@
-# BPSR MIDI Lite v0.4.1
+# BPSR MIDI Lite v0.4.2
 
 A small Windows MIDI keyboard player made only for **Blue Protocol: Star Resonance** piano playback.
 
-## New in v0.4.1: saved MIDI library
+
+## Important: Administrator access
+
+The Windows EXE requests Administrator access at launch. This is intentional: BPSR or its launcher may run elevated, and Windows prevents a lower-privilege process from injecting keyboard input into an elevated game.
+
+Before testing a MIDI, use **Test input (3s)**. Focus Notepad or the in-game piano during the countdown. The app sends `A S D F`. If the test works in Notepad but not in BPSR, ensure the game piano is open and the game window is focused.
+
+
+## New in v0.4.2: saved MIDI library
 
 - The app creates a `MIDI` folder beside the EXE on first launch.
 - Put any `.mid` or `.midi` file in that folder, including inside subfolders.
@@ -132,7 +140,7 @@ The script creates:
 ```text
 dist\BPSR-MIDI-Lite.exe
 release\BPSR-MIDI-Lite.exe
-release\BPSR-MIDI-Lite-v0.4.1-Windows-x64.zip
+release\BPSR-MIDI-Lite-v0.4.2-Windows-x64.zip
 release\SHA256SUMS.txt
 ```
 
