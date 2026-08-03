@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ctypes
 import os
+import subprocess
+import sys
 import threading
 import time
+from pathlib import Path
 
 
 # Fixed-width Win32 types. Using ctypes.wintypes.LONG outside Windows can have
@@ -64,6 +67,40 @@ def is_running_as_admin() -> bool:
         return False
 
 
+def elevation_target() -> tuple[str, str]:
+    """Return the executable and Windows command line used for an elevated restart."""
+    if getattr(sys, "frozen", False):
+        executable = str(Path(sys.executable).resolve())
+        arguments = list(sys.argv[1:])
+    else:
+        executable = str(Path(sys.executable).resolve())
+        arguments = [str(Path(sys.argv[0]).resolve()), *sys.argv[1:]]
+    return executable, subprocess.list2cmdline(arguments)
+
+
+def restart_as_administrator() -> None:
+    """Launch another copy through the Windows UAC prompt."""
+    if os.name != "nt" or shell32 is None:
+        raise RuntimeError("Administrator restart is supported only on Windows.")
+    if is_running_as_admin():
+        return
+
+    executable, parameters = elevation_target()
+    result = shell32.ShellExecuteW(
+        None,
+        "runas",
+        executable,
+        parameters,
+        str(Path.cwd()),
+        1,
+    )
+    result_code = int(result or 0)
+    if result_code <= 32:
+        if result_code == 5:
+            raise PermissionError("The Administrator request was cancelled or denied.")
+        raise OSError(f"Windows could not restart the app as Administrator (code {result_code}).")
+
+
 class MOUSEINPUT(ctypes.Structure):
     _fields_ = [
         ("dx", LONG),
@@ -112,6 +149,18 @@ class INPUT(ctypes.Structure):
 
 
 EXPECTED_INPUT_SIZE = 40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28
+
+
+if os.name == "nt" and shell32 is not None:
+    shell32.ShellExecuteW.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_int,
+    )
+    shell32.ShellExecuteW.restype = ctypes.c_void_p
 
 
 if os.name == "nt" and user32 is not None:

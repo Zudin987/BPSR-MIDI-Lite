@@ -229,6 +229,13 @@ class MidiPlan:
     configured_max_pitch: int
     effective_min_pitch: int
     effective_max_pitch: int
+    source_note_count: int
+    source_duration: float
+    source_track_count: int
+    source_percussion_notes: int
+    max_source_chord: int
+    max_planned_chord: int
+    chord_removed_notes: int
 
 
 @dataclass(slots=True)
@@ -340,8 +347,19 @@ def key_for_pitch(pitch: int, state: KeyboardState) -> str:
 def _extract_notes_and_pedal(
     path: Path,
     ignore_percussion: bool,
-) -> tuple[list[SourceNote], list[tuple[float, bool]], int]:
+) -> tuple[list[SourceNote], list[tuple[float, bool]], int, int, int, float]:
     midi = mido.MidiFile(path)
+    source_track_count = 0
+    source_percussion_notes = 0
+    for track in midi.tracks:
+        has_notes = False
+        for track_message in track:
+            if track_message.type == "note_on" and track_message.velocity > 0:
+                has_notes = True
+                if int(getattr(track_message, "channel", 0)) == 9:
+                    source_percussion_notes += 1
+        if has_notes:
+            source_track_count += 1
     absolute_time = 0.0
     final_time = 0.0
     active: dict[tuple[int, int], deque[tuple[float, int, int]]] = defaultdict(deque)
@@ -398,7 +416,14 @@ def _extract_notes_and_pedal(
             )
 
     notes.sort(key=lambda note: (note.start, note.serial))
-    return notes, pedal_events, filtered
+    return (
+        notes,
+        pedal_events,
+        filtered,
+        source_track_count,
+        source_percussion_notes,
+        final_time,
+    )
 
 
 def _group_notes_by_start(notes: Iterable[SourceNote]) -> list[list[SourceNote]]:
@@ -992,16 +1017,26 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
     options = options or PlanOptions()
     options.validate()
 
-    source_notes, pedal_events, filtered_count = _extract_notes_and_pedal(
+    (
+        source_notes,
+        pedal_events,
+        filtered_count,
+        source_track_count,
+        source_percussion_notes,
+        source_duration,
+    ) = _extract_notes_and_pedal(
         midi_path,
         options.ignore_percussion,
     )
     if not source_notes:
         raise ValueError("The MIDI file does not contain playable notes.")
 
-    # Report the original musical range before simplification/transposition.
+    # Report the original musical range and complexity before simplification.
     source_min = min(note.pitch for note in source_notes)
     source_max = max(note.pitch for note in source_notes)
+    source_note_count = len(source_notes)
+    source_groups = _group_notes_by_start(source_notes)
+    max_source_chord = max((len(group) for group in source_groups), default=0)
 
     chord_limit = 1 if options.melody_only else options.max_notes_per_chord
     source_notes, chord_removed = _limit_notes_per_chord(source_notes, chord_limit, options.instrument)
@@ -1036,6 +1071,10 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         _build_notes_and_transitions(groups, mapped_groups, options)
     )
     planned_notes, merged_count = _merge_simultaneous_duplicates(planned_notes)
+    max_planned_chord = max(
+        (len(group) for group in _group_notes_by_start(planned_notes)),
+        default=0,
+    )
     if not planned_notes:
         raise ValueError("The selected mapping method skipped every playable note.")
     planned_notes = _apply_note_lengths(planned_notes, options)
@@ -1110,6 +1149,13 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         configured_max_pitch=configured_high,
         effective_min_pitch=effective_low,
         effective_max_pitch=effective_high,
+        source_note_count=source_note_count,
+        source_duration=source_duration,
+        source_track_count=source_track_count,
+        source_percussion_notes=source_percussion_notes,
+        max_source_chord=max_source_chord,
+        max_planned_chord=max_planned_chord,
+        chord_removed_notes=chord_removed,
     )
 
 

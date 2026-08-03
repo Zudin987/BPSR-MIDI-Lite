@@ -14,6 +14,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from diagnostics import build_diagnostic_text
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
 from player import MidiPlayer
 from profiles import (
@@ -25,6 +26,7 @@ from profiles import (
     profile_label_for,
     profile_labels_for,
 )
+from suitability import evaluate_song_suitability
 from theme import apply_theme, system_prefers_dark_mode
 from win_input import (
     BACKEND_NAMES,
@@ -32,11 +34,12 @@ from win_input import (
     f10_is_pressed,
     input_abi_diagnostics,
     is_running_as_admin,
+    restart_as_administrator,
 )
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -175,11 +178,14 @@ class App(tk.Tk):
         self._style = ttk.Style(self)
         self._dark_mode: bool | None = None
         self.title(f"{APP_NAME} v{APP_VERSION}")
-        self.geometry("880x760")
-        self.minsize(820, 690)
+        self.geometry("900x800")
+        self.minsize(840, 720)
 
         self.player = MidiPlayer()
         self.current_plan = None
+        self.current_suitability = None
+        self._last_error: str | None = None
+        self._last_input_test = "Not run"
         self.ui_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._last_f10 = False
         self._input_test_running = False
@@ -219,6 +225,7 @@ class App(tk.Tk):
 
         self.status_var = tk.StringVar(value="Add a MIDI to the library, then press Reload.")
         self.analysis_var = tk.StringVar(value="Song preview updates automatically.")
+        self.suitability_var = tk.StringVar(value="Suitability: waiting for a song")
         self.profile_summary_var = tk.StringVar()
         self.notice_var = tk.StringVar(
             value=(
@@ -226,16 +233,12 @@ class App(tk.Tk):
                 "during the countdown."
             )
         )
-        self.admin_var = tk.StringVar(value="Administrator access: checking…")
+        self.admin_var = tk.StringVar(value="Input access: checking…")
 
         self._build_ui()
         self._attach_variable_traces()
         self._load_config()
-        self.admin_var.set(
-            "Administrator access: Yes — game input enabled"
-            if is_running_as_admin()
-            else "Administrator access: No — reopen as Administrator"
-        )
+        self._refresh_access_ui()
         self._suspend_auto_analysis = False
         self._apply_profile_ui(schedule=False)
         self._schedule_analysis()
@@ -255,6 +258,32 @@ class App(tk.Tk):
         self._apply_system_theme()
         self.after(1500, self._poll_system_theme)
 
+    def _refresh_access_ui(self) -> None:
+        if is_running_as_admin():
+            self.admin_var.set("Input access: Administrator mode")
+            self.admin_button.configure(text="Administrator mode active", state="disabled")
+        else:
+            self.admin_var.set(
+                "Input access: Standard mode — normally enough for BPSR"
+            )
+            self.admin_button.configure(text="Restart as Administrator", state="normal")
+
+    def _restart_as_admin(self) -> None:
+        if self.player.is_playing or self._input_test_running:
+            messagebox.showinfo(APP_NAME, "Stop playback or the input test before restarting.")
+            return
+        if is_running_as_admin():
+            self._refresh_access_ui()
+            return
+        self._save_config()
+        try:
+            restart_as_administrator()
+        except Exception as exc:  # noqa: BLE001
+            self._last_error = f"Administrator restart: {exc}"
+            messagebox.showerror(APP_NAME, str(exc))
+            return
+        self.destroy()
+
     def _build_ui(self) -> None:
         self._apply_system_theme(force=True)
 
@@ -271,9 +300,17 @@ class App(tk.Tk):
             outer,
             text="Simple MIDI instrument player for Blue Protocol: Star Resonance",
         ).pack(anchor="w")
-        ttk.Label(outer, textvariable=self.admin_var, style="Hint.TLabel").pack(
-            anchor="w", pady=(2, 10)
+        access_row = ttk.Frame(outer)
+        access_row.pack(fill="x", pady=(2, 10))
+        ttk.Label(access_row, textvariable=self.admin_var, style="Hint.TLabel").pack(
+            side="left", anchor="w"
         )
+        self.admin_button = ttk.Button(
+            access_row,
+            text="Restart as Administrator",
+            command=self._restart_as_admin,
+        )
+        self.admin_button.pack(side="right")
 
         notice = ttk.LabelFrame(outer, text="Before playback", padding=9)
         notice.pack(fill="x", pady=(0, 10))
@@ -364,10 +401,16 @@ class App(tk.Tk):
 
         self.analysis_frame = ttk.LabelFrame(outer, text="Song preview — updates automatically", padding=10)
         self.analysis_frame.pack(fill="x", pady=(0, 10))
+        self.suitability_label = ttk.Label(
+            self.analysis_frame,
+            textvariable=self.suitability_var,
+            style="Good.TLabel",
+        )
+        self.suitability_label.pack(anchor="w", pady=(0, 5))
         ttk.Label(
             self.analysis_frame,
             textvariable=self.analysis_var,
-            wraplength=790,
+            wraplength=810,
             justify="left",
         ).pack(anchor="w")
 
@@ -416,12 +459,17 @@ class App(tk.Tk):
         self.input_backend_combo.bind(
             "<<ComboboxSelected>>", lambda _event: self._save_config()
         )
+        ttk.Button(
+            run_frame,
+            text="Copy diagnostics",
+            command=self._copy_diagnostics,
+        ).grid(row=1, column=5, padx=(10, 0), pady=(9, 0))
         self.test_button = ttk.Button(
             run_frame,
             text="Test input (3s)",
             command=self._test_input,
         )
-        self.test_button.grid(row=1, column=6, padx=(10, 0), pady=(9, 0))
+        self.test_button.grid(row=1, column=6, padx=(8, 0), pady=(9, 0))
         ttk.Button(run_frame, text="Reset", command=self._reset_defaults).grid(
             row=1, column=7, padx=(8, 0), pady=(9, 0)
         )
@@ -435,6 +483,7 @@ class App(tk.Tk):
             outer,
             text=(
                 "F10 is an emergency stop. Instrument profiles lock safe mappings for Keyboard, Guitar and Bass. "
+                "Standard mode normally works; use Restart as Administrator only when BPSR ignores input. "
                 "Choose Custom only for manual tuning or experimental full-range page switching. "
                 f"The app follows the Windows light/dark theme automatically. Input ABI: {input_abi_diagnostics()}."
             ),
@@ -977,6 +1026,9 @@ class App(tk.Tk):
 
         if not values:
             self.current_plan = None
+            self.current_suitability = None
+            self.suitability_var.set("Suitability: waiting for a song")
+            self.suitability_label.configure(style="Hint.TLabel")
             self.analysis_var.set(
                 "No MIDI files found. Click Open Folder, copy in .mid or .midi files, then click Reload."
             )
@@ -999,16 +1051,37 @@ class App(tk.Tk):
         path = self.file_var.get()
         if not path or not Path(path).exists():
             self.current_plan = None
+            self.current_suitability = None
+            self.suitability_var.set("Suitability: waiting for a song")
+            self.suitability_label.configure(style="Hint.TLabel")
             return
         try:
             plan = build_plan(path, self._plan_options())
         except Exception as exc:  # noqa: BLE001
             self.current_plan = None
+            self.current_suitability = None
+            self._last_error = f"MIDI preview: {exc}"
+            self.suitability_var.set("Suitability: unavailable")
+            self.suitability_label.configure(style="Danger.TLabel")
             self.analysis_var.set(f"Could not preview this MIDI:\n{exc}")
             self.status_var.set(str(exc))
             return
 
         self.current_plan = plan
+        if self._last_error and self._last_error.startswith("MIDI preview:"):
+            self._last_error = None
+        suitability = evaluate_song_suitability(plan)
+        self.current_suitability = suitability
+        suitability_style = {
+            "good": "Good.TLabel",
+            "busy": "Warning.TLabel",
+            "complex": "Danger.TLabel",
+        }.get(suitability.code, "Hint.TLabel")
+        self.suitability_label.configure(style=suitability_style)
+        self.suitability_var.set(
+            f"Suitability: {suitability.label} — {suitability.summary}"
+        )
+
         profile_name = self.profile_var.get().split(" — ", 1)[0]
         instrument_name = self.instrument_var.get()
         page_rate = plan.page_switches / max(plan.duration / 60.0, 0.001)
@@ -1032,6 +1105,10 @@ class App(tk.Tk):
             changes.append(f"{plan.filtered_notes:,} simplified/filtered")
         change_text = " • ".join(changes) if changes else "No notes changed"
 
+        complexity_line = ""
+        if suitability.reasons:
+            complexity_line = "\nWhy: " + "; ".join(suitability.reasons[:3])
+
         warning = ""
         if page_rate > 20:
             warning = "\n⚠ Frequent page changes: a Custom Stable profile may sound smoother."
@@ -1039,21 +1116,46 @@ class App(tk.Tk):
         self.analysis_var.set(
             f"Ready • {instrument_name} • {profile_name} • {plan.note_count:,} played notes • {_duration_text(plan.duration)}\n"
             f"Original range {original_range} → played range {played_range} • {change_text}\n"
-            f"{page_line} • {plan.octave_switches:,} Ctrl/Shift switch(es){warning}"
+            f"{page_line} • {plan.octave_switches:,} Ctrl/Shift switch(es)"
+            f"{complexity_line}{warning}"
         )
         self.status_var.set("Ready. Press Start, then focus the game during the countdown.")
         self._save_config()
 
-    def _require_admin_for_input(self) -> bool:
-        if is_running_as_admin():
-            return True
-        messagebox.showerror(
-            APP_NAME,
-            "BPSR MIDI Lite is not running as Administrator.\n\n"
-            "Close it, then right-click the EXE and choose 'Run as administrator'. "
-            "The official build normally requests this automatically.",
+    def _copy_diagnostics(self) -> None:
+        text = build_diagnostic_text(
+            app_name=APP_NAME,
+            app_version=APP_VERSION,
+            instrument=self.instrument_var.get(),
+            profile=self.profile_var.get(),
+            input_backend=BACKEND_NAMES.get(
+                self._input_backend_code(), self.input_backend_var.get()
+            ),
+            midi_name=self.midi_display_var.get(),
+            administrator=is_running_as_admin(),
+            plan=self.current_plan,
+            suitability=self.current_suitability,
+            last_input_test=self._last_input_test,
+            last_error=self._last_error,
         )
-        return False
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.update_idletasks()
+        except tk.TclError as exc:
+            self._last_error = f"Clipboard: {exc}"
+            messagebox.showerror(APP_NAME, f"Could not copy diagnostics:\n{exc}")
+            return
+        self.status_var.set("Diagnostic information copied to the clipboard.")
+
+    def _input_error_message(self, error: object) -> str:
+        message = str(error)
+        if not is_running_as_admin():
+            message += (
+                "\n\nThe app is running in Standard mode. If Notepad receives input but "
+                "BPSR does not, return to the app and click Restart as Administrator."
+            )
+        return message
 
     def _test_input(self) -> None:
         if os.name != "nt":
@@ -1061,8 +1163,6 @@ class App(tk.Tk):
             return
         if self.player.is_playing or self._input_test_running:
             messagebox.showinfo(APP_NAME, "Stop playback before running the input test.")
-            return
-        if not self._require_admin_for_input():
             return
 
         self._input_test_running = True
@@ -1094,8 +1194,6 @@ class App(tk.Tk):
         if os.name != "nt":
             messagebox.showerror(APP_NAME, "Playback is supported only on Windows.")
             return
-        if not self._require_admin_for_input():
-            return
         self._analyze()
         if self.current_plan is None:
             messagebox.showerror(APP_NAME, "Choose a valid MIDI from the library first.")
@@ -1110,7 +1208,8 @@ class App(tk.Tk):
                 input_backend=self._input_backend_code(),
             )
         except Exception as exc:  # noqa: BLE001
-            messagebox.showerror(APP_NAME, str(exc))
+            self._last_error = f"Playback start: {exc}"
+            messagebox.showerror(APP_NAME, self._input_error_message(exc))
             return
 
         self.start_button.configure(state="disabled")
@@ -1149,10 +1248,14 @@ class App(tk.Tk):
                     self.lift()
                     error, details = payload  # type: ignore[misc]
                     if error:
+                        self._last_input_test = f"Error: {error}"
+                        self._last_error = f"Input test: {error}"
                         self.status_var.set(f"Input test error: {error}")
-                        messagebox.showerror(APP_NAME, str(error))
+                        messagebox.showerror(APP_NAME, self._input_error_message(error))
                     else:
                         backend = BACKEND_NAMES.get(self._input_backend_code(), "selected method")
+                        self._last_input_test = f"Success using {backend}"
+                        self._last_error = None
                         self.status_var.set(f"Input test sent A S D F using {backend}. {details}")
                 elif kind == "finished":
                     self.start_button.configure(state="normal")
@@ -1161,11 +1264,14 @@ class App(tk.Tk):
                     self.deiconify()
                     self.lift()
                     if payload:
+                        self._last_error = f"Playback: {payload}"
                         self.status_var.set(f"Playback error: {payload}")
-                        messagebox.showerror(APP_NAME, str(payload))
+                        messagebox.showerror(APP_NAME, self._input_error_message(payload))
                     elif self.player.stop_event.is_set():
+                        self._last_error = None
                         self.status_var.set("Stopped. All keys released and instrument mode reset.")
                     else:
+                        self._last_error = None
                         self.status_var.set("Playback completed. Instrument mode reset.")
         except queue.Empty:
             pass

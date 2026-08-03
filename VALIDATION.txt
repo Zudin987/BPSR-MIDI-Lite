@@ -1,19 +1,15 @@
-BPSR MIDI Lite v1.0.0 validation
+BPSR MIDI Lite v1.1.0 validation
 
-- 36 automated tests passed.
-- Tkinter UI smoke test passed for switching Keyboard → Guitar → Bass.
-- 48 reference MIDI files were planned across every fixed profile:
-  - Keyboard: 3 profiles
-  - Guitar: 3 profiles
-  - Bass: 2 profiles
-  - Total: 384 successful plans
-- Every fixed profile produced 0 predicted < / > page presses.
-- Guitar profile range checks passed for C3-B4, E2-B4 and E2-D6.
-- Bass mapping checks passed for:
-  - Tier 1 E1-B2 Default key layout
-  - Tier 2 E1-B3 High Octave Shift layout
-- Bass chord filtering verified that the lowest note is retained.
-- Windows keyboard injection cannot be exercised inside BPSR from the Linux build environment; the existing v0.4.3 input implementation is unchanged.
+Automated pytest suite: PASS (43 tests)
+Python compilation: PASS
+Tkinter UI smoke test: PASS
+Mandatory Administrator manifest removed: PASS
+Optional elevation command tests: PASS
+Song suitability tests: PASS
+Diagnostic report tests: PASS
+MIDI source complexity metrics tests: PASS
+51 reference MIDIs × 8 fixed profiles: PASS (408 plans)
+Fixed-profile page-key presses: PASS (0 predicted)
 
-Release note UI/docs check: PASS
-Version metadata 1.0.0 check: PASS
+Windows-specific note:
+The Linux validation environment cannot physically inject keys into BPSR or display a Windows UAC prompt. The final EXE should be tested on Windows 10/11 in both Standard mode and optional Administrator mode before publishing the v1.1.0 release.

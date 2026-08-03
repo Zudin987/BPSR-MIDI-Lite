@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1.0
+
+- Removed the mandatory Administrator manifest and UAC prompt.
+- The app now starts in Standard mode and provides an optional **Restart as Administrator** button.
+- Added automatic song suitability ratings: **Good fit**, **Busy**, and **Very complex**.
+- Suitability explains density, chord size, remapping/removal ratio, tracks, percussion, and page-switch pressure.
+- Added **Copy diagnostics** for tester-friendly bug reports.
+- Added source complexity metrics to MIDI analysis.
+- Updated documentation and Windows version metadata.
+
 ## v1.0.0
 
 - First public-ready release of BPSR MIDI Lite.

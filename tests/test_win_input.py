@@ -24,3 +24,16 @@ def test_sender_rejects_unknown_backend_before_use(monkeypatch):
     if win_input.os.name != "nt":
         with pytest.raises(RuntimeError):
             win_input.WindowsKeySender("unknown")
+
+
+def test_elevation_target_for_source_mode(monkeypatch, tmp_path):
+    script = tmp_path / "app.py"
+    script.write_text("", encoding="utf-8")
+    monkeypatch.delattr(win_input.sys, "frozen", raising=False)
+    monkeypatch.setattr(win_input.sys, "argv", [str(script), "--dry-run", "song.mid"])
+
+    executable, parameters = win_input.elevation_target()
+
+    assert executable == str(win_input.Path(win_input.sys.executable).resolve())
+    assert str(script.resolve()) in parameters
+    assert "--dry-run" in parameters

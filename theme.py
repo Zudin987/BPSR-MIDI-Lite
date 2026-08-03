@@ -222,6 +222,18 @@ def apply_theme(root: Any, style: ttk.Style, dark: bool) -> None:
         foreground="#ffcc66" if dark else "#8a4b00",
         font=("Segoe UI", 9, "bold"),
     )
+    style.configure(
+        "Good.TLabel",
+        background=colors.background,
+        foreground="#6ccb5f" if dark else "#187a2f",
+        font=("Segoe UI", 9, "bold"),
+    )
+    style.configure(
+        "Danger.TLabel",
+        background=colors.background,
+        foreground="#ff7b72" if dark else "#b42318",
+        font=("Segoe UI", 9, "bold"),
+    )
 
     # The dropdown of a ttk Combobox is a classic Tk listbox.
     root.option_add("*TCombobox*Listbox.background", colors.field)
