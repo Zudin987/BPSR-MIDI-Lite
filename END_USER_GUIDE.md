@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v0.5.1 — End-user guide
+# BPSR MIDI Lite v0.5.2 — End-user guide
 
 Created by **MrEz**.
 
@@ -20,6 +20,16 @@ Accept the Administrator prompt. Python is not required.
 4. Select the song from the dropdown.
 
 The preview updates automatically; there is no Analyze button.
+
+## Find and download a public sequence
+
+1. Click **Find Songs**.
+2. Search by song title.
+3. Double-click a result to preview it in your browser.
+4. Select it and click **Download selected MIDI**.
+5. The converted file is stored in `MIDI\Online Sequencer` and selected automatically.
+
+A direct Online Sequencer URL or numeric ID can also be pasted into the lower box. This is an optional third-party integration, so it requires internet access and may be unavailable when the site changes or is offline. Do not bulk-download content; respect the sequence creator and Online Sequencer's rules.
 
 ## Choose a profile
 

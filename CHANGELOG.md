@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.2
+
+- Added an optional **Find Songs** window for Online Sequencer.
+- Added public sequence title search with browser-preview fallback.
+- Added direct Online Sequencer URL/ID import.
+- Added local conversion from Online Sequencer protobuf data into standard MIDI.
+- Downloads are stored under `MIDI/Online Sequencer` and selected automatically.
+- Added BPM-marker conversion, instrument tracks, drum-channel mapping, safe filenames, request limits, and friendly network errors.
+- Added 4 Online Sequencer parser/conversion regression tests.
+- Added clear third-party availability and creator-rights notices.
+
 ## v0.5.1
 
 - Simplified the fixed profile list to Tier 1, Tier 2, Tier 3, and Custom.

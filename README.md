@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v0.5.1
+# BPSR MIDI Lite v0.5.2
 
 **Created by MrEz.**
 
@@ -40,6 +40,18 @@ There is no separate theme setting to maintain.
 5. Select a song from the dropdown.
 
 Subfolders are supported and the last selected song is remembered. The song preview updates automatically.
+
+## Find songs online
+
+Click **Find Songs** to open the optional Online Sequencer browser:
+
+1. Search a song name.
+2. Double-click a result to preview its public sequence page.
+3. Select a result and click **Download selected MIDI**.
+4. The app converts that public sequence into a standard MIDI and saves it under `MIDI\Online Sequencer`.
+5. The new song is reloaded and selected automatically.
+
+You can also paste an Online Sequencer URL or numeric sequence ID directly. The integration makes one request at a time and does not bulk-download sequences. It depends on Online Sequencer's public website and the protobuf endpoint used by its official open-source SequencePlayer project, so a future website change may temporarily break search or import. Use only public sequences and respect their creators' rights and the site's rules.
 
 ## Before playback
 
@@ -106,6 +118,8 @@ Detailed instructions:
 - A chord wider than one keyboard state cannot always be reproduced literally at one instant.
 - Custom A0–C8 page changes take real time in the game. Dense page-to-page passages may require timing compensation or remapping.
 - Very dense orchestral MIDIs may sound better with a simplified chord setting in Custom.
+- Online Sequencer search/import requires an internet connection and may stop working if the third-party site changes.
+- Imported Online Sequencer automation is limited to BPM changes; instrument effects and pitch bends are not reproduced in the MIDI.
 - The project is unsigned, so Windows SmartScreen may initially show an unknown-publisher warning.
 - Use keyboard automation responsibly and follow the game's rules.
 

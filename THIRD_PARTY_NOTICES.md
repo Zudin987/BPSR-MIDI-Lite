@@ -15,3 +15,12 @@ MIDI parsing is provided by the `mido` Python package. See the package distribut
 - Project: pynput
 - License: GNU Lesser General Public License v3.0
 - Purpose: optional Windows keyboard input compatibility backend
+
+
+## Online Sequencer
+
+- Website: OnlineSequencer.net
+- Reference project: `onlinesequencer/SequencePlayer`
+- Purpose: optional public-sequence search and one-at-a-time conversion into MIDI
+
+Online Sequencer is a third-party service and is not bundled with or operated by BPSR MIDI Lite. The integration reads public search pages and the protobuf sequence endpoint demonstrated by the official open-source SequencePlayer project. Users remain responsible for respecting sequence creators' rights and the site's rules.

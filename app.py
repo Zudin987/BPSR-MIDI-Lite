@@ -14,6 +14,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
+from online_sequencer_dialog import OnlineSequencerDialog
 from player import MidiPlayer
 from profiles import (
     FIXED_PROFILES,
@@ -33,7 +34,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.5.2"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -155,6 +156,7 @@ class App(tk.Tk):
         self.ui_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._last_f10 = False
         self._input_test_running = False
+        self._online_dialog: OnlineSequencerDialog | None = None
         self._analysis_job: str | None = None
         self._suspend_auto_analysis = True
         self._active_profile_code = "tier3"
@@ -281,17 +283,20 @@ class App(tk.Tk):
         )
         self.midi_combo.grid(row=0, column=0, sticky="ew")
         self.midi_combo.bind("<<ComboboxSelected>>", lambda _event: self._midi_selected())
-        ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
+        ttk.Button(file_frame, text="Find Songs", command=self._open_online_sequencer).grid(
             row=0, column=1, padx=(8, 0)
         )
-        ttk.Button(file_frame, text="Reload", command=self._reload_midi_library).grid(
+        ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
             row=0, column=2, padx=(8, 0)
+        )
+        ttk.Button(file_frame, text="Reload", command=self._reload_midi_library).grid(
+            row=0, column=3, padx=(8, 0)
         )
         ttk.Label(
             file_frame,
             textvariable=self.midi_folder_var,
             style="Hint.TLabel",
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(7, 0))
+        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(7, 0))
 
         self.custom_settings_frame = ttk.LabelFrame(
             outer,
@@ -768,6 +773,28 @@ class App(tk.Tk):
             ignore_percussion=bool(self.percussion_var.get()),
         )
 
+    def _open_online_sequencer(self) -> None:
+        if self._online_dialog is not None and self._online_dialog.winfo_exists():
+            self._online_dialog.deiconify()
+            self._online_dialog.lift()
+            self._online_dialog.focus_force()
+            return
+        self._online_dialog = OnlineSequencerDialog(
+            self,
+            Path(self.midi_folder_var.get()),
+            self._online_sequence_imported,
+        )
+
+    def _online_sequence_imported(self, path: Path) -> None:
+        folder = Path(self.midi_folder_var.get())
+        try:
+            display = path.resolve().relative_to(folder.resolve()).as_posix()
+        except (OSError, ValueError):
+            display = ""
+        self._reload_midi_library(analyze=True, preferred_display=display)
+        self.deiconify()
+        self.lift()
+
     def _open_midi_folder(self) -> None:
         folder = Path(self.midi_folder_var.get())
         try:
@@ -1027,6 +1054,8 @@ class App(tk.Tk):
         self._save_config()
 
     def _on_close(self) -> None:
+        if self._online_dialog is not None and self._online_dialog.winfo_exists():
+            self._online_dialog.destroy()
         if self.player.is_playing:
             self.player.stop()
             deadline = time.time() + 1.5

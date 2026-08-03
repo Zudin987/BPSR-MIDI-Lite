@@ -1,16 +1,14 @@
-BPSR MIDI Lite v0.5.1 validation
+BPSR MIDI Lite v0.5.2 validation
 
-- 26 automated tests passed.
-- Tkinter UI smoke test passed under a virtual display.
-- Light and dark palettes both applied successfully in the UI smoke test.
-- All 48 reference MIDI files planned successfully for Tier 1, Tier 2, and Tier 3.
-- Total predicted page-key presses across those 144 plans: 0.
-- Fixed profiles verified:
-  - Tier 1: stable / C3-B4 / zero page presses
-  - Tier 2: stable / C3-B6 / zero page presses
-  - Tier 3: stable / C2-B6 / zero page presses
-- Custom Tier 1, Tier 2, and Tier 3 reject Full range solo.
-- Custom Full range A0-C8 retains optional < / > support.
-- Windows light/dark theme detection is applied at startup and polled while running.
-- MIDI library reload and automatic preview remain enabled.
-- Windows EXE input and live Windows theme switching should be smoke-tested after rebuilding.
+- 30 automated tests passed.
+- Existing profile, MIDI planning, theme, library, and Windows input tests remain passing.
+- Online Sequencer tests cover:
+  - numeric ID and URL extraction
+  - public-search HTML result parsing and deduplication
+  - protobuf sequence/settings/note/BPM-marker parsing
+  - Online Sequencer timing conversion into standard MIDI ticks
+  - saving into the MIDI/Online Sequencer library folder
+- Handcrafted reference data verifies BPM 120 at tick 0 and BPM 140 at tick 960.
+- Imported note timing verifies sequence time 4.0 -> MIDI tick 480 and length 2.0 -> note-off tick 720.
+- The app still requires a Windows smoke test after GitHub builds the EXE.
+- Live Online Sequencer network behavior cannot be tested in the offline build environment and may change independently of this project.
