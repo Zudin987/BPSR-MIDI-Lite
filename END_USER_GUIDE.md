@@ -91,3 +91,12 @@ Lower **Page-switch delay** in small steps, such as 220 ms to 200 ms. If notes r
 5. If Notepad receives the letters but the game does not, verify that the piano interface is active and that no chat box is focused.
 6. If the app says Administrator access is `No`, close it and use **Run as administrator**.
 
+
+## Testing keyboard input
+
+1. Open Notepad.
+2. In MIDI Lite, select **Win32 scan code** as the input method.
+3. Click **Test input (3s)** and focus Notepad.
+4. It should type `asdf`.
+5. If Notepad works but the game does not, try **Pynput compatibility**.
+6. Use **Win32 virtual key** or **Legacy keybd_event** only as fallbacks.

@@ -33,6 +33,7 @@ class MidiPlayer:
         start_delay: float,
         on_status: StatusCallback,
         on_finished: FinishedCallback,
+        input_backend: str = "scan",
     ) -> None:
         if self.is_playing:
             raise RuntimeError("Playback is already running.")
@@ -43,7 +44,7 @@ class MidiPlayer:
         self.pedal_on = False
         self.page_step_delay = max(0.040, float(plan.page_switch_delay))
         self._key_counts.clear()
-        self.sender = WindowsKeySender()
+        self.sender = WindowsKeySender(input_backend)
         self.thread = threading.Thread(
             target=self._run,
             args=(plan, start_delay, on_status, on_finished),
@@ -163,6 +164,7 @@ class MidiPlayer:
         start_delay: float,
         on_status: StatusCallback,
         on_finished: FinishedCallback,
+        input_backend: str = "scan",
     ) -> None:
         error: str | None = None
         try:

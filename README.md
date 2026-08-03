@@ -170,3 +170,12 @@ python app.py --dry-run song.mid --unlock-tier tier4 --mode full --page-delay 25
 Independent MIDI-only implementation inspired by the keyboard behavior studied from `Sanheiii/ok-star-resonance`.
 
 Distributed under **GNU AGPL-3.0**. Source code is included.
+
+## v0.4.3 input troubleshooting
+
+v0.4.3 fixes a Win32 structure-size bug that prevented v0.4.2 from sending
+input even to Notepad on 64-bit Windows.
+
+Use **Test input (3s)** with Notepad first. Start with **Win32 scan code**. If
+Notepad works but BPSR does not, try **Pynput compatibility**, then **Win32
+virtual key**. Run the app as Administrator when BPSR is elevated.

@@ -15,11 +15,17 @@ from tkinter import filedialog, messagebox, ttk
 
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
 from player import MidiPlayer
-from win_input import WindowsKeySender, f10_is_pressed, is_running_as_admin
+from win_input import (
+    BACKEND_NAMES,
+    WindowsKeySender,
+    f10_is_pressed,
+    input_abi_diagnostics,
+    is_running_as_admin,
+)
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.4.2"
+APP_VERSION = "0.4.3"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
 MODE_LABELS = {
@@ -52,6 +58,14 @@ CHORD_LABELS = {
 CHORD_LABELS_REVERSE = {value: key for key, value in CHORD_LABELS.items()}
 
 MIDI_EXTENSIONS = {".mid", ".midi"}
+
+INPUT_BACKEND_LABELS = {
+    "Win32 scan code — recommended for games": "scan",
+    "Pynput compatibility": "pynput",
+    "Win32 virtual key": "virtual",
+    "Legacy keybd_event": "legacy",
+}
+INPUT_BACKEND_LABELS_REVERSE = {value: key for key, value in INPUT_BACKEND_LABELS.items()}
 
 
 def _application_directory() -> Path:
@@ -126,6 +140,9 @@ class App(tk.Tk):
         self.pedal_var = tk.BooleanVar(value=False)
         self.percussion_var = tk.BooleanVar(value=True)
         self.minimize_var = tk.BooleanVar(value=True)
+        self.input_backend_var = tk.StringVar(
+            value=INPUT_BACKEND_LABELS_REVERSE["scan"]
+        )
         self.status_var = tk.StringVar(value="Choose a MIDI from the library.")
         self.analysis_var = tk.StringVar(value="")
         self.notice_var = tk.StringVar()
@@ -136,7 +153,7 @@ class App(tk.Tk):
         self.admin_var.set(
             "Administrator access: Yes — game input injection enabled"
             if is_running_as_admin()
-            else "Administrator access: No — rebuild v0.4.2 or run as Administrator"
+            else "Administrator access: No — run as Administrator for game input"
         )
         self._mode_changed()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -326,6 +343,18 @@ class App(tk.Tk):
             state="disabled",
         )
         self.stop_button.pack(side="left", padx=(8, 0))
+        ttk.Label(controls, text="Input method").pack(side="left", padx=(16, 5))
+        self.input_backend_combo = ttk.Combobox(
+            controls,
+            textvariable=self.input_backend_var,
+            values=list(INPUT_BACKEND_LABELS),
+            state="readonly",
+            width=27,
+        )
+        self.input_backend_combo.pack(side="left")
+        self.input_backend_combo.bind(
+            "<<ComboboxSelected>>", lambda _event: self._save_config()
+        )
         self.test_button = ttk.Button(
             controls,
             text="Test input (3s)",
@@ -344,7 +373,8 @@ class App(tk.Tk):
             text=(
                 "F10 is an emergency stop. Choose the unlock tier that matches your character. "
                 "This app requests Administrator access because BPSR may run at elevated integrity; "
-                "Windows blocks lower-privilege programs from injecting input into elevated games."
+                "Windows blocks lower-privilege programs from injecting input into elevated games. "
+                f"Input ABI: {input_abi_diagnostics()}."
             ),
             wraplength=710,
             foreground="#555555",
@@ -360,6 +390,9 @@ class App(tk.Tk):
 
     def _unlock_code(self) -> str:
         return UNLOCK_LABELS.get(self.unlock_var.get(), "tier3")
+
+    def _input_backend_code(self) -> str:
+        return INPUT_BACKEND_LABELS.get(self.input_backend_var.get(), "scan")
 
     def _mode_changed(self) -> None:
         mode = self._mode_code()
@@ -463,6 +496,12 @@ class App(tk.Tk):
         self.pedal_var.set(bool(data.get("pedal", False)))
         self.percussion_var.set(bool(data.get("ignore_percussion", True)))
         self.minimize_var.set(bool(data.get("minimize", True)))
+        input_backend = str(data.get("input_backend", "scan"))
+        self.input_backend_var.set(
+            INPUT_BACKEND_LABELS_REVERSE.get(
+                input_backend, INPUT_BACKEND_LABELS_REVERSE["scan"]
+            )
+        )
 
         saved_folder = str(data.get("midi_folder", "")).strip()
         folder = Path(saved_folder) if saved_folder else _default_midi_folder()
@@ -498,6 +537,7 @@ class App(tk.Tk):
             "pedal": self.pedal_var.get(),
             "ignore_percussion": self.percussion_var.get(),
             "minimize": self.minimize_var.get(),
+            "input_backend": self._input_backend_code(),
         }
         try:
             self._config_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -702,13 +742,14 @@ class App(tk.Tk):
                 for remaining in (3, 2, 1):
                     self.ui_queue.put(("test_status", f"Input test in {remaining}… focus the target window"))
                     time.sleep(1.0)
-                sender = WindowsKeySender()
+                sender = WindowsKeySender(self._input_backend_code())
                 for key in ("a", "s", "d", "f"):
                     sender.tap(key, hold_seconds=0.080, gap_seconds=0.120)
                 sender.release_all()
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
-            self.ui_queue.put(("test_finished", error))
+            details = sender.description if error is None else ""
+            self.ui_queue.put(("test_finished", (error, details)))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -729,6 +770,7 @@ class App(tk.Tk):
                 delay,
                 self._thread_status,
                 self._thread_finished,
+                input_backend=self._input_backend_code(),
             )
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror(APP_NAME, str(exc))
@@ -768,12 +810,14 @@ class App(tk.Tk):
                     self.test_button.configure(state="normal")
                     self.deiconify()
                     self.lift()
-                    if payload:
-                        self.status_var.set(f"Input test error: {payload}")
-                        messagebox.showerror(APP_NAME, str(payload))
+                    error, details = payload  # type: ignore[misc]
+                    if error:
+                        self.status_var.set(f"Input test error: {error}")
+                        messagebox.showerror(APP_NAME, str(error))
                     else:
+                        backend = BACKEND_NAMES.get(self._input_backend_code(), "selected method")
                         self.status_var.set(
-                            "Input test sent A S D F. If nothing appeared, confirm the target was focused."
+                            f"Input test sent A S D F using {backend}. {details}"
                         )
                 elif kind == "finished":
                     self.start_button.configure(state="normal")
@@ -813,6 +857,7 @@ class App(tk.Tk):
         self.pedal_var.set(False)
         self.percussion_var.set(True)
         self.minimize_var.set(True)
+        self.input_backend_var.set(INPUT_BACKEND_LABELS_REVERSE["scan"])
         self._mode_changed()
 
     def _on_close(self) -> None:

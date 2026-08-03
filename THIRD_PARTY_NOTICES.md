@@ -9,3 +9,9 @@ The in-game keyboard mapping and general MIDI-player behavior were studied from 
 ## mido
 
 MIDI parsing is provided by the `mido` Python package. See the package distribution for its licence terms.
+
+## pynput
+
+- Project: pynput
+- License: GNU Lesser General Public License v3.0
+- Purpose: optional Windows keyboard input compatibility backend
