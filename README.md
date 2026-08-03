@@ -1,107 +1,172 @@
-# BPSR MIDI Lite v1.1.1
+<h1 align="center">🎹 BPSR MIDI Lite</h1>
 
-A small Windows MIDI instrument player for **Blue Protocol: Star Resonance**, created by **MrEz**.
+<p align="center">
+  A lightweight MIDI instrument player for <strong>Blue Protocol: Star Resonance</strong>.
+  <br>
+  Supports <strong>Keyboard, Guitar, and Bass</strong>.
+  <br>
+  Created by <strong>MrEz</strong>.
+</p>
 
-The app reads ordinary `.mid` / `.midi` files and sends the matching keyboard input to the selected in-game instrument. The standalone EXE already contains Python and its required libraries.
+<p align="center">
+  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe">
+    <img alt="Download Latest EXE" src="https://img.shields.io/badge/Download-Latest%20EXE-2ea44f?style=for-the-badge&logo=windows">
+  </a>
+</p>
+
+<p align="center">
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows">
+  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/Zudin987/BPSR-MIDI-Lite?display_name=tag">
+  </a>
+  <a href="./LICENSE">
+    <img alt="AGPL-3.0 licence" src="https://img.shields.io/badge/License-AGPL--3.0-blue">
+  </a>
+</p>
+
+> [!IMPORTANT]
+> Requires **Windows 10 or Windows 11, 64-bit**.  
+> Accept the Administrator prompt when opening the app. Administrator permission is required for reliable BPSR input.
+
+![BPSR MIDI Lite main interface](docs/screenshots/bpsr-midi-lite-v1.1.1.png)
 
 ## Download
 
-Open the latest GitHub Release and download:
+Download the standalone Windows application:
 
-`BPSR-MIDI-Lite.exe`
+### [⬇ Download BPSR-MIDI-Lite.exe](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe)
 
-No ZIP extraction, Python installation, or setup wizard is required.
+No ZIP extraction, Python installation, setup wizard, or other dependency is required.
 
-Requirements: **Windows 10 or Windows 11, 64-bit**.
+Windows may show a SmartScreen warning because the EXE is not code-signed. Make sure it was downloaded from this repository's official **Releases** page.
 
-## Supported instruments
+## What it does
 
-### Keyboard
+BPSR MIDI Lite reads ordinary `.mid` and `.midi` files and converts the notes into keyboard input for BPSR's in-game instruments.
 
-| Profile | Playable range | Behavior |
-|---|---:|---|
-| Tier 1 | C3–B4 | Default only |
-| Tier 2 | C3–B6 | Default + Shift |
-| Tier 3 | C2–B6 | Ctrl + Default + Shift; recommended |
-| Custom | Configurable | Experimental A0–C8 full range may use `<` / `>` |
+It is a single-purpose instrument tool. It does **not** automate combat, fishing, gathering, dungeons, or other gameplay.
 
-### Guitar
+## Highlights
 
-| Profile | Playable range | Behavior |
-|---|---:|---|
-| Tier 1 | C3–B4 | Default only |
-| Tier 2 | E2–B4 | Low Octave (Ctrl) + Default |
-| Tier 3 | E2–D6 | Low Octave + Default + High Octave |
-| Custom | Configurable | Experimental full range may use `<` / `>` |
-
-### Bass
-
-| Profile | Playable range | Behavior |
-|---|---:|---|
-| Tier 1 | E1–B2 | Bass Default layout |
-| Tier 2 | E1–B3 | Bass High Octave (Shift) layout |
-| Custom | E1–B2 or E1–B3 | Manual mapping, speed and chord settings |
-
-Bass has no Low Octave (Ctrl) mode. In Bass Tier 2, the app enables Shift at playback start and resets it afterward.
-
-All fixed profiles remain on the middle page and produce **zero `<` / `>` presses**.
-
-## Main features
-
-- Keyboard, Guitar and Bass profiles
-- MIDI folder library with Open Folder and Reload
-- `Find Songs Online` opens the Online Sequencer search page
-- Automatic song preview and **Good fit / Busy / Very complex** suitability rating
-- Clear reasons when a MIDI is dense, chord-heavy, heavily remapped, or track-heavy
-- Automatic octave folding / transposition for unavailable notes
-- Configurable chord simplification in Custom
-- Mandatory Administrator launch so BPSR reliably receives keyboard input
-- **Copy diagnostics** button for easy bug reports
-- Four Windows input backends
-- F10 emergency stop
+- **Keyboard, Guitar, and Bass** support
+- Simple unlock-based profiles for each instrument
+- Fixed profiles never press the `<` or `>` page keys
+- Automatic **Good fit / Busy / Very complex** song rating
+- Automatic note folding and remapping for unavailable notes
+- Custom profile for manual tuning and experimental full-range playback
+- **Test input** button for checking keyboard injection
+- **Copy diagnostics** button for easy troubleshooting
+- **Find Songs Online** shortcut
+- `F10` emergency stop
 - Automatic Windows light/dark theme
-- Standalone Windows EXE through PyInstaller
+- Standalone Windows EXE
 
-## Basic use
+## Quick start
 
-1. Run `BPSR-MIDI-Lite.exe` and accept the Windows Administrator prompt.
-2. Choose **Keyboard**, **Guitar**, or **Bass**.
-3. Choose the tier matching your in-game unlock.
-4. Click **Open Folder** and place MIDI files inside the `MIDI` folder.
-5. Click **Reload** and choose a song.
-6. Check the automatic suitability rating.
-7. Open the matching instrument in BPSR in its normal starting mode:
-   - Keyboard/Guitar: middle page + Default octave
-   - Bass: Default mode
-8. Press **Start**, focus the game during the countdown, and keep the game focused.
-9. Press **F10** to stop.
+1. Download and run `BPSR-MIDI-Lite.exe`.
+2. Accept the Windows Administrator prompt.
+3. Select **Keyboard**, **Guitar**, or **Bass**.
+4. Select the profile matching your in-game unlock.
+5. Click **Open Folder** and place your `.mid` or `.midi` files inside.
+6. Click **Reload** and select a song.
+7. Open the matching instrument in BPSR:
+   - **Keyboard/Guitar:** middle page + Default octave
+   - **Bass:** Default mode
+8. Click **Start**, then focus the game during the countdown.
+9. Press **F10** at any time to stop playback.
 
-Administrator access is required because BPSR did not reliably accept simulated input from a standard-permission process during real testing.
+## Instrument profiles
+
+| Instrument | Tier 1 | Tier 2 | Tier 3 | Custom |
+|---|---|---|---|---|
+| **Keyboard** | C3–B4 | C3–B6 | **C2–B6 — recommended** | Configurable; experimental A0–C8 |
+| **Guitar** | C3–B4 | E2–B4 | **E2–D6** | Configurable experimental range |
+| **Bass** | E1–B2 | **E1–B3** | — | Manual E1–B2 or E1–B3 |
+
+### Profile behavior
+
+- Fixed profiles stay on the middle page and never press `<` or `>`.
+- Keyboard Tier 3 uses Ctrl, Default, and Shift.
+- Guitar Tier 3 uses Low Octave, Default, and High Octave.
+- Bass has no Low Octave mode.
+- Bass Tier 2 enables Shift at playback start and resets it afterward.
+- Custom is intended for manual tuning or experimental page switching.
 
 ## Song suitability
 
-The rating is a practical estimate based on note speed, chord size, how many notes must be remapped or removed, MIDI track count, percussion content, and page-switch pressure.
+The app automatically checks the selected MIDI and displays one of these ratings:
 
 - **Good fit:** should translate cleanly.
-- **Busy:** may sound crowded but can still be worth trying.
-- **Very complex:** likely to sound messy; find a simpler piano, melody, acoustic, or solo-instrument version.
+- **Busy:** may sound crowded, but can still be worth trying.
+- **Very complex:** likely to sound messy in-game.
 
-The rating is guidance, not a guarantee. Listening in-game is still the final test.
+The rating considers note speed, chord size, remapped or removed notes, track count, percussion, and page-switch pressure.
 
-## Find songs online
+For the best result, look for:
 
-The button opens:
+- Piano versions
+- Melody-only arrangements
+- Acoustic or solo-instrument versions
+- Easy or simplified MIDIs
 
-`https://onlinesequencer.net/sequences`
+Avoid very dense orchestral, full-band, drum-heavy, medley, impossible-piano, or Black MIDI arrangements. The game's instrument has fewer usable notes than a full MIDI arrangement, so complicated songs may sound crowded or strange.
 
-Download there manually, move the MIDI into the app's `MIDI` folder, then press Reload. The app does not scrape or download from the website.
+## Finding songs
 
-## Troubleshooting and diagnostics
+Click **Find Songs Online** to open the Online Sequencer sequence browser.
 
-Use **Test input (3s)** with Notepad first. When reporting a problem, click **Copy diagnostics** and paste the report together with a short explanation of what happened. The report includes the app version, Windows version, instrument/profile, input method, MIDI analysis, last input-test result, and last error. It does not include the full MIDI folder path.
+Download a MIDI manually, place it inside the app's `MIDI` folder, then click **Reload**.
 
-## Credits and licence
+The app only opens the website in your browser. It does not scrape the website or download files automatically.
 
-Created by **MrEz**. Independent MIDI-only implementation inspired by `Sanheiii/ok-star-resonance`.
+## Troubleshooting
 
-Licensed under **AGPL-3.0**.
+### Nothing happens in BPSR
+
+1. Confirm that you accepted the Administrator prompt.
+2. Open Notepad and click **Test input (3s)**.
+3. Make sure the game instrument window is open.
+4. Confirm the correct instrument and unlock profile are selected.
+5. Try another input method inside the app.
+
+### The song sounds strange
+
+- Check the suitability rating.
+- Try a simpler piano or melody version.
+- Try a lower fixed profile.
+- In Custom, reduce the chord limit.
+- Avoid full-band or orchestral arrangements.
+
+### Reporting a problem
+
+Click **Copy diagnostics**, then paste the report when opening a GitHub issue.
+
+The report includes useful technical information such as:
+
+- App and Windows version
+- Instrument and profile
+- Input method
+- MIDI statistics
+- Suitability result
+- Last input-test result
+- Last error
+
+It does not include your full MIDI folder path.
+
+## Notes
+
+- Keep BPSR focused during playback.
+- Press `F10` for an emergency stop.
+- The suitability rating is guidance, not a guarantee; listening in-game is the final test.
+- Guitar and Bass mappings are based on their in-game note layouts.
+- Only use MIDI files you have permission to download and use.
+
+## Credits
+
+Created by **MrEz**.
+
+Independent MIDI-only implementation inspired by `Sanheiii/ok-star-resonance`.
+
+## Licence
+
+Licensed under the **GNU Affero General Public License v3.0**. See [LICENSE](LICENSE).
