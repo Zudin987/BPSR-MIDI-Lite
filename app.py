@@ -22,6 +22,7 @@ from profiles import (
     allowed_modes_for_unlock,
     get_fixed_profile,
 )
+from theme import apply_theme, system_prefers_dark_mode
 from win_input import (
     BACKEND_NAMES,
     WindowsKeySender,
@@ -32,7 +33,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -45,8 +46,8 @@ MODE_LABELS_REVERSE = {value: key for key, value in MODE_LABELS.items()}
 UNLOCK_LABELS = {
     "Tier 1 — C3–B4": "tier1",
     "Tier 2 — C3–B6": "tier2",
-    "Tier 3 — A0–B6": "tier3",
-    "Tier 4 — A0–C8": "tier4",
+    "Tier 3 — C2–B6 (no < / >)": "tier3",
+    "Full range — A0–C8 (may use < / >)": "tier4",
 }
 UNLOCK_LABELS_REVERSE = {value: key for key, value in UNLOCK_LABELS.items()}
 MAPPING_LABELS = {
@@ -143,6 +144,8 @@ def _duration_text(seconds: float) -> str:
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
+        self._style = ttk.Style(self)
+        self._dark_mode: bool | None = None
         self.title(f"{APP_NAME} v{APP_VERSION}")
         self.geometry("880x760")
         self.minsize(820, 690)
@@ -204,14 +207,20 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._drain_ui_queue)
         self.after(60, self._poll_f10)
+        self.after(1500, self._poll_system_theme)
+
+    def _apply_system_theme(self, force: bool = False) -> None:
+        dark = system_prefers_dark_mode()
+        if force or dark != self._dark_mode:
+            self._dark_mode = dark
+            apply_theme(self, self._style, dark)
+
+    def _poll_system_theme(self) -> None:
+        self._apply_system_theme()
+        self.after(1500, self._poll_system_theme)
 
     def _build_ui(self) -> None:
-        style = ttk.Style(self)
-        if "vista" in style.theme_names():
-            style.theme_use("vista")
-        style.configure("Title.TLabel", font=("Segoe UI", 19, "bold"))
-        style.configure("Author.TLabel", font=("Segoe UI", 10, "bold"), foreground="#4f5d75")
-        style.configure("Hint.TLabel", foreground="#5d6470")
+        self._apply_system_theme(force=True)
 
         outer = ttk.Frame(self, padding=16)
         outer.pack(fill="both", expand=True)
@@ -365,9 +374,9 @@ class App(tk.Tk):
         ttk.Label(
             outer,
             text=(
-                "F10 is an emergency stop. Fixed Tier profiles lock the music settings so new users "
-                "cannot accidentally select incompatible options. Choose Custom only for manual tuning. "
-                f"Input ABI: {input_abi_diagnostics()}."
+                "F10 is an emergency stop. Tier 1–3 lock safe settings and never press < or >. "
+                "Choose Custom only for manual tuning or full-range page switching. "
+                f"The app follows the Windows light/dark theme automatically. Input ABI: {input_abi_diagnostics()}."
             ),
             wraplength=800,
             style="Hint.TLabel",
@@ -577,8 +586,8 @@ class App(tk.Tk):
 
         if profile_code == "custom":
             self.profile_summary_var.set(
-                "Advanced profile. All playback settings are editable. Full range solo is hidden "
-                "for Tier 1 and Tier 2 because those tiers have no side-page range to unlock."
+                "Advanced profile. All playback settings are editable. Choose Full range A0–C8 "
+                "only when you want to experiment with < / > page switching."
             )
             self.custom_settings_frame.pack_forget()
             self.custom_settings_frame.pack(
@@ -595,15 +604,15 @@ class App(tk.Tk):
         mode = self._mode_code()
         tier = self._unlock_code()
         profile = get_unlock_profile(tier)  # type: ignore[arg-type]
-        if mode == "full" and tier in {"tier3", "tier4"}:
+        if mode == "full" and tier == "tier4":
             self.notice_var.set(
                 f"{profile.label}: open the piano on the MIDDLE page + Default octave. "
-                "The app may use < / > when the song genuinely needs unlocked low/high notes."
+                "Custom Full range may use < / > when low or high notes require another page."
             )
         else:
             self.notice_var.set(
                 f"{profile.label}: open the piano on the MIDDLE page + Default octave. "
-                "This profile avoids unnecessary page switching."
+                "This range never needs < or > page switching."
             )
 
         if schedule:
@@ -615,7 +624,7 @@ class App(tk.Tk):
         self.mode_combo.configure(values=labels)
         if self._mode_code() not in allowed:
             self.mode_var.set(MODE_LABELS_REVERSE["stable"])
-        use_pages = self._mode_code() in {"full", "ensemble"} and self._unlock_code() in {"tier3", "tier4"}
+        use_pages = self._mode_code() in {"full", "ensemble"} and self._unlock_code() == "tier4"
         self.page_delay_spin.configure(state="normal" if use_pages else "disabled")
 
     def _custom_variable_changed(self, *_args: object) -> None:
@@ -691,7 +700,16 @@ class App(tk.Tk):
             self._custom_settings = {**CUSTOM_DEFAULTS, **legacy_settings}
 
         saved_profile = str(data.get("profile", ""))
-        if saved_profile not in {"tier1", "tier2", "tier3", "tier4", "custom"}:
+        # v0.5.0 exposed Tier 4 as a fixed profile. Keep those users on the
+        # equivalent editable Custom full-range setup after the profile cleanup.
+        if saved_profile == "tier4":
+            saved_profile = "custom"
+            self._custom_settings = {
+                **self._custom_settings,
+                "mode": "full",
+                "unlock_tier": "tier4",
+            }
+        if saved_profile not in {"tier1", "tier2", "tier3", "custom"}:
             # Preserve a user's old manually tuned v0.4.x settings. Brand-new
             # installs start on the simple Tier 3 preset.
             saved_profile = "custom" if config_existed else "tier3"
@@ -735,7 +753,7 @@ class App(tk.Tk):
         except OSError:
             pass
 
-    def _options(self) -> PlanOptions:
+    def _plan_options(self) -> PlanOptions:
         return PlanOptions(
             mode=self._mode_code(),  # type: ignore[arg-type]
             speed_percent=int(self.speed_var.get()),
@@ -814,7 +832,7 @@ class App(tk.Tk):
             self.current_plan = None
             return
         try:
-            plan = build_plan(path, self._options())
+            plan = build_plan(path, self._plan_options())
         except Exception as exc:  # noqa: BLE001
             self.current_plan = None
             self.analysis_var.set(f"Could not preview this MIDI:\n{exc}")
@@ -1057,7 +1075,7 @@ def main() -> int:
         "--unlock-tier",
         choices=("tier1", "tier2", "tier3", "tier4"),
         default="tier3",
-        help="tier1=C3-B4, tier2=C3-B6, tier3=A0-B6, tier4=A0-C8",
+        help="tier1=C3-B4, tier2=C3-B6, tier3=C2-B6, tier4=Custom full A0-C8",
     )
     parser.add_argument(
         "--mapping",

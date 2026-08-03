@@ -267,9 +267,9 @@ def test_unlock_tier2_uses_default_and_shift_only(tmp_path: Path) -> None:
     )
 
 
-def test_unlock_tier3_never_uses_right_page(tmp_path: Path) -> None:
+def test_unlock_tier3_c2_b6_never_uses_page_keys(tmp_path: Path) -> None:
     midi_path = tmp_path / "tier3.mid"
-    make_test_midi(midi_path, [21, 35, 36, 60, 95], gap_ticks=480)
+    make_test_midi(midi_path, [21, 35, 36, 60, 95, 108], gap_ticks=480)
     plan = build_plan(
         midi_path,
         PlanOptions(
@@ -280,14 +280,15 @@ def test_unlock_tier3_never_uses_right_page(tmp_path: Path) -> None:
         ),
     )
 
-    assert plan.effective_min_pitch == 21
+    assert plan.effective_min_pitch == 36
     assert plan.effective_max_pitch == 95
-    assert plan.planned_min_pitch == 21
-    assert plan.planned_max_pitch == 95
+    assert 36 <= plan.planned_min_pitch <= plan.planned_max_pitch <= 95
+    assert plan.page_switches == 0
+    assert all(event.kind != "page" for event in plan.events)
     assert all(
-        event.page in {0, 1}
+        event.state in {-1, 0, 1}
         for event in plan.events
-        if event.kind == "page"
+        if event.kind == "state"
     )
 
 

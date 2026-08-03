@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v0.5.0 — First-time GitHub and EXE guide
+# BPSR MIDI Lite v0.5.1 — First-time GitHub and EXE guide
 
 Created by **MrEz**.
 
@@ -14,15 +14,15 @@ GitHub builds the Windows EXE. People downloading your final EXE do not need Pyt
 
 ## Upload the project
 
-1. Extract `BPSR-MIDI-Lite-source-v0.5.0.zip`.
+1. Extract `BPSR-MIDI-Lite-source-v0.5.1.zip`.
 2. Create a new public GitHub repository named `BPSR-MIDI-Lite`.
 3. Do not create an extra README or `.gitignore` during repository creation.
-4. Open the extracted `BPSR-MIDI-Lite-v0.5.0` folder.
+4. Open the extracted `BPSR-MIDI-Lite-v0.5.1` folder.
 5. Upload the contents so `app.py`, `profiles.py`, `midi_engine.py`, and `player.py` appear directly on the repository's main page.
 6. Commit with:
 
 ```text
-Upload BPSR MIDI Lite v0.5.0
+Upload BPSR MIDI Lite v0.5.1
 ```
 
 ### Hidden `.github` and `.gitignore`
@@ -60,7 +60,7 @@ For `.gitignore`, choose **Add file → Create new file**, enter `.gitignore`, a
 Run the workflow again and enter:
 
 ```text
-v0.5.0
+v0.5.1
 ```
 
 The workflow creates a GitHub Release containing:
@@ -73,7 +73,7 @@ Use a new version for later updates, such as `v0.5.1` or `v0.6.0`.
 
 ## Update an existing repository
 
-Upload and replace the visible files from the v0.5.0 update ZIP, including:
+Upload and replace the visible files from the v0.5.1 update ZIP, including:
 
 ```text
 app.py

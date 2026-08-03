@@ -1,12 +1,16 @@
-BPSR MIDI Lite v0.5.0 validation
+BPSR MIDI Lite v0.5.1 validation
 
-- 25 automated tests passed.
-- Tkinter UI smoke-tested under a virtual display.
+- 26 automated tests passed.
+- Tkinter UI smoke test passed under a virtual display.
+- Light and dark palettes both applied successfully in the UI smoke test.
+- All 48 reference MIDI files planned successfully for Tier 1, Tier 2, and Tier 3.
+- Total predicted page-key presses across those 144 plans: 0.
 - Fixed profiles verified:
-  - Tier 1: stable / C3-B4 / no Full range option
-  - Tier 2: stable / C3-B6 / no Full range option
-  - Tier 3: full / A0-B6
-  - Tier 4: full / A0-C8
-- Custom Tier 1 and Tier 2 automatically reject Full range solo.
-- MIDI library reload and automatic preview were smoke-tested with a real MIDI.
-- Windows EXE input must still be tested on Windows after rebuilding.
+  - Tier 1: stable / C3-B4 / zero page presses
+  - Tier 2: stable / C3-B6 / zero page presses
+  - Tier 3: stable / C2-B6 / zero page presses
+- Custom Tier 1, Tier 2, and Tier 3 reject Full range solo.
+- Custom Full range A0-C8 retains optional < / > support.
+- Windows light/dark theme detection is applied at startup and polled while running.
+- MIDI library reload and automatic preview remain enabled.
+- Windows EXE input and live Windows theme switching should be smoke-tested after rebuilding.

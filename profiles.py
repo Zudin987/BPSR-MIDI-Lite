@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-ProfileCode = Literal["tier1", "tier2", "tier3", "tier4", "custom"]
+ProfileCode = Literal["tier1", "tier2", "tier3", "custom"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,8 +45,8 @@ FIXED_PROFILES: dict[str, PlaybackProfile] = {
         code="tier1",
         label="Tier 1 — C3–B4 (Beginner)",
         summary=(
-            "Beginner preset. Uses only C3–B4, never uses Ctrl, Shift, < or >, "
-            "auto-transposes the song, and keeps bass + melody for cleaner playback."
+            "For newly unlocked instruments. Uses only C3–B4, never uses Ctrl, Shift, < or >, "
+            "auto-transposes the song, and keeps bass + melody for clean playback."
         ),
         mode="stable",
         unlock_tier="tier1",
@@ -60,8 +60,8 @@ FIXED_PROFILES: dict[str, PlaybackProfile] = {
         code="tier2",
         label="Tier 2 — C3–B6",
         summary=(
-            "Balanced preset. Uses C3–B6 with Default + Shift, never uses < or >, "
-            "and keeps bass plus the top two notes of dense chords."
+            "Uses C3–B6 with Default + Shift. It never presses < or > and keeps bass, melody, "
+            "and one harmony note in dense chords."
         ),
         mode="stable",
         unlock_tier="tier2",
@@ -70,25 +70,13 @@ FIXED_PROFILES: dict[str, PlaybackProfile] = {
     ),
     "tier3": PlaybackProfile(
         code="tier3",
-        label="Tier 3 — A0–B6",
+        label="Tier 3 — C2–B6 (Recommended)",
         summary=(
-            "Late-game preset. Preserves A0–B6, allows smart left/middle-page switching, "
-            "and keeps all notes. Timing compensation prevents catch-up rushing."
+            "Uses the full safe middle-page range C2–B6 with Ctrl / Default / Shift. "
+            "It guarantees no < or > page presses and keeps all chord notes."
         ),
-        mode="full",
+        mode="stable",
         unlock_tier="tier3",
-        mapping="octave",
-        chord_limit=0,
-    ),
-    "tier4": PlaybackProfile(
-        code="tier4",
-        label="Tier 4 — A0–C8 (Full unlock)",
-        summary=(
-            "Full-unlock preset. Uses the complete A0–C8 range with smart page switching, "
-            "timing compensation, and all chord notes."
-        ),
-        mode="full",
-        unlock_tier="tier4",
         mapping="octave",
         chord_limit=0,
     ),
@@ -97,7 +85,7 @@ FIXED_PROFILES: dict[str, PlaybackProfile] = {
 PROFILE_LABELS: dict[str, str] = {
     profile.label: code for code, profile in FIXED_PROFILES.items()
 }
-PROFILE_LABELS["Custom — advanced settings"] = "custom"
+PROFILE_LABELS["Custom — advanced / full range"] = "custom"
 PROFILE_LABELS_REVERSE = {code: label for label, code in PROFILE_LABELS.items()}
 
 
@@ -109,11 +97,12 @@ def get_fixed_profile(code: str) -> PlaybackProfile:
 
 
 def allowed_modes_for_unlock(unlock_tier: str) -> tuple[str, ...]:
-    """Return modes that make sense for a custom unlock tier.
+    """Return meaningful modes for a Custom unlock range.
 
-    Tier 1 and Tier 2 do not expose side keyboard pages, so Full range solo is
-    intentionally hidden to avoid presenting a mode that cannot add range.
+    Tier 1, Tier 2 and Tier 3 are all fixed to the middle keyboard page. Full
+    range solo is only useful for the Custom A0–C8 range, where < / > page
+    switching is available.
     """
-    if unlock_tier in {"tier1", "tier2"}:
+    if unlock_tier in {"tier1", "tier2", "tier3"}:
         return ("stable", "ensemble")
     return ("stable", "full", "ensemble")

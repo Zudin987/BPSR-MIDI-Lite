@@ -68,20 +68,17 @@ UNLOCK_PROFILES: dict[UnlockTier, UnlockProfile] = {
     ),
     "tier3": UnlockProfile(
         code="tier3",
-        label="Tier 3 — A0–B6",
-        low=21,
+        label="Tier 3 — C2–B6 (Recommended)",
+        low=36,
         high=95,
-        # The right page is unnecessary before C7 is unlocked. Excluding it
-        # prevents pointless > presses while still covering every Tier 3 note.
-        full_states=(
-            KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1),
-            KeyboardState(0, 0), KeyboardState(0, -1), KeyboardState(0, 1),
-        ),
-        stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
+        # C2-B6 is fully covered by the middle page using Ctrl / Default / Shift.
+        # Keeping every allowed state on page 1 guarantees zero < / > presses.
+        full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+        stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
     ),
     "tier4": UnlockProfile(
         code="tier4",
-        label="Tier 4 — A0–C8 (Full unlock)",
+        label="Full range — A0–C8 (Custom only)",
         low=21,
         high=108,
         full_states=tuple(

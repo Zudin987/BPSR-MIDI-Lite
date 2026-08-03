@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v0.5.0
+# BPSR MIDI Lite v0.5.1
 
 **Created by MrEz.**
 
@@ -6,30 +6,30 @@ A small Windows MIDI keyboard player made only for **Blue Protocol: Star Resonan
 
 The finished EXE is portable. Ordinary users do **not** need Python, pip, Git, or an installer.
 
-## New in v0.5.0: simple profiles
-
-The app now opens in a beginner-friendly profile system:
+## Simple profiles
 
 | Profile | In-game unlock | Fixed behavior |
 |---|---|---|
-| Tier 1 | C3–B4 | Stable, no modifiers/pages, auto-transpose, bass + melody |
-| Tier 2 | C3–B6 | Stable, Default + Shift, no page keys, balanced chords |
-| Tier 3 | A0–B6 | Full-range solo, smart left/middle-page switching, all notes |
-| Tier 4 | A0–C8 | Full-range solo, all pages, all notes |
-| Custom | User-selected | Unlocks every advanced setting |
+| Tier 1 | C3–B4 | Beginner preset, no modifiers or page keys, auto-transpose, bass + melody |
+| Tier 2 | C3–B6 | Default + Shift, no page keys, balanced chords |
+| Tier 3 | C2–B6 | Ctrl + Default + Shift, all notes, guaranteed no `<` / `>` presses |
+| Custom | User-selected | Unlocks every advanced setting, including experimental A0–C8 page switching |
 
-Tier profiles lock their playback settings. A Tier 1 user therefore cannot accidentally select Full range solo or another incompatible setup.
+Tier 1–3 lock their music settings so new users cannot accidentally choose an incompatible mode.
 
-In **Custom**, Full range solo is automatically hidden for Tier 1 and Tier 2 because those tiers do not have side-page range to unlock.
+**Tier 3 C2–B6 is the recommended normal profile.** The entire range is available on the middle keyboard page using Ctrl / Default / Shift, so the app never needs `<` or `>`.
 
-## Cleaner interface
+Use **Custom → Full range A0–C8** only when you deliberately want to test low/high page switching.
 
-- MIDI preview updates automatically when the song, profile, or Custom setting changes.
-- The redundant **Analyze** button was removed.
-- The MIDI library uses one fixed `MIDI` folder beside the EXE.
-- Only **Open Folder** and **Reload** are shown.
-- Advanced music controls are hidden unless the user selects **Custom**.
-- The preview uses plain language and warns when page switching is unusually frequent.
+## Windows light and dark theme
+
+The interface follows the Windows app-theme setting automatically:
+
+- Windows light mode → light app
+- Windows dark mode → dark app
+- Changing the Windows theme while the app is open is detected automatically
+
+There is no separate theme setting to maintain.
 
 ## MIDI library
 
@@ -39,7 +39,7 @@ In **Custom**, Full range solo is automatically hidden for Tier 1 and Tier 2 bec
 4. Return to the app and click **Reload**.
 5. Select a song from the dropdown.
 
-Subfolders are supported and the last selected song is remembered.
+Subfolders are supported and the last selected song is remembered. The song preview updates automatically.
 
 ## Before playback
 
@@ -68,12 +68,14 @@ Available input methods:
 Custom is intended for users who understand the trade-offs:
 
 - **Playback style:** Stable, Full range solo, or Ensemble-safe.
-- **Unlocked range:** Tier 1 through Tier 4.
+- **Unlocked range:** Tier 1, Tier 2, Tier 3 C2–B6, or Full range A0–C8.
 - **Fit unavailable notes:** octave fold, nearest note, auto-transpose, or skip.
 - **Chord detail:** all notes through melody-only simplification.
 - **Speed / note length / minimum note:** musical timing controls.
 - **Page delay / Ctrl-Shift lead:** input timing calibration.
 - Optional sustain-pedal playback and percussion filtering.
+
+Full range solo is only available with Custom A0–C8. Tier 1–3 remain page-free even inside Custom.
 
 ## Build locally on Windows
 
@@ -102,7 +104,7 @@ Detailed instructions:
 ## Limitations
 
 - A chord wider than one keyboard state cannot always be reproduced literally at one instant.
-- Full-range page changes take real time in the game. Dense page-to-page passages may require timing compensation or remapping.
+- Custom A0–C8 page changes take real time in the game. Dense page-to-page passages may require timing compensation or remapping.
 - Very dense orchestral MIDIs may sound better with a simplified chord setting in Custom.
 - The project is unsigned, so Windows SmartScreen may initially show an unknown-publisher warning.
 - Use keyboard automation responsibly and follow the game's rules.
