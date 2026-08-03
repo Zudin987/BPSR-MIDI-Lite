@@ -1,4 +1,4 @@
-BPSR MIDI Lite v0.6.0 validation
+BPSR MIDI Lite v1.0.0 validation
 
 - 36 automated tests passed.
 - Tkinter UI smoke test passed for switching Keyboard → Guitar → Bass.
@@ -14,3 +14,6 @@ BPSR MIDI Lite v0.6.0 validation
   - Tier 2 E1-B3 High Octave Shift layout
 - Bass chord filtering verified that the lowest note is retained.
 - Windows keyboard injection cannot be exercised inside BPSR from the Linux build environment; the existing v0.4.3 input implementation is unchanged.
+
+Release note UI/docs check: PASS
+Version metadata 1.0.0 check: PASS

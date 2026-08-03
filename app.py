@@ -36,7 +36,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.6.0"
+APP_VERSION = "1.0.0"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -342,6 +342,16 @@ class App(tk.Tk):
             textvariable=self.midi_folder_var,
             style="Hint.TLabel",
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(7, 0))
+        ttk.Label(
+            file_frame,
+            text=(
+                "Tip: choose simple piano, melody, or solo-instrument MIDI files. "
+                "Dense orchestral and full-band arrangements may sound crowded or strange in-game."
+            ),
+            style="Warning.TLabel",
+            wraplength=790,
+            justify="left",
+        ).grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
 
         self.custom_settings_frame = ttk.LabelFrame(
             outer,

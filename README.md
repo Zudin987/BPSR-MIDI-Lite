@@ -1,4 +1,4 @@
-# BPSR MIDI Lite
+# BPSR MIDI Lite v1.0.0
 
 A small Windows MIDI keyboard player for **Blue Protocol: Star Resonance**, created by **MrEz**.
 
@@ -71,6 +71,18 @@ The button only opens:
 `https://onlinesequencer.net/sequences`
 
 Search and download there manually, move the MIDI into the app's `MIDI` folder, then press Reload. The app does not scrape or download from the website.
+
+### Choose suitable MIDI files
+
+Prefer **simple piano, melody, acoustic, or solo-instrument arrangements**. Very dense orchestral, full-band, drum-heavy, or multi-instrument MIDI files may sound crowded or strange after being fitted to the game's limited keys and chord handling. Simpler arrangements usually give the best result.
+
+## Public Windows download
+
+The recommended download for normal users is the portable release ZIP:
+
+`BPSR-MIDI-Lite-Windows-x64.zip`
+
+Extract it, run `BPSR-MIDI-Lite.exe`, accept the Administrator prompt, and follow `END_USER_GUIDE.md`. Python is already bundled and is not required on the user's PC.
 
 ## Build the EXE
 

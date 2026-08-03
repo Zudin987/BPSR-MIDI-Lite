@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v0.6.0 — User Guide
+# BPSR MIDI Lite v1.0.0 — User Guide
 
 ## First setup
 
@@ -46,6 +46,8 @@ Before Start, open Bass in Default mode. Tier 2 automatically presses Shift for 
 ## Find Songs Online
 
 The button opens Online Sequencer in your browser. Download a MIDI manually, copy it into the app MIDI folder, then click Reload.
+
+Choose simple piano, melody, acoustic, or solo-instrument MIDI arrangements where possible. Dense orchestral, full-band, percussion-heavy, or multi-instrument files can sound crowded or strange because the game has fewer playable keys and simultaneous-note limits.
 
 ## Custom profile
 

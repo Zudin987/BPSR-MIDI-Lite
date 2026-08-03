@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.0.0
+
+- First public-ready release of BPSR MIDI Lite.
+- Supports Keyboard, Guitar, and Bass with instrument-specific unlock profiles.
+- All fixed profiles avoid `<` / `>` page switching.
+- Added a visible reminder to prefer simple piano, melody, or solo-instrument MIDI files.
+- Clarified that dense orchestral, full-band, percussion-heavy, and multi-instrument arrangements may sound crowded or strange in-game.
+- Keeps MIDI library, automatic preview, input testing, F10 emergency stop, standalone EXE packaging, and automatic Windows light/dark theme.
+
 ## v0.6.0
 
 - Added an Instrument selector before Profile.
