@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v0.4.1. Leave blank to build only."
+        description: "Optional version to publish, for example v0.4.2. Leave blank to build only."
         required: false
         type: string
 
