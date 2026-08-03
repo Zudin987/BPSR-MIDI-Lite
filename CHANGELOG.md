@@ -1,19 +1,23 @@
 # Changelog
 
+## v0.5.0
+
+- Added five UI profiles: Tier 1, Tier 2, Tier 3, Tier 4, and Custom.
+- Fixed Tier profiles lock all musical playback settings.
+- Tier 1 and Tier 2 no longer expose Full range solo.
+- Added sensible automatic mapping and chord presets for every unlock tier.
+- Hid advanced settings unless Custom is selected.
+- Removed the redundant Analyze button; previews update automatically.
+- Removed Choose Folder; the app now uses its fixed portable MIDI library.
+- Kept only Open Folder and Reload for library management.
+- Reworked the song preview into clearer, beginner-friendly language.
+- Added visible `by MrEz` authorship and updated Windows metadata.
+- Added profile regression tests.
+
 ## v0.4.3
 
-- Fixed the Win32 `INPUT` structure used by `SendInput`.
-  - v0.4.2 defined the union with only `KEYBDINPUT`, producing a 32-byte
-    structure on 64-bit Windows.
-  - Windows requires the complete 40-byte `INPUT` structure, whose union also
-    contains `MOUSEINPUT` and `HARDWAREINPUT`.
-- Added selectable input methods:
-  - Win32 scan code
-  - Pynput compatibility
-  - Win32 virtual key
-  - Legacy `keybd_event`
-- The Notepad input test now reports the selected method and ABI size.
-- Added regression tests for the Win32 structure layout.
+- Fixed the 64-bit Win32 `INPUT` structure used by `SendInput`.
+- Added selectable Win32/Pynput input methods and ABI regression tests.
 
 ## v0.4.2
 

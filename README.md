@@ -1,181 +1,116 @@
-# BPSR MIDI Lite v0.4.2
+# BPSR MIDI Lite v0.5.0
+
+**Created by MrEz.**
 
 A small Windows MIDI keyboard player made only for **Blue Protocol: Star Resonance** piano playback.
 
+The finished EXE is portable. Ordinary users do **not** need Python, pip, Git, or an installer.
 
-## Important: Administrator access
+## New in v0.5.0: simple profiles
 
-The Windows EXE requests Administrator access at launch. This is intentional: BPSR or its launcher may run elevated, and Windows prevents a lower-privilege process from injecting keyboard input into an elevated game.
+The app now opens in a beginner-friendly profile system:
 
-Before testing a MIDI, use **Test input (3s)**. Focus Notepad or the in-game piano during the countdown. The app sends `A S D F`. If the test works in Notepad but not in BPSR, ensure the game piano is open and the game window is focused.
+| Profile | In-game unlock | Fixed behavior |
+|---|---|---|
+| Tier 1 | C3–B4 | Stable, no modifiers/pages, auto-transpose, bass + melody |
+| Tier 2 | C3–B6 | Stable, Default + Shift, no page keys, balanced chords |
+| Tier 3 | A0–B6 | Full-range solo, smart left/middle-page switching, all notes |
+| Tier 4 | A0–C8 | Full-range solo, all pages, all notes |
+| Custom | User-selected | Unlocks every advanced setting |
 
+Tier profiles lock their playback settings. A Tier 1 user therefore cannot accidentally select Full range solo or another incompatible setup.
 
-## New in v0.4.2: saved MIDI library
+In **Custom**, Full range solo is automatically hidden for Tier 1 and Tier 2 because those tiers do not have side-page range to unlock.
 
-- The app creates a `MIDI` folder beside the EXE on first launch.
-- Put any `.mid` or `.midi` file in that folder, including inside subfolders.
-- Click **Reload** and choose the song from the dropdown.
-- **Open Folder** opens the active library directly in File Explorer.
-- **Choose Folder…** lets you use another folder, and the choice is remembered.
-- The last selected song and all playback settings are also remembered.
+## Cleaner interface
 
-It reads ordinary `.mid` and `.midi` files directly and sends the matching keyboard input to the game. End users do **not** need Python after you build the EXE.
+- MIDI preview updates automatically when the song, profile, or Custom setting changes.
+- The redundant **Analyze** button was removed.
+- The MIDI library uses one fixed `MIDI` folder beside the EXE.
+- Only **Open Folder** and **Reload** are shown.
+- Advanced music controls are hidden unless the user selects **Custom**.
+- The preview uses plain language and warns when page switching is unusually frequent.
 
-## Unlock-tier presets
+## MIDI library
 
-Choose the exact progress of the player using the app:
+1. Run `BPSR-MIDI-Lite.exe`.
+2. Click **Open Folder**.
+3. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
+4. Return to the app and click **Reload**.
+5. Select a song from the dropdown.
 
-| Preset | Unlocked notes | Player behavior |
-|---|---:|---|
-| Tier 1 — Beginner | C3–B4 | Default keyboard state only; no Ctrl, Shift, `<`, or `>` |
-| Tier 2 | C3–B6 | Default + Shift; no `<` or `>` |
-| Tier 3 | A0–B6 | Uses the left and middle pages when the selected mode allows pages; never uses the unnecessary right page |
-| Tier 4 — Full unlock | A0–C8 | All available pages and octave states |
-
-Any loaded MIDI is automatically fitted to the selected tier using the chosen mapping method. You no longer need to manually convert each song first.
-
-## Playback modes
-
-### Stable
-
-- Never presses `<` or `>`.
-- Best default for smooth playback.
-- Uses the safe middle-page subset available at the selected tier:
-  - Tier 1: C3–B4
-  - Tier 2: C3–B6
-  - Tier 3/4: C2–B6
-- Out-of-range notes are folded, clamped, transposed, or skipped according to the selected mapping method.
-
-### Full range solo
-
-- Preserves more of the original MIDI inside the selected unlock tier.
-- Tier 1 and Tier 2 still use no page keys.
-- Tier 3 can use only the left and middle pages.
-- Tier 4 can use all pages.
-- Page changes are scheduled during gaps where possible.
-- When a page animation cannot fit, the solo timeline is extended instead of rushing overdue notes.
-
-### Ensemble-safe
-
-- Keeps the source timeline.
-- Changes page only when an existing gap is long enough.
-- Unsafe notes are remapped or skipped instead of delaying the whole performance.
-
-## Mapping methods
-
-- **Octave fold:** recommended; preserves note names.
-- **Nearest playable note:** clamps outliers to the nearest available note.
-- **Auto-transpose then fold:** searches for a song-wide transpose before local folding.
-- **Skip out-of-range notes:** preserves timing by dropping impossible notes.
-
-## Other features
-
-- Default 85% playback speed.
-- Default 150% note duration.
-- Repeated-note retrigger protection.
-- Chord simplification for dense or orchestral MIDI files.
-- Optional sustain-pedal playback.
-- Percussion-channel filtering.
-- F10 emergency stop.
-- MIDI analysis before playback.
-- Automatic return to middle page + Default state after playback.
-- No screen recognition, account login, network connection, or game-file modification.
+Subfolders are supported and the last selected song is remembered.
 
 ## Before playback
 
 1. Open the in-game piano.
 2. Select the **middle keyboard page**.
 3. Set the octave state to **Default**.
-4. Open BPSR MIDI Lite.
-5. Click **Open Folder**, copy your MIDI files into the library, and click **Reload**.
-6. Select the unlock tier matching your character.
-7. Choose a song from the dropdown and press **Analyze**.
-8. Press **Start**, then switch to the game during the countdown.
+4. Select the profile matching the character's unlocked notes.
+5. Press **Start** and focus the game during the countdown.
+6. Press **F10** at any time for an emergency stop.
 
-## Recommended first settings
+## Input test
 
-```text
-Unlock tier: match your character
-Mode: Stable
-Mapping: Octave fold
-Chord limit: All notes
-Speed: 85%
-Note length: 150%
-Minimum note: 120 ms
-Ignore percussion: On
-```
+The EXE requests Administrator access because Windows can block input sent to an elevated game.
 
-Use **Full range solo** only when preserving low/high unlocked notes matters more than exact total song duration.
+Use **Test input (3s)** first. Focus Notepad or the game piano during the countdown. It should send `A S D F`.
 
-## Downloads and installation
+Available input methods:
 
-After a Windows EXE is built, ordinary users only need:
+- Win32 scan code — recommended
+- Pynput compatibility
+- Win32 virtual key
+- Legacy `keybd_event`
 
-```text
-BPSR-MIDI-Lite.exe
-```
+## Custom settings
 
-They do not need Python, pip, Git, or an installer. They can also download the portable ZIP, extract it, and run the EXE inside.
+Custom is intended for users who understand the trade-offs:
 
-See:
-
-- [END_USER_GUIDE.md](END_USER_GUIDE.md)
-- [FIRST_TIME_GITHUB_GUIDE.md](FIRST_TIME_GITHUB_GUIDE.md)
+- **Playback style:** Stable, Full range solo, or Ensemble-safe.
+- **Unlocked range:** Tier 1 through Tier 4.
+- **Fit unavailable notes:** octave fold, nearest note, auto-transpose, or skip.
+- **Chord detail:** all notes through melody-only simplification.
+- **Speed / note length / minimum note:** musical timing controls.
+- **Page delay / Ctrl-Shift lead:** input timing calibration.
+- Optional sustain-pedal playback and percussion filtering.
 
 ## Build locally on Windows
 
 Builder requirements only:
 
-- 64-bit Python 3.12 with the `py` launcher.
-- Internet access during the first build so dependencies can be downloaded.
+- 64-bit Python 3.12 with the `py` launcher
+- Internet access during the first build
 
-Then double-click:
+Double-click:
 
 ```text
 build_exe.bat
 ```
 
-The script creates:
+The script runs the tests, builds the standalone EXE, and creates a portable ZIP in `release\`.
 
-```text
-dist\BPSR-MIDI-Lite.exe
-release\BPSR-MIDI-Lite.exe
-release\BPSR-MIDI-Lite-v0.4.2-Windows-x64.zip
-release\SHA256SUMS.txt
-```
+## Build through GitHub without installing Python
 
-## Build without installing Python
+Upload the source to GitHub and run the included **Build Windows EXE** workflow. GitHub builds the Windows EXE for you.
 
-Upload the source project to GitHub and use the included **Build Windows EXE** workflow. GitHub runs the Windows build for you. Detailed browser-only instructions are in [FIRST_TIME_GITHUB_GUIDE.md](FIRST_TIME_GITHUB_GUIDE.md).
+Detailed instructions:
 
-## Command-line analysis
-
-```text
-python app.py --dry-run song.mid --unlock-tier tier1 --mode stable
-python app.py --dry-run song.mid --unlock-tier tier2 --mode full
-python app.py --dry-run song.mid --unlock-tier tier3 --mode ensemble
-python app.py --dry-run song.mid --unlock-tier tier4 --mode full --page-delay 250
-```
+- [FIRST_TIME_GITHUB_GUIDE.md](FIRST_TIME_GITHUB_GUIDE.md)
+- [END_USER_GUIDE.md](END_USER_GUIDE.md)
 
 ## Limitations
 
-- A chord wider than one current keyboard state cannot be played literally at one instant.
-- Full-range page changes take real time inside the game. Dense page-to-page passages may require compensation, remapping, or skipped notes.
-- Very dense orchestral MIDI files may need chord limiting or melody-only mode.
-- This project is unsigned. Windows SmartScreen may initially show an unknown-publisher warning for newly built releases.
-- Keyboard automation may be restricted by game rules. Use responsibly and at your own risk.
+- A chord wider than one keyboard state cannot always be reproduced literally at one instant.
+- Full-range page changes take real time in the game. Dense page-to-page passages may require timing compensation or remapping.
+- Very dense orchestral MIDIs may sound better with a simplified chord setting in Custom.
+- The project is unsigned, so Windows SmartScreen may initially show an unknown-publisher warning.
+- Use keyboard automation responsibly and follow the game's rules.
 
-## Licence
+## Licence and credit
+
+Created by **MrEz**.
 
 Independent MIDI-only implementation inspired by the keyboard behavior studied from `Sanheiii/ok-star-resonance`.
 
 Distributed under **GNU AGPL-3.0**. Source code is included.
-
-## v0.4.3 input troubleshooting
-
-v0.4.3 fixes a Win32 structure-size bug that prevented v0.4.2 from sending
-input even to Notepad on 64-bit Windows.
-
-Use **Test input (3s)** with Notepad first. Start with **Win32 scan code**. If
-Notepad works but BPSR does not, try **Pynput compatibility**, then **Win32
-virtual key**. Run the app as Administrator when BPSR is elevated.

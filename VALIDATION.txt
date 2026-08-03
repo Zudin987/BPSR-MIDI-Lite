@@ -1,42 +1,12 @@
-BPSR MIDI Lite v0.4.1 validation
-================================
+BPSR MIDI Lite v0.5.0 validation
 
-Automated unit tests: 15 passed.
-
-Unlock-tier coverage:
-- Tier 1 C3-B4: Default state only; no Ctrl/Shift or page events.
-- Tier 2 C3-B6: Default + Shift only; no page events.
-- Tier 3 A0-B6: left and middle pages only; no right-page events.
-- Tier 4 A0-C8: right page is available and C8 can be preserved.
-- Stable mode uses the safe middle-page subset and always has zero page events.
-
-Existing planner regression tests:
-- Full-range mode preserves extreme notes and adds timing compensation.
-- Ensemble-safe mode avoids unsafe fast page jumps.
-- 150% note-length processing leaves a retrigger gap before repeated notes.
-- C2 tie case prefers middle-page Ctrl rather than pressing <.
-- Two-page moves are emitted as adjacent, separately timed page steps.
-- Skip mapping reports omitted notes correctly.
-- Chord limiting preserves bass/melody slots.
-- Auto-transpose leaves songs unchanged when they already fit.
-
-48-song regression set, all four tiers and all three playback modes:
-- 576 total planning runs.
-- 576 completed successfully.
-- Planner errors: 0.
-- Stable mode page presses: 0 for every tier and song.
-- Tier 1/Tier 2 page presses: 0 in every mode.
-- Tier 3 right-page presses: 0 in every mode.
-
-The Linux validation checks MIDI parsing, unlock-tier enforcement, planning,
-mapping, note timing, and scheduled keyboard events. Actual Windows SendInput
-behavior, PyInstaller Windows packaging, and the game's page-animation duration
-still require testing on Windows or GitHub's Windows runner.
-
-MIDI library validation:
-- Recursive .mid/.midi scan: passed
-- Natural numbered sorting: passed
-- Missing-folder behavior: passed
-
-
-v0.4.2: Added Administrator manifest and input-test path. Windows injection still requires real-game validation on a Windows PC.
+- 25 automated tests passed.
+- Tkinter UI smoke-tested under a virtual display.
+- Fixed profiles verified:
+  - Tier 1: stable / C3-B4 / no Full range option
+  - Tier 2: stable / C3-B6 / no Full range option
+  - Tier 3: full / A0-B6
+  - Tier 4: full / A0-C8
+- Custom Tier 1 and Tier 2 automatically reject Full range solo.
+- MIDI library reload and automatic preview were smoke-tested with a real MIDI.
+- Windows EXE input must still be tested on Windows after rebuilding.

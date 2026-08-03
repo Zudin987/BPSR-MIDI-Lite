@@ -1,1 +1,4 @@
-Put your .mid or .midi files in this folder, then click Reload in the app.
+Put .mid or .midi files in this folder.
+
+Then open BPSR MIDI Lite and click Reload.
+Subfolders are supported.

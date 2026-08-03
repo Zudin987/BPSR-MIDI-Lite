@@ -1,102 +1,58 @@
-# End-user guide
+# BPSR MIDI Lite v0.5.0 — End-user guide
 
-## MIDI library folder
-
-1. Run `BPSR-MIDI-Lite.exe`.
-2. Click **Open Folder**. The app creates and opens a `MIDI` folder beside the EXE.
-3. Copy any `.mid` or `.midi` songs into that folder. Subfolders are supported.
-4. Return to the app and click **Reload**.
-5. Choose a song from the dropdown.
-
-Use **Choose Folder…** to select a different permanent library. The folder and last song are saved automatically. If the folder dialog seems missing while the game is open, v0.4.2 forces it in front of the app.
-
-
-This guide is for people who only want to play MIDI files. They do not need to install Python.
+Created by **MrEz**.
 
 ## Install
 
-### Portable ZIP
-
-1. Download `BPSR-MIDI-Lite-Windows-x64.zip` from the repository's Releases page.
-2. Right-click the ZIP and select **Extract All**.
-3. Open the extracted folder.
-4. Run `BPSR-MIDI-Lite.exe`.
-
-### Direct EXE
-
-Download `BPSR-MIDI-Lite.exe` and run it directly. No installer is used.
-
-## First playback
-
-1. Open BPSR and enter the piano interface.
-2. Manually set the keyboard to the middle page and Default octave state.
-3. In MIDI Lite, choose the unlock tier that matches your character:
-   - Tier 1: C3–B4
-   - Tier 2: C3–B6
-   - Tier 3: A0–B6
-   - Tier 4: A0–C8
-4. Choose **Stable** mode for the first test.
-5. Choose **Octave fold**.
-6. Click **Open Folder**, copy your `.mid` or `.midi` files there, and click **Reload**.
-7. Choose a song from the dropdown.
-8. Press **Analyze** and check the played range and page-key count.
-9. Press **Start** and switch to the game during the countdown.
-10. Press **F10** at any time to stop.
-
-## Which mode should I use?
-
-- **Stable:** smoothest and safest; no `<` / `>`.
-- **Full range solo:** preserves more unlocked notes and may use page switching.
-- **Ensemble-safe:** keeps the timeline; unsafe page changes are remapped or skipped.
-
-## Windows warning
-
-A new unsigned EXE may show **Windows protected your PC** or **Unknown publisher**. Only run a copy obtained from the project's own GitHub Release, and compare its SHA-256 hash with `SHA256SUMS.txt` when possible. Do not bypass warnings for copies received from unknown mirrors or private messages.
-
-## Input does not reach the game
-
-- Click the game window during the countdown.
-- Make sure the piano interface is active.
-- Start from the middle page + Default octave state.
-- Prefer running both the game and MIDI Lite normally, without Administrator mode.
-- If the game itself is forced to run as Administrator, Windows may block input from a lower-privilege app. Changing the game back to normal privilege is the safer fix.
-
-## Song sounds crowded
-
-Try:
+No installation is required. Extract the portable ZIP and run:
 
 ```text
-Mode: Stable
-Chord limit: Bass + top 2 notes
-Ignore percussion: On
-Speed: 80–90%
-Note length: 140–170%
+BPSR-MIDI-Lite.exe
 ```
 
-## Song sounds cut off
+Accept the Administrator prompt. Python is not required.
 
-Raise **Note length** gradually. Keep repeated-note protection enabled through the app's default release gaps.
+## Add songs
 
-## Full-range song pauses too much
+1. Click **Open Folder**.
+2. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
+3. Click **Reload**.
+4. Select the song from the dropdown.
 
-Lower **Page-switch delay** in small steps, such as 220 ms to 200 ms. If notes rush or occur before the page finishes changing, raise it again.
+The preview updates automatically; there is no Analyze button.
 
+## Choose a profile
 
-## First keyboard-input test
+- **Tier 1 — C3–B4:** for a new character. Simple and page-free.
+- **Tier 2 — C3–B6:** Default + Shift, still no page switching.
+- **Tier 3 — A0–B6:** smart full-range playback using left/middle pages.
+- **Tier 4 — A0–C8:** complete unlocked range.
+- **Custom:** exposes advanced playback and MIDI-fitting settings.
 
-1. Launch the EXE and accept the Windows Administrator prompt.
-2. Click **Test input (3s)**.
-3. During the countdown, focus Notepad or open/focus the in-game piano.
-4. The app sends `A S D F`.
-5. If Notepad receives the letters but the game does not, verify that the piano interface is active and that no chat box is focused.
-6. If the app says Administrator access is `No`, close it and use **Run as administrator**.
+Tier profiles are locked to prevent incompatible choices.
 
+## Play
 
-## Testing keyboard input
+1. Open the BPSR piano.
+2. Set the **middle page + Default octave**.
+3. Press **Start**.
+4. Focus the game during the countdown.
+5. Press **F10** to stop.
 
-1. Open Notepad.
-2. In MIDI Lite, select **Win32 scan code** as the input method.
-3. Click **Test input (3s)** and focus Notepad.
-4. It should type `asdf`.
-5. If Notepad works but the game does not, try **Pynput compatibility**.
-6. Use **Win32 virtual key** or **Legacy keybd_event** only as fallbacks.
+## Check input
+
+Click **Test input (3s)** and focus Notepad. It should type `asdf`.
+
+Start with **Win32 scan code**. Try another input method only when the recommended method does not work with the game.
+
+## Song preview
+
+The preview shows:
+
+- played note count and duration
+- original and played pitch ranges
+- how many notes were remapped, skipped, or simplified
+- predicted `<` / `>` page-key presses
+- Ctrl/Shift changes and timing compensation
+
+A warning appears when a song needs unusually frequent page switching.
