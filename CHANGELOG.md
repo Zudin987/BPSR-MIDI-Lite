@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.1
+
+- Restored the mandatory Windows Administrator manifest after real BPSR testing showed that standard-permission input was not reliable.
+- Removed the in-app Administrator restart button and optional elevation helper.
+- Kept the song suitability rating and **Copy diagnostics** feature from v1.1.0.
+- Updated setup, troubleshooting, release, and validation documentation.
+
 ## v1.1.0
 
 - Removed the mandatory Administrator manifest and UAC prompt.

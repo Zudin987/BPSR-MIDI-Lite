@@ -34,12 +34,11 @@ from win_input import (
     f10_is_pressed,
     input_abi_diagnostics,
     is_running_as_admin,
-    restart_as_administrator,
 )
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -233,12 +232,10 @@ class App(tk.Tk):
                 "during the countdown."
             )
         )
-        self.admin_var = tk.StringVar(value="Input access: checking…")
 
         self._build_ui()
         self._attach_variable_traces()
         self._load_config()
-        self._refresh_access_ui()
         self._suspend_auto_analysis = False
         self._apply_profile_ui(schedule=False)
         self._schedule_analysis()
@@ -258,32 +255,6 @@ class App(tk.Tk):
         self._apply_system_theme()
         self.after(1500, self._poll_system_theme)
 
-    def _refresh_access_ui(self) -> None:
-        if is_running_as_admin():
-            self.admin_var.set("Input access: Administrator mode")
-            self.admin_button.configure(text="Administrator mode active", state="disabled")
-        else:
-            self.admin_var.set(
-                "Input access: Standard mode — normally enough for BPSR"
-            )
-            self.admin_button.configure(text="Restart as Administrator", state="normal")
-
-    def _restart_as_admin(self) -> None:
-        if self.player.is_playing or self._input_test_running:
-            messagebox.showinfo(APP_NAME, "Stop playback or the input test before restarting.")
-            return
-        if is_running_as_admin():
-            self._refresh_access_ui()
-            return
-        self._save_config()
-        try:
-            restart_as_administrator()
-        except Exception as exc:  # noqa: BLE001
-            self._last_error = f"Administrator restart: {exc}"
-            messagebox.showerror(APP_NAME, str(exc))
-            return
-        self.destroy()
-
     def _build_ui(self) -> None:
         self._apply_system_theme(force=True)
 
@@ -300,18 +271,6 @@ class App(tk.Tk):
             outer,
             text="Simple MIDI instrument player for Blue Protocol: Star Resonance",
         ).pack(anchor="w")
-        access_row = ttk.Frame(outer)
-        access_row.pack(fill="x", pady=(2, 10))
-        ttk.Label(access_row, textvariable=self.admin_var, style="Hint.TLabel").pack(
-            side="left", anchor="w"
-        )
-        self.admin_button = ttk.Button(
-            access_row,
-            text="Restart as Administrator",
-            command=self._restart_as_admin,
-        )
-        self.admin_button.pack(side="right")
-
         notice = ttk.LabelFrame(outer, text="Before playback", padding=9)
         notice.pack(fill="x", pady=(0, 10))
         ttk.Label(
@@ -483,7 +442,7 @@ class App(tk.Tk):
             outer,
             text=(
                 "F10 is an emergency stop. Instrument profiles lock safe mappings for Keyboard, Guitar and Bass. "
-                "Standard mode normally works; use Restart as Administrator only when BPSR ignores input. "
+                "Administrator permission is required for reliable BPSR input. "
                 "Choose Custom only for manual tuning or experimental full-range page switching. "
                 f"The app follows the Windows light/dark theme automatically. Input ABI: {input_abi_diagnostics()}."
             ),
@@ -1152,8 +1111,8 @@ class App(tk.Tk):
         message = str(error)
         if not is_running_as_admin():
             message += (
-                "\n\nThe app is running in Standard mode. If Notepad receives input but "
-                "BPSR does not, return to the app and click Restart as Administrator."
+                "\n\nAdministrator access is required for BPSR input. "
+                "Close the app and reopen it as Administrator."
             )
         return message
 

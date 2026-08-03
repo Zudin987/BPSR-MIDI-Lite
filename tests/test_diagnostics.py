@@ -6,7 +6,7 @@ from diagnostics import build_diagnostic_text
 def test_diagnostic_report_without_song_analysis():
     report = build_diagnostic_text(
         app_name="BPSR MIDI Lite",
-        app_version="1.1.0",
+        app_version="1.1.1",
         instrument="Keyboard",
         profile="Tier 3",
         input_backend="Win32 scan code",
@@ -17,7 +17,7 @@ def test_diagnostic_report_without_song_analysis():
         last_input_test="Not run",
         last_error=None,
     )
-    assert "App version: 1.1.0" in report
+    assert "App version: 1.1.1" in report
     assert "Access mode: Standard" in report
     assert "Selected MIDI: song.mid" in report
     assert "Song analysis: Not available" in report
@@ -48,7 +48,7 @@ def test_diagnostic_report_includes_plan_metrics():
     suitability = SimpleNamespace(label="Busy")
     report = build_diagnostic_text(
         app_name="BPSR MIDI Lite",
-        app_version="1.1.0",
+        app_version="1.1.1",
         instrument="Guitar",
         profile="Tier 3",
         input_backend="Win32 scan code",

@@ -1,10 +1,10 @@
-# BPSR MIDI Lite v1.1.0 — User Guide
+# BPSR MIDI Lite v1.1.1 — User Guide
 
 ## First setup
 
 1. Download `BPSR-MIDI-Lite.exe` from the latest GitHub Release.
 2. Put the EXE in any convenient folder.
-3. Run it normally. It no longer requests Administrator access automatically.
+3. Run it and accept the Windows Administrator prompt. Administrator access is required for BPSR input.
 4. Click **Open Folder**.
 5. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
 6. Click **Reload**.
@@ -55,13 +55,11 @@ Prefer simple piano, melody, acoustic, or solo-instrument arrangements. Dense or
 5. Focus BPSR before the countdown ends.
 6. Press F10 to stop at any time.
 
-## Standard mode and Administrator mode
+## Administrator permission
 
-Run the app normally first. Standard mode should work when BPSR is also running normally.
+The app requests Administrator permission whenever it starts. This is required because BPSR did not reliably receive simulated input from the standard-permission build during real testing.
 
-When **Test input** works in Notepad but BPSR receives nothing, return to the app and click **Restart as Administrator**. Windows will show its normal UAC prompt, then the elevated copy will open.
-
-Do not use Administrator mode unless it is needed.
+The public EXE already starts elevated, so no separate Administrator restart button is needed.
 
 ## Copy diagnostics
 
@@ -78,7 +76,7 @@ Custom reveals advanced controls for speed, note length, mapping and chord detai
 ## Troubleshooting
 
 - No input anywhere: use **Test input (3s)** with Notepad, then try another input method.
-- Notepad works but BPSR does not: click **Restart as Administrator**.
+- Notepad works but BPSR does not: confirm the Administrator prompt was accepted, then try another input method.
 - Wrong notes: confirm the selected instrument and unlock profile match the game.
 - Bass Tier 2 sounds wrong: start from Bass Default mode; do not manually enable Shift first.
 - New songs missing: place them in the MIDI folder and click Reload.

@@ -35,7 +35,7 @@ The EXE bundles Python and required libraries. Other users only download and run
 
 Run the workflow again and enter a new version such as:
 
-`v1.1.0`
+`v1.1.1`
 
 The workflow publishes the EXE, portable ZIP and SHA-256 checksums to GitHub Releases.
 
@@ -44,16 +44,16 @@ The workflow publishes the EXE, portable ZIP and SHA-256 checksums to GitHub Rel
 Upload the newer source files, commit them, then run the workflow again with a new version such as `v0.6.1` or `v0.7.0`.
 
 
-## Publish v1.1.0 for friends
+## Publish v1.1.1 for friends
 
 After the updated source is committed and the normal test build works:
 
 1. Open **Actions → Build Windows EXE**.
 2. Click **Run workflow**.
-3. Enter `v1.1.0` in `release_version`.
+3. Enter `v1.1.1` in `release_version`.
 4. Run the workflow and wait for the green check.
 5. Open the repository **Releases** page.
-6. Share the v1.1.0 release page with friends.
-7. Tell normal users to download `BPSR-MIDI-Lite-Windows-x64.zip`, extract it, and run `BPSR-MIDI-Lite.exe`. They do not need Python.
+6. Share the v1.1.1 release page with friends.
+7. Tell normal users to download `BPSR-MIDI-Lite.exe` directly, run it, and accept the Administrator prompt. They do not need Python.
 
-The standalone `.exe` is also provided, but the portable ZIP is friendlier because it includes the guide, licence, notices, and MIDI folder.
+The standalone `.exe` is the recommended public download.

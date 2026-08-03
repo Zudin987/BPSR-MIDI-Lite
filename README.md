@@ -1,4 +1,4 @@
-# BPSR MIDI Lite v1.1.0
+# BPSR MIDI Lite v1.1.1
 
 A small Windows MIDI instrument player for **Blue Protocol: Star Resonance**, created by **MrEz**.
 
@@ -55,7 +55,7 @@ All fixed profiles remain on the middle page and produce **zero `<` / `>` presse
 - Clear reasons when a MIDI is dense, chord-heavy, heavily remapped, or track-heavy
 - Automatic octave folding / transposition for unavailable notes
 - Configurable chord simplification in Custom
-- Optional **Restart as Administrator** button instead of a mandatory UAC prompt
+- Mandatory Administrator launch so BPSR reliably receives keyboard input
 - **Copy diagnostics** button for easy bug reports
 - Four Windows input backends
 - F10 emergency stop
@@ -64,7 +64,7 @@ All fixed profiles remain on the middle page and produce **zero `<` / `>` presse
 
 ## Basic use
 
-1. Run `BPSR-MIDI-Lite.exe` normally.
+1. Run `BPSR-MIDI-Lite.exe` and accept the Windows Administrator prompt.
 2. Choose **Keyboard**, **Guitar**, or **Bass**.
 3. Choose the tier matching your in-game unlock.
 4. Click **Open Folder** and place MIDI files inside the `MIDI` folder.
@@ -76,7 +76,7 @@ All fixed profiles remain on the middle page and produce **zero `<` / `>` presse
 8. Press **Start**, focus the game during the countdown, and keep the game focused.
 9. Press **F10** to stop.
 
-Standard mode should normally work because BPSR usually runs without Administrator rights. When Notepad receives the input test but BPSR does not, click **Restart as Administrator** inside the app and try again.
+Administrator access is required because BPSR did not reliably accept simulated input from a standard-permission process during real testing.
 
 ## Song suitability
 

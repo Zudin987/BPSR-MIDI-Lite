@@ -1,10 +1,10 @@
-BPSR MIDI Lite v1.1.0 validation
+BPSR MIDI Lite v1.1.1 validation
 
-Automated pytest suite: PASS (43 tests)
+Automated pytest suite: PASS
 Python compilation: PASS
-Tkinter UI smoke test: PASS
-Mandatory Administrator manifest removed: PASS
-Optional elevation command tests: PASS
+Mandatory Administrator manifest restored: PASS
+Administrator restart button removed: PASS
+Optional elevation helper removed: PASS
 Song suitability tests: PASS
 Diagnostic report tests: PASS
 MIDI source complexity metrics tests: PASS
@@ -12,4 +12,4 @@ MIDI source complexity metrics tests: PASS
 Fixed-profile page-key presses: PASS (0 predicted)
 
 Windows-specific note:
-The Linux validation environment cannot physically inject keys into BPSR or display a Windows UAC prompt. The final EXE should be tested on Windows 10/11 in both Standard mode and optional Administrator mode before publishing the v1.1.0 release.
+The Linux validation environment cannot display a Windows UAC prompt or physically inject keys into BPSR. The final EXE must be rebuilt and checked on Windows 10/11. Real user testing already confirmed that BPSR requires the elevated build.
