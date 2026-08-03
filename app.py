@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 import queue
+import re
+import subprocess
 import sys
 import time
 import tkinter as tk
@@ -16,7 +18,7 @@ from win_input import f10_is_pressed
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.4.1"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
 MODE_LABELS = {
@@ -48,6 +50,50 @@ CHORD_LABELS = {
 }
 CHORD_LABELS_REVERSE = {value: key for key, value in CHORD_LABELS.items()}
 
+MIDI_EXTENSIONS = {".mid", ".midi"}
+
+
+def _application_directory() -> Path:
+    """Return the folder containing the EXE, or this source file while developing."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def _default_midi_folder() -> Path:
+    """Create a portable MIDI folder beside the app, with a Documents fallback."""
+    portable = _application_directory() / "MIDI"
+    try:
+        portable.mkdir(parents=True, exist_ok=True)
+        probe = portable / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        return portable
+    except OSError:
+        fallback = Path.home() / "Documents" / APP_NAME / "MIDI"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+def _natural_sort_key(text: str) -> list[object]:
+    return [int(part) if part.isdigit() else part.casefold() for part in re.split(r"(\d+)", text)]
+
+
+def scan_midi_folder(folder: str | Path) -> list[Path]:
+    """Return MIDI files recursively, sorted naturally by relative path."""
+    root = Path(folder)
+    if not root.exists() or not root.is_dir():
+        return []
+    files = [
+        path
+        for path in root.rglob("*")
+        if path.is_file() and path.suffix.casefold() in MIDI_EXTENSIONS
+    ]
+    return sorted(
+        files,
+        key=lambda path: _natural_sort_key(path.relative_to(root).as_posix()),
+    )
+
 
 class App(tk.Tk):
     def __init__(self) -> None:
@@ -62,6 +108,9 @@ class App(tk.Tk):
         self._last_f10 = False
 
         self.file_var = tk.StringVar()
+        self.midi_folder_var = tk.StringVar(value=str(_default_midi_folder()))
+        self.midi_display_var = tk.StringVar()
+        self._midi_lookup: dict[str, Path] = {}
         self.mode_var = tk.StringVar(value=MODE_LABELS_REVERSE["stable"])
         self.unlock_var = tk.StringVar(value=UNLOCK_LABELS_REVERSE["tier3"])
         self.speed_var = tk.IntVar(value=85)
@@ -75,7 +124,7 @@ class App(tk.Tk):
         self.pedal_var = tk.BooleanVar(value=False)
         self.percussion_var = tk.BooleanVar(value=True)
         self.minimize_var = tk.BooleanVar(value=True)
-        self.status_var = tk.StringVar(value="Choose a MIDI file.")
+        self.status_var = tk.StringVar(value="Choose a MIDI from the library.")
         self.analysis_var = tk.StringVar(value="")
         self.notice_var = tk.StringVar()
 
@@ -109,11 +158,36 @@ class App(tk.Tk):
             justify="left",
         ).pack(anchor="w")
 
-        file_frame = ttk.LabelFrame(outer, text="MIDI file", padding=10)
+        file_frame = ttk.LabelFrame(outer, text="MIDI library", padding=10)
         file_frame.pack(fill="x", pady=(0, 10))
-        ttk.Entry(file_frame, textvariable=self.file_var).pack(side="left", fill="x", expand=True)
-        ttk.Button(file_frame, text="Browse…", command=self._browse).pack(side="left", padx=(8, 0))
-        ttk.Button(file_frame, text="Analyze", command=self._analyze).pack(side="left", padx=(8, 0))
+        file_frame.columnconfigure(0, weight=1)
+
+        self.midi_combo = ttk.Combobox(
+            file_frame,
+            textvariable=self.midi_display_var,
+            state="readonly",
+            values=(),
+        )
+        self.midi_combo.grid(row=0, column=0, columnspan=3, sticky="ew")
+        self.midi_combo.bind("<<ComboboxSelected>>", lambda _event: self._midi_selected())
+        ttk.Button(file_frame, text="Analyze", command=self._analyze).grid(
+            row=0, column=3, padx=(8, 0)
+        )
+
+        ttk.Entry(
+            file_frame,
+            textvariable=self.midi_folder_var,
+            state="readonly",
+        ).grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(file_frame, text="Choose Folder…", command=self._choose_midi_folder).grid(
+            row=1, column=1, padx=(8, 0), pady=(8, 0)
+        )
+        ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
+            row=1, column=2, padx=(8, 0), pady=(8, 0)
+        )
+        ttk.Button(file_frame, text="Reload", command=self._reload_midi_library).grid(
+            row=1, column=3, padx=(8, 0), pady=(8, 0)
+        )
 
         settings = ttk.LabelFrame(outer, text="Playback settings", padding=10)
         settings.pack(fill="x", pady=(0, 10))
@@ -318,45 +392,79 @@ class App(tk.Tk):
             self.after_idle(self._analyze)
 
     def _config_path(self) -> Path:
-        base = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+        # Store settings in the user's profile so folder selection stays saved
+        # even when the EXE is moved or placed in a protected directory.
+        if os.name == "nt":
+            base = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
+        else:
+            base = Path.home() / ".config" / "bpsr-midi-lite"
+        base.mkdir(parents=True, exist_ok=True)
         return base / CONFIG_FILE
+
+    def _legacy_config_path(self) -> Path:
+        return _application_directory() / CONFIG_FILE
 
     def _load_config(self) -> None:
         path = self._config_path()
-        if not path.exists():
-            return
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            self.file_var.set(data.get("file", ""))
-            mode = str(data.get("mode", "stable"))
-            self.mode_var.set(MODE_LABELS_REVERSE.get(mode, MODE_LABELS_REVERSE["stable"]))
-            saved_tier = str(data.get("unlock_tier", ""))
-            if saved_tier not in UNLOCK_LABELS_REVERSE:
-                legacy_range = str(data.get("range", "A0–B6"))
-                saved_tier = "tier4" if "C8" in legacy_range else "tier3"
-            self.unlock_var.set(UNLOCK_LABELS_REVERSE.get(saved_tier, UNLOCK_LABELS_REVERSE["tier3"]))
-            self.speed_var.set(int(data.get("speed", 85)))
-            self.length_var.set(int(data.get("length", 150)))
-            self.minimum_note_var.set(int(data.get("minimum_note", 120)))
-            self.page_delay_var.set(int(data.get("page_delay", 220)))
-            self.modifier_lead_var.set(int(data.get("modifier_lead", 55)))
-            self.start_delay_var.set(float(data.get("start_delay", 3.0)))
-            mapping = str(data.get("mapping", "octave"))
-            self.mapping_var.set(MAPPING_LABELS_REVERSE.get(mapping, MAPPING_LABELS_REVERSE["octave"]))
-            legacy_melody = bool(data.get("melody_only", False))
-            chord_limit = int(data.get("chord_limit", 1 if legacy_melody else 0))
-            self.chord_var.set(CHORD_LABELS_REVERSE.get(chord_limit, CHORD_LABELS_REVERSE[0]))
-            self.pedal_var.set(bool(data.get("pedal", False)))
-            self.percussion_var.set(bool(data.get("ignore_percussion", True)))
-            self.minimize_var.set(bool(data.get("minimize", True)))
-            if self.file_var.get() and Path(self.file_var.get()).exists():
-                self.after(100, self._analyze)
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            pass
+        if not path.exists() and self._legacy_config_path().exists():
+            path = self._legacy_config_path()
+
+        data: dict[str, object] = {}
+        if path.exists():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = loaded
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                data = {}
+
+        mode = str(data.get("mode", "stable"))
+        self.mode_var.set(MODE_LABELS_REVERSE.get(mode, MODE_LABELS_REVERSE["stable"]))
+        saved_tier = str(data.get("unlock_tier", ""))
+        if saved_tier not in UNLOCK_LABELS_REVERSE:
+            legacy_range = str(data.get("range", "A0–B6"))
+            saved_tier = "tier4" if "C8" in legacy_range else "tier3"
+        self.unlock_var.set(
+            UNLOCK_LABELS_REVERSE.get(saved_tier, UNLOCK_LABELS_REVERSE["tier3"])
+        )
+        self.speed_var.set(int(data.get("speed", 85)))
+        self.length_var.set(int(data.get("length", 150)))
+        self.minimum_note_var.set(int(data.get("minimum_note", 120)))
+        self.page_delay_var.set(int(data.get("page_delay", 220)))
+        self.modifier_lead_var.set(int(data.get("modifier_lead", 55)))
+        self.start_delay_var.set(float(data.get("start_delay", 3.0)))
+        mapping = str(data.get("mapping", "octave"))
+        self.mapping_var.set(
+            MAPPING_LABELS_REVERSE.get(mapping, MAPPING_LABELS_REVERSE["octave"])
+        )
+        legacy_melody = bool(data.get("melody_only", False))
+        chord_limit = int(data.get("chord_limit", 1 if legacy_melody else 0))
+        self.chord_var.set(CHORD_LABELS_REVERSE.get(chord_limit, CHORD_LABELS_REVERSE[0]))
+        self.pedal_var.set(bool(data.get("pedal", False)))
+        self.percussion_var.set(bool(data.get("ignore_percussion", True)))
+        self.minimize_var.set(bool(data.get("minimize", True)))
+
+        saved_folder = str(data.get("midi_folder", "")).strip()
+        folder = Path(saved_folder) if saved_folder else _default_midi_folder()
+        if not folder.exists() or not folder.is_dir():
+            folder = _default_midi_folder()
+        self.midi_folder_var.set(str(folder))
+
+        preferred = str(data.get("selected_midi", "")).strip()
+        if not preferred:
+            legacy_file = str(data.get("file", "")).strip()
+            if legacy_file and Path(legacy_file).exists():
+                try:
+                    preferred = Path(legacy_file).relative_to(folder).as_posix()
+                except ValueError:
+                    preferred = ""
+        self._reload_midi_library(analyze=False, preferred_display=preferred)
 
     def _save_config(self) -> None:
         data = {
             "file": self.file_var.get(),
+            "midi_folder": self.midi_folder_var.get(),
+            "selected_midi": self.midi_display_var.get(),
             "mode": self._mode_code(),
             "unlock_tier": self._unlock_code(),
             "speed": self.speed_var.get(),
@@ -391,14 +499,94 @@ class App(tk.Tk):
             ignore_percussion=bool(self.percussion_var.get()),
         )
 
-    def _browse(self) -> None:
-        path = filedialog.askopenfilename(
-            title="Select MIDI file",
-            filetypes=[("MIDI files", "*.mid *.midi"), ("All files", "*.*")],
+    def _show_native_dialog(self, callback):  # type: ignore[no-untyped-def]
+        """Keep a native file/folder dialog in front of the game and this app."""
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+        try:
+            self.attributes("-topmost", True)
+            self.update_idletasks()
+            return callback()
+        finally:
+            self.attributes("-topmost", False)
+            self.lift()
+
+    def _choose_midi_folder(self) -> None:
+        current = Path(self.midi_folder_var.get())
+        initial = current if current.exists() else _default_midi_folder()
+        path = self._show_native_dialog(
+            lambda: filedialog.askdirectory(
+                parent=self,
+                title="Choose MIDI library folder",
+                initialdir=str(initial),
+                mustexist=True,
+            )
         )
-        if path:
-            self.file_var.set(path)
+        if not path:
+            return
+        self.midi_folder_var.set(str(Path(path).resolve()))
+        self._reload_midi_library()
+        self._save_config()
+
+    def _open_midi_folder(self) -> None:
+        folder = Path(self.midi_folder_var.get())
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            if os.name == "nt":
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder)])
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
+        except OSError as exc:
+            messagebox.showerror(APP_NAME, f"Could not open the MIDI folder:\n{exc}")
+
+    def _reload_midi_library(
+        self,
+        analyze: bool = True,
+        preferred_display: str | None = None,
+    ) -> None:
+        folder = Path(self.midi_folder_var.get())
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self.status_var.set(f"Could not use MIDI folder: {exc}")
+            return
+
+        previous = preferred_display or self.midi_display_var.get()
+        files = scan_midi_folder(folder)
+        self._midi_lookup = {
+            path.relative_to(folder).as_posix(): path
+            for path in files
+        }
+        values = list(self._midi_lookup)
+        self.midi_combo.configure(values=values)
+
+        selected = previous if previous in self._midi_lookup else (values[0] if values else "")
+        self.midi_display_var.set(selected)
+        self.file_var.set(str(self._midi_lookup[selected]) if selected else "")
+
+        if not values:
+            self.current_plan = None
+            self.analysis_var.set("")
+            self.status_var.set(
+                "No MIDI files found. Put .mid or .midi files in the folder, then click Reload."
+            )
+            return
+
+        self.status_var.set(f"Loaded {len(values)} MIDI file(s) from the library.")
+        if analyze:
             self._analyze()
+
+    def _midi_selected(self) -> None:
+        selected = self.midi_display_var.get()
+        path = self._midi_lookup.get(selected)
+        if path is None:
+            self.file_var.set("")
+            return
+        self.file_var.set(str(path))
+        self._analyze()
 
     def _analyze(self) -> None:
         try:
@@ -462,7 +650,7 @@ class App(tk.Tk):
             return
         self._analyze()
         if self.current_plan is None:
-            messagebox.showerror(APP_NAME, "Select a valid MIDI file first.")
+            messagebox.showerror(APP_NAME, "Choose a valid MIDI from the library first.")
             return
         try:
             delay = float(self.start_delay_var.get())

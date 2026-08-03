@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.1
+
+- Replaced the single-file Browse field with a saved MIDI library folder.
+- Added a MIDI dropdown populated from `.mid` and `.midi` files in the selected folder and its subfolders.
+- Added Choose Folder, Open Folder, and Reload buttons.
+- The app creates a portable `MIDI` folder beside the EXE on first run, with a Documents fallback when that location is not writable.
+- Folder selection and the last selected song are stored in the user's AppData configuration.
+- Native folder dialogs are explicitly parented and brought to the front so they do not appear hidden behind the game.
+- Added natural filename sorting, including numbered difficulty prefixes.
+- Updated GitHub Actions to Node.js 24-based action versions.
+- Expanded automated tests from 15 to 17.
+
 ## 0.4.0
 
 - Added four explicit unlock-tier presets: C3–B4, C3–B6, A0–B6, and A0–C8.

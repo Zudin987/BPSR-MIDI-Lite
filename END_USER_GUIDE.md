@@ -1,5 +1,16 @@
 # End-user guide
 
+## MIDI library folder
+
+1. Run `BPSR-MIDI-Lite.exe`.
+2. Click **Open Folder**. The app creates and opens a `MIDI` folder beside the EXE.
+3. Copy any `.mid` or `.midi` songs into that folder. Subfolders are supported.
+4. Return to the app and click **Reload**.
+5. Choose a song from the dropdown.
+
+Use **Choose Folder…** to select a different permanent library. The folder and last song are saved automatically. If the folder dialog seems missing while the game is open, v0.4.1 forces it in front of the app.
+
+
 This guide is for people who only want to play MIDI files. They do not need to install Python.
 
 ## Install
@@ -26,10 +37,11 @@ Download `BPSR-MIDI-Lite.exe` and run it directly. No installer is used.
    - Tier 4: A0–C8
 4. Choose **Stable** mode for the first test.
 5. Choose **Octave fold**.
-6. Browse to a `.mid` or `.midi` file.
-7. Press **Analyze** and check the played range and page-key count.
-8. Press **Start** and switch to the game during the countdown.
-9. Press **F10** at any time to stop.
+6. Click **Open Folder**, copy your `.mid` or `.midi` files there, and click **Reload**.
+7. Choose a song from the dropdown.
+8. Press **Analyze** and check the played range and page-key count.
+9. Press **Start** and switch to the game during the countdown.
+10. Press **F10** at any time to stop.
 
 ## Which mode should I use?
 

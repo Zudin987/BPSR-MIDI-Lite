@@ -1,10 +1,19 @@
-# BPSR MIDI Lite v0.4
+# BPSR MIDI Lite v0.4.1
 
 A small Windows MIDI keyboard player made only for **Blue Protocol: Star Resonance** piano playback.
 
+## New in v0.4.1: saved MIDI library
+
+- The app creates a `MIDI` folder beside the EXE on first launch.
+- Put any `.mid` or `.midi` file in that folder, including inside subfolders.
+- Click **Reload** and choose the song from the dropdown.
+- **Open Folder** opens the active library directly in File Explorer.
+- **Choose Folder…** lets you use another folder, and the choice is remembered.
+- The last selected song and all playback settings are also remembered.
+
 It reads ordinary `.mid` and `.midi` files directly and sends the matching keyboard input to the game. End users do **not** need Python after you build the EXE.
 
-## New in v0.4: unlock-tier presets
+## Unlock-tier presets
 
 Choose the exact progress of the player using the app:
 
@@ -70,9 +79,10 @@ Any loaded MIDI is automatically fitted to the selected tier using the chosen ma
 2. Select the **middle keyboard page**.
 3. Set the octave state to **Default**.
 4. Open BPSR MIDI Lite.
-5. Select the unlock tier matching your character.
-6. Select a MIDI and press **Analyze**.
-7. Press **Start**, then switch to the game during the countdown.
+5. Click **Open Folder**, copy your MIDI files into the library, and click **Reload**.
+6. Select the unlock tier matching your character.
+7. Choose a song from the dropdown and press **Analyze**.
+8. Press **Start**, then switch to the game during the countdown.
 
 ## Recommended first settings
 
@@ -122,7 +132,7 @@ The script creates:
 ```text
 dist\BPSR-MIDI-Lite.exe
 release\BPSR-MIDI-Lite.exe
-release\BPSR-MIDI-Lite-v0.4.0-Windows-x64.zip
+release\BPSR-MIDI-Lite-v0.4.1-Windows-x64.zip
 release\SHA256SUMS.txt
 ```
 

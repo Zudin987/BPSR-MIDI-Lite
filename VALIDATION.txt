@@ -1,4 +1,4 @@
-BPSR MIDI Lite v0.4 validation
+BPSR MIDI Lite v0.4.1 validation
 ================================
 
 Automated unit tests: 15 passed.
@@ -32,3 +32,8 @@ The Linux validation checks MIDI parsing, unlock-tier enforcement, planning,
 mapping, note timing, and scheduled keyboard events. Actual Windows SendInput
 behavior, PyInstaller Windows packaging, and the game's page-animation duration
 still require testing on Windows or GitHub's Windows runner.
+
+MIDI library validation:
+- Recursive .mid/.midi scan: passed
+- Natural numbered sorting: passed
+- Missing-folder behavior: passed
