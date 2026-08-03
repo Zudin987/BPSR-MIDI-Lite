@@ -1,43 +1,24 @@
 # Changelog
 
+## v0.6.0
+
+- Added an Instrument selector before Profile.
+- Added Guitar support:
+  - Tier 1 C3–B4
+  - Tier 2 E2–B4
+  - Tier 3 E2–D6
+  - Custom experimental full range
+- Added Bass support using the in-game layouts shown by the user:
+  - Tier 1 E1–B2 Default layout
+  - Tier 2 E1–B3 High Octave (Shift) layout
+  - No Low Octave Ctrl mode
+- Bass chord simplification now keeps the lowest notes rather than melody notes.
+- Each instrument remembers its own selected profile and Custom settings.
+- Reverted the Online Sequencer downloader/search integration.
+- `Find Songs Online` now only opens the public Online Sequencer sequences page in the browser.
+- Fixed profile previews and instructions to mention the selected instrument.
+- Kept Windows automatic light/dark theme support.
+
 ## v0.5.2
 
-- Added an optional **Find Songs** window for Online Sequencer.
-- Added public sequence title search with browser-preview fallback.
-- Added direct Online Sequencer URL/ID import.
-- Added local conversion from Online Sequencer protobuf data into standard MIDI.
-- Downloads are stored under `MIDI/Online Sequencer` and selected automatically.
-- Added BPM-marker conversion, instrument tracks, drum-channel mapping, safe filenames, request limits, and friendly network errors.
-- Added 4 Online Sequencer parser/conversion regression tests.
-- Added clear third-party availability and creator-rights notices.
-
-## v0.5.1
-
-- Simplified the fixed profile list to Tier 1, Tier 2, Tier 3, and Custom.
-- Changed Tier 3 from A0–B6 to the safe C2–B6 middle-page range.
-- Tier 3 now guarantees zero `<` / `>` page presses using Ctrl / Default / Shift only.
-- Removed Tier 4 from the normal profile list.
-- Kept A0–C8 as a Custom-only full-range option for users who want to test page switching.
-- Full range solo is now hidden for Custom Tier 1, Tier 2, and Tier 3.
-- Added automatic Windows light/dark theme detection.
-- Added live theme refresh while the app remains open.
-- Added dark title-bar support where Windows permits it.
-- Added profile and theme regression tests.
-
-## v0.5.0
-
-- Added beginner-friendly fixed profiles and a Custom profile.
-- Fixed Tier profiles lock all musical playback settings.
-- Hid advanced settings unless Custom is selected.
-- Removed the redundant Analyze button; previews update automatically.
-- Simplified MIDI library controls to Open Folder and Reload.
-- Added visible `by MrEz` authorship and updated Windows metadata.
-
-## v0.4.3
-
-- Fixed the 64-bit Win32 `INPUT` structure used by `SendInput`.
-- Added selectable Win32/Pynput input methods and ABI regression tests.
-
-## v0.4.1
-
-- Added persistent MIDI library folder.
+- Added the earlier Online Sequencer integration, later removed in v0.6.0 in favor of a simple browser link.

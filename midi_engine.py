@@ -11,6 +11,7 @@ import mido
 
 PlaybackMode = Literal["stable", "full", "ensemble"]
 MappingMethod = Literal["octave", "nearest", "transpose", "skip"]
+InstrumentCode = Literal["keyboard", "guitar", "bass"]
 UnlockTier = Literal["tier1", "tier2", "tier3", "tier4"]
 
 GAME_MIN_PITCH = 21   # A0
@@ -37,10 +38,12 @@ PITCH_TO_KEY: dict[int, str] = {
 class KeyboardState:
     page: int  # 0 left, 1 middle, 2 right
     octave: int  # -1 Ctrl, 0 Default, +1 Shift
+    layout: str = "chromatic36"
 
 
 @dataclass(frozen=True, slots=True)
 class UnlockProfile:
+    instrument: InstrumentCode
     code: UnlockTier
     label: str
     low: int
@@ -49,53 +52,121 @@ class UnlockProfile:
     stable_states: tuple[KeyboardState, ...]
 
 
-UNLOCK_PROFILES: dict[UnlockTier, UnlockProfile] = {
-    "tier1": UnlockProfile(
-        code="tier1",
-        label="Tier 1 — C3–B4 (Beginner)",
-        low=48,
-        high=71,
-        full_states=(KeyboardState(1, 0),),
-        stable_states=(KeyboardState(1, 0),),
-    ),
-    "tier2": UnlockProfile(
-        code="tier2",
-        label="Tier 2 — C3–B6",
-        low=48,
-        high=95,
-        full_states=(KeyboardState(1, 0), KeyboardState(1, 1)),
-        stable_states=(KeyboardState(1, 0), KeyboardState(1, 1)),
-    ),
-    "tier3": UnlockProfile(
-        code="tier3",
-        label="Tier 3 — C2–B6 (Recommended)",
-        low=36,
-        high=95,
-        # C2-B6 is fully covered by the middle page using Ctrl / Default / Shift.
-        # Keeping every allowed state on page 1 guarantees zero < / > presses.
-        full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
-        stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
-    ),
-    "tier4": UnlockProfile(
-        code="tier4",
-        label="Full range — A0–C8 (Custom only)",
-        low=21,
-        high=108,
-        full_states=tuple(
-            KeyboardState(page, octave)
-            for page in (1, 0, 2)
-            for octave in (0, -1, 1)
-        ),
-        stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
-    ),
+# Standard 36-key chromatic layout used by keyboard and guitar.
+# Bass uses two instrument-specific layouts reconstructed from the in-game UI.
+BASS_DEFAULT_PITCH_TO_KEY: dict[int, str] = {
+    # In-game labels: E1-B2.
+    28: "d", 29: "f", 30: "8", 31: "g", 32: "9", 33: "h",
+    34: "0", 35: "j", 36: "q", 37: "i", 38: "w", 39: "o",
+    40: "e", 41: "r", 42: "p", 43: "t", 44: "[", 45: "y",
+    46: "]", 47: "u",
+}
+
+BASS_HIGH_PITCH_TO_KEY: dict[int, str] = {
+    # In-game High Octave layout: E1-B3.
+    28: "c", 29: "v", 30: "3", 31: "b", 32: "4", 33: "n",
+    34: "5", 35: "m", 36: "a", 37: "6", 38: "s", 39: "7",
+    40: "d", 41: "f", 42: "8", 43: "g", 44: "9", 45: "h",
+    46: "0", 47: "j", 48: "q", 49: "i", 50: "w", 51: "o",
+    52: "e", 53: "r", 54: "p", 55: "t", 56: "[", 57: "y",
+    58: "]", 59: "u",
 }
 
 
-def get_unlock_profile(code: UnlockTier) -> UnlockProfile:
+def _full_chromatic_states() -> tuple[KeyboardState, ...]:
+    return tuple(
+        KeyboardState(page, octave, "chromatic36")
+        for page in (1, 0, 2)
+        for octave in (0, -1, 1)
+    )
+
+
+INSTRUMENT_UNLOCK_PROFILES: dict[InstrumentCode, dict[UnlockTier, UnlockProfile]] = {
+    "keyboard": {
+        "tier1": UnlockProfile(
+            instrument="keyboard", code="tier1", label="Tier 1 — C3–B4",
+            low=48, high=71,
+            full_states=(KeyboardState(1, 0),),
+            stable_states=(KeyboardState(1, 0),),
+        ),
+        "tier2": UnlockProfile(
+            instrument="keyboard", code="tier2", label="Tier 2 — C3–B6",
+            low=48, high=95,
+            full_states=(KeyboardState(1, 0), KeyboardState(1, 1)),
+            stable_states=(KeyboardState(1, 0), KeyboardState(1, 1)),
+        ),
+        "tier3": UnlockProfile(
+            instrument="keyboard", code="tier3", label="Tier 3 — C2–B6",
+            low=36, high=95,
+            full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+            stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+        ),
+        "tier4": UnlockProfile(
+            instrument="keyboard", code="tier4", label="Experimental full range — A0–C8",
+            low=21, high=108,
+            full_states=_full_chromatic_states(),
+            stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
+        ),
+    },
+    "guitar": {
+        "tier1": UnlockProfile(
+            instrument="guitar", code="tier1", label="Tier 1 — C3–B4",
+            low=48, high=71,
+            full_states=(KeyboardState(1, 0),),
+            stable_states=(KeyboardState(1, 0),),
+        ),
+        "tier2": UnlockProfile(
+            instrument="guitar", code="tier2", label="Tier 2 — E2–B4",
+            low=40, high=71,
+            full_states=(KeyboardState(1, -1), KeyboardState(1, 0)),
+            stable_states=(KeyboardState(1, -1), KeyboardState(1, 0)),
+        ),
+        "tier3": UnlockProfile(
+            instrument="guitar", code="tier3", label="Tier 3 — E2–D6",
+            low=40, high=86,
+            full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+            stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+        ),
+        "tier4": UnlockProfile(
+            instrument="guitar", code="tier4", label="Experimental full range — A0–C8",
+            low=21, high=108,
+            full_states=_full_chromatic_states(),
+            stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
+        ),
+    },
+    "bass": {
+        "tier1": UnlockProfile(
+            instrument="bass", code="tier1", label="Tier 1 — E1–B2",
+            low=28, high=47,
+            full_states=(KeyboardState(1, 0, "bass_default"),),
+            stable_states=(KeyboardState(1, 0, "bass_default"),),
+        ),
+        "tier2": UnlockProfile(
+            instrument="bass", code="tier2", label="Tier 2 — E1–B3",
+            low=28, high=59,
+            # High Octave (Shift) exposes the entire E1-B3 bass layout.
+            full_states=(KeyboardState(1, 1, "bass_high"),),
+            stable_states=(KeyboardState(1, 1, "bass_high"),),
+        ),
+    },
+}
+
+# Backwards-compatible alias used by older code/tests.
+UNLOCK_PROFILES = INSTRUMENT_UNLOCK_PROFILES["keyboard"]
+
+
+def get_unlock_profile(
+    code: UnlockTier,
+    instrument: InstrumentCode = "keyboard",
+) -> UnlockProfile:
     try:
-        return UNLOCK_PROFILES[code]
+        return INSTRUMENT_UNLOCK_PROFILES[instrument][code]
     except KeyError as exc:
-        raise ValueError(f"Unknown unlock tier: {code}") from exc
+        raise ValueError(f"Unknown {instrument} unlock tier: {code}") from exc
+
+
+def available_unlock_tiers(instrument: InstrumentCode) -> tuple[UnlockTier, ...]:
+    return tuple(INSTRUMENT_UNLOCK_PROFILES[instrument])
 
 
 @dataclass(slots=True)
@@ -136,6 +207,7 @@ class PlannedEvent:
 @dataclass(slots=True)
 class MidiPlan:
     events: list[PlannedEvent]
+    instrument: InstrumentCode
     duration: float
     mode: PlaybackMode
     note_count: int
@@ -161,6 +233,7 @@ class MidiPlan:
 
 @dataclass(slots=True)
 class PlanOptions:
+    instrument: InstrumentCode = "keyboard"
     mode: PlaybackMode = "stable"
     speed_percent: int = 85
     note_length_percent: int = 150
@@ -179,6 +252,8 @@ class PlanOptions:
     melody_only: bool = False  # backwards-compatible alias for max_notes_per_chord=1
 
     def validate(self) -> None:
+        if self.instrument not in INSTRUMENT_UNLOCK_PROFILES:
+            raise ValueError("Instrument must be keyboard, guitar, or bass.")
         if self.mode not in {"stable", "full", "ensemble"}:
             raise ValueError("Playback mode must be stable, full, or ensemble.")
         if not 25 <= self.speed_percent <= 200:
@@ -195,8 +270,12 @@ class PlanOptions:
             raise ValueError("Octave switch lead must be between 10 and 500 ms.")
         if not 40 <= self.page_switch_delay_ms <= 1000:
             raise ValueError("Page switch delay must be between 40 and 1000 ms.")
-        if self.unlock_tier is not None and self.unlock_tier not in UNLOCK_PROFILES:
-            raise ValueError("Unlock tier must be tier1, tier2, tier3, or tier4.")
+        if self.unlock_tier is not None:
+            if self.unlock_tier not in INSTRUMENT_UNLOCK_PROFILES[self.instrument]:
+                allowed = ", ".join(INSTRUMENT_UNLOCK_PROFILES[self.instrument])
+                raise ValueError(
+                    f"Unlock tier for {self.instrument} must be one of: {allowed}."
+                )
         if self.mapping_method not in {"octave", "nearest", "transpose", "skip"}:
             raise ValueError("Mapping method must be octave, nearest, transpose, or skip.")
         if not 0 <= self.max_notes_per_chord <= 12:
@@ -227,16 +306,35 @@ def fold_pitch_to_range(pitch: int, low: int, high: int) -> int:
 def state_range(state: KeyboardState) -> tuple[int, int]:
     if state.page not in (0, 1, 2) or state.octave not in (-1, 0, 1):
         raise ValueError(f"Invalid keyboard state: {state}")
+    if state.layout == "bass_default":
+        return min(BASS_DEFAULT_PITCH_TO_KEY), max(BASS_DEFAULT_PITCH_TO_KEY)
+    if state.layout == "bass_high":
+        return min(BASS_HIGH_PITCH_TO_KEY), max(BASS_HIGH_PITCH_TO_KEY)
+    if state.layout != "chromatic36":
+        raise ValueError(f"Unknown key layout: {state.layout}")
     offset = (state.page - 1) * 36 + state.octave * 12
     return BASE_KEYBOARD_MIN + offset, BASE_KEYBOARD_MAX + offset
 
 
 def key_for_pitch(pitch: int, state: KeyboardState) -> str:
+    if state.layout == "bass_default":
+        mapping = BASS_DEFAULT_PITCH_TO_KEY
+        try:
+            return mapping[pitch]
+        except KeyError as exc:
+            raise ValueError(f"Bass pitch {pitch} cannot be mapped in Default mode.") from exc
+    if state.layout == "bass_high":
+        mapping = BASS_HIGH_PITCH_TO_KEY
+        try:
+            return mapping[pitch]
+        except KeyError as exc:
+            raise ValueError(f"Bass pitch {pitch} cannot be mapped in High Octave mode.") from exc
     base_pitch = pitch - (state.page - 1) * 36 - state.octave * 12
     try:
         return PITCH_TO_KEY[base_pitch]
     except KeyError as exc:
         raise ValueError(f"Pitch {pitch} cannot be mapped in state {state}.") from exc
+
 
 
 def _extract_notes_and_pedal(
@@ -318,6 +416,7 @@ def _group_notes_by_start(notes: Iterable[SourceNote]) -> list[list[SourceNote]]
 def _limit_notes_per_chord(
     notes: list[SourceNote],
     maximum: int,
+    instrument: InstrumentCode = "keyboard",
 ) -> tuple[list[SourceNote], int]:
     """Keep melody and bass while reducing chords that exceed ``maximum`` notes."""
     if maximum <= 0:
@@ -331,7 +430,10 @@ def _limit_notes_per_chord(
             continue
 
         ordered = sorted(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
-        if maximum == 1:
+        if instrument == "bass":
+            # Bass profiles should preserve the lowest line rather than the melody.
+            selected = ordered[:maximum]
+        elif maximum == 1:
             selected = [max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))]
         else:
             # Preserve one bass note and use the remaining slots for the highest notes.
@@ -410,28 +512,33 @@ def _auto_transpose_notes(
 
 def _configured_range(options: PlanOptions) -> tuple[int, int]:
     if options.unlock_tier is not None:
-        profile = get_unlock_profile(options.unlock_tier)
+        profile = get_unlock_profile(options.unlock_tier, options.instrument)
         return profile.low, profile.high
     return options.unlocked_min_pitch, options.unlocked_max_pitch
 
 
 def _candidate_states(options: PlanOptions) -> list[KeyboardState]:
     if options.unlock_tier is not None:
-        profile = get_unlock_profile(options.unlock_tier)
+        profile = get_unlock_profile(options.unlock_tier, options.instrument)
         return list(profile.stable_states if options.mode == "stable" else profile.full_states)
 
-    if options.mode == "stable":
-        return [KeyboardState(1, octave) for octave in (0, -1, 1)]
+    # Custom ranges still respect each instrument's physical layout.
+    if options.instrument == "bass":
+        states = [
+            KeyboardState(1, 0, "bass_default"),
+            KeyboardState(1, 1, "bass_high"),
+        ]
+    elif options.mode == "stable":
+        states = [KeyboardState(1, octave) for octave in (0, -1, 1)]
+    else:
+        states = list(_full_chromatic_states())
 
-    # Backwards-compatible custom-range behavior.
-    states: list[KeyboardState] = []
-    for page in (1, 0, 2):
-        for octave in (0, -1, 1):
-            state = KeyboardState(page, octave)
-            low, high = state_range(state)
-            if max(low, options.unlocked_min_pitch) <= min(high, options.unlocked_max_pitch):
-                states.append(state)
-    return states
+    usable: list[KeyboardState] = []
+    for state in states:
+        low, high = state_range(state)
+        if max(low, options.unlocked_min_pitch) <= min(high, options.unlocked_max_pitch):
+            usable.append(state)
+    return usable
 
 
 def _global_range(options: PlanOptions) -> tuple[int, int]:
@@ -557,6 +664,12 @@ def _transition_cost(
     return cost
 
 
+def _initial_state(options: PlanOptions) -> KeyboardState:
+    if options.instrument == "bass":
+        return KeyboardState(1, 0, "bass_default")
+    return KeyboardState(1, 0, "chromatic36")
+
+
 def _choose_group_states(
     groups: list[list[SourceNote]],
     options: PlanOptions,
@@ -578,7 +691,7 @@ def _choose_group_states(
             raise ValueError("A MIDI chord cannot be mapped to the configured keyboard range.")
         mapped_by_group.append(choices)
 
-    initial = KeyboardState(1, 0)
+    initial = _initial_state(options)
     dp: list[dict[KeyboardState, tuple[float, KeyboardState | None]]] = []
 
     for index, group in enumerate(groups):
@@ -660,7 +773,7 @@ def _build_notes_and_transitions(
     page_delay = options.page_switch_delay_ms / 1000.0
     octave_lead = options.octave_switch_lead_ms / 1000.0
 
-    current_state = KeyboardState(1, 0)
+    current_state = _initial_state(options)
     timeline_offset = 0.0
     added_delay = 0.0
     previous_group_start = 0.0
@@ -891,7 +1004,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
     source_max = max(note.pitch for note in source_notes)
 
     chord_limit = 1 if options.melody_only else options.max_notes_per_chord
-    source_notes, chord_removed = _limit_notes_per_chord(source_notes, chord_limit)
+    source_notes, chord_removed = _limit_notes_per_chord(source_notes, chord_limit, options.instrument)
     filtered_count += chord_removed
 
     transposed_semitones = 0
@@ -975,6 +1088,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
 
     return MidiPlan(
         events=events,
+        instrument=options.instrument,
         duration=duration,
         mode=options.mode,
         note_count=len(planned_notes),

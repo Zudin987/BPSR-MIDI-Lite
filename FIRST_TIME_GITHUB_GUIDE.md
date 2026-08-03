@@ -1,106 +1,44 @@
-# BPSR MIDI Lite v0.5.2 — First-time GitHub and EXE guide
+# First-time GitHub and EXE Build Guide
 
-Created by **MrEz**.
+## What you need
 
-## What you install
+For the easiest method, you only need:
 
-For the easiest GitHub build method, install nothing. You only need:
+- A GitHub account
+- A browser
+- The extracted BPSR MIDI Lite source folder
 
-- a GitHub account
-- a web browser
-- the extracted source project
-
-GitHub builds the Windows EXE. People downloading your final EXE do not need Python.
+You do not need Python on your own PC when using GitHub Actions.
 
 ## Upload the project
 
-1. Extract `BPSR-MIDI-Lite-source-v0.5.2.zip`.
-2. Create a new public GitHub repository named `BPSR-MIDI-Lite`.
-3. Do not create an extra README or `.gitignore` during repository creation.
-4. Open the extracted `BPSR-MIDI-Lite-v0.5.2` folder.
-5. Upload the contents so `app.py`, `profiles.py`, `midi_engine.py`, and `player.py` appear directly on the repository's main page.
-6. Commit with:
+1. Create a new public GitHub repository named `BPSR-MIDI-Lite`.
+2. Do not create an extra README or licence.
+3. Open the extracted source folder.
+4. Upload everything inside it so `app.py` appears at the repository root.
+5. Make sure `.github/workflows/build-windows.yml` exists. Hidden dot folders can be created or edited directly on GitHub if Windows does not show them.
+6. Commit the files.
 
-```text
-Upload BPSR MIDI Lite v0.5.2
-```
-
-### Hidden `.github` and `.gitignore`
-
-Windows may hide dot-prefixed items from the browser upload picker.
-
-For the workflow, open this source file in Notepad:
-
-```text
-WORKFLOW_build-windows.yml.txt
-```
-
-Then on GitHub choose **Add file → Create new file**, name it:
-
-```text
-.github/workflows/build-windows.yml
-```
-
-Paste the workflow text and commit it.
-
-For `.gitignore`, choose **Add file → Create new file**, enter `.gitignore`, and paste the contents of the source `.gitignore` file.
-
-## Build the EXE
+## Build a test EXE
 
 1. Open the repository's **Actions** tab.
 2. Select **Build Windows EXE**.
 3. Click **Run workflow**.
-4. Leave `release_version` empty for a test build.
-5. Wait for the green success check.
-6. Open the completed run and download the `BPSR-MIDI-Lite-Windows` artifact.
-7. Extract it and test `BPSR-MIDI-Lite.exe`.
+4. Leave the release version blank.
+5. Wait for a green success mark.
+6. Download the artifact from the completed workflow page.
+7. Extract and test `BPSR-MIDI-Lite.exe`.
 
-## Publish a permanent release
+The EXE bundles Python and required libraries. Other users only download and run the EXE; they do not install Python.
 
-Run the workflow again and enter:
+## Publish a release
 
-```text
-v0.5.2
-```
+Run the workflow again and enter a new version such as:
 
-The workflow creates a GitHub Release containing:
+`v0.6.0`
 
-- `BPSR-MIDI-Lite.exe`
-- `BPSR-MIDI-Lite-Windows-x64.zip`
-- `SHA256SUMS.txt`
+The workflow publishes the EXE, portable ZIP and SHA-256 checksums to GitHub Releases.
 
-Use a new version for later updates, such as `v0.5.2` or `v0.6.0`.
+## Updating later
 
-## Update an existing repository
-
-Upload and replace the visible files from the v0.5.2 update ZIP, including:
-
-```text
-app.py
-profiles.py
-version_info.txt
-build_exe.bat
-README.md
-END_USER_GUIDE.md
-CHANGELOG.md
-tests/test_profiles.py
-```
-
-Your existing `.github/workflows/build-windows.yml` can remain unchanged if it already uses the v6 GitHub actions. Rebuild the EXE after committing the files.
-
-## SmartScreen
-
-The EXE is portable but unsigned, so Windows may initially show an unknown-publisher warning. Distribute it only through your official GitHub Release and include `SHA256SUMS.txt`.
-
-
-## v0.5.2 Online Sequencer files
-
-Make sure these files are uploaded at the repository root before rebuilding:
-
-```text
-online_sequencer.py
-online_sequencer_dialog.py
-tests/test_online_sequencer.py
-```
-
-No browser extension or API key is required. The feature uses normal HTTPS requests at runtime.
+Upload the newer source files, commit them, then run the workflow again with a new version such as `v0.6.1` or `v0.7.0`.

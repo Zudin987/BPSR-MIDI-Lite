@@ -1,71 +1,60 @@
-# BPSR MIDI Lite v0.5.2 — End-user guide
+# BPSR MIDI Lite v0.6.0 — User Guide
 
-Created by **MrEz**.
+## First setup
 
-## Install
+1. Extract the downloaded Windows ZIP.
+2. Put `BPSR-MIDI-Lite.exe` in its own folder.
+3. Run it and accept the Administrator prompt.
+4. Click **Open Folder**.
+5. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
+6. Click **Reload**.
 
-No installation is required. Extract the portable ZIP and run:
+## Choose the instrument first
 
-```text
-BPSR-MIDI-Lite.exe
-```
+### Keyboard
 
-Accept the Administrator prompt. Python is not required.
+- Tier 1: C3–B4
+- Tier 2: C3–B6
+- Tier 3: C2–B6
 
-## Add songs
+Before Start, use the middle keyboard page and Default octave.
 
-1. Click **Open Folder**.
-2. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
-3. Click **Reload**.
-4. Select the song from the dropdown.
+### Guitar
 
-The preview updates automatically; there is no Analyze button.
+- Tier 1: C3–B4
+- Tier 2: E2–B4
+- Tier 3: E2–D6
 
-## Find and download a public sequence
+Before Start, use the middle guitar page and Default octave. The app changes Low/High Octave when required.
 
-1. Click **Find Songs**.
-2. Search by song title.
-3. Double-click a result to preview it in your browser.
-4. Select it and click **Download selected MIDI**.
-5. The converted file is stored in `MIDI\Online Sequencer` and selected automatically.
+### Bass
 
-A direct Online Sequencer URL or numeric ID can also be pasted into the lower box. This is an optional third-party integration, so it requires internet access and may be unavailable when the site changes or is offline. Do not bulk-download content; respect the sequence creator and Online Sequencer's rules.
+- Tier 1: E1–B2
+- Tier 2: E1–B3
 
-## Choose a profile
+Before Start, open Bass in Default mode. Tier 2 automatically presses Shift for the High Octave layout. Bass has no Low Octave Ctrl mode.
 
-- **Tier 1 — C3–B4:** for a new character. No Ctrl, Shift, or page switching.
-- **Tier 2 — C3–B6:** Default + Shift, still no page switching.
-- **Tier 3 — C2–B6:** Ctrl + Default + Shift on the middle page; guaranteed no `<` or `>`.
-- **Custom:** exposes advanced settings and the optional A0–C8 full-range experiment.
+## Playing
 
-Tier 1–3 are locked to prevent incompatible choices. Tier 3 is recommended for most unlocked players.
+1. Select a MIDI from the song list.
+2. Wait for the automatic preview to say Ready.
+3. Open the selected instrument in BPSR.
+4. Click Start.
+5. Focus BPSR before the countdown ends.
+6. Press F10 to stop at any time.
 
-## Play
+## Find Songs Online
 
-1. Open the BPSR piano.
-2. Set the **middle page + Default octave**.
-3. Press **Start**.
-4. Focus the game during the countdown.
-5. Press **F10** to stop.
+The button opens Online Sequencer in your browser. Download a MIDI manually, copy it into the app MIDI folder, then click Reload.
 
-## Check input
+## Custom profile
 
-Click **Test input (3s)** and focus Notepad. It should type `asdf`.
+Custom reveals advanced controls for speed, note length, mapping and chord detail. Keyboard and Guitar also expose an experimental full range that may use `<` / `>` page switching. Bass Custom is limited to its known E1–B2 and E1–B3 layouts.
 
-Start with **Win32 scan code**. Try another input method only when the recommended method does not work with the game.
+## Troubleshooting
 
-## Windows theme
-
-The application follows Windows light/dark mode automatically. It checks again while running, so a Windows theme change should update the app without restarting.
-
-## Song preview
-
-The preview shows:
-
-- played note count and duration
-- original and played pitch ranges
-- how many notes were remapped, skipped, or simplified
-- predicted `<` / `>` page-key presses
-- Ctrl/Shift changes and timing compensation
-
-Tier 1–3 should always report zero page-key presses. A page-switch warning is relevant only to Custom A0–C8 playback.
+- No input: use **Test input (3s)** with Notepad, then try another input backend.
+- Wrong notes: confirm the selected instrument and unlock profile match the game.
+- Bass Tier 2 sounds wrong: start from Bass Default mode; do not manually enable Shift first.
+- New songs missing: place them in the MIDI folder and click Reload.
+- App looks too bright/dark: it follows the Windows app theme automatically.

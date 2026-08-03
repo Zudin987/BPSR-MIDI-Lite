@@ -4,12 +4,21 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+InstrumentCode = Literal["keyboard", "guitar", "bass"]
 ProfileCode = Literal["tier1", "tier2", "tier3", "custom"]
+
+INSTRUMENT_LABELS: dict[str, InstrumentCode] = {
+    "Keyboard": "keyboard",
+    "Guitar": "guitar",
+    "Bass": "bass",
+}
+INSTRUMENT_LABELS_REVERSE = {code: label for label, code in INSTRUMENT_LABELS.items()}
 
 
 @dataclass(frozen=True, slots=True)
 class PlaybackProfile:
-    code: ProfileCode
+    instrument: InstrumentCode
+    code: str
     label: str
     summary: str
     mode: str
@@ -40,69 +49,115 @@ class PlaybackProfile:
         }
 
 
-FIXED_PROFILES: dict[str, PlaybackProfile] = {
-    "tier1": PlaybackProfile(
-        code="tier1",
-        label="Tier 1 — C3–B4 (Beginner)",
-        summary=(
-            "For newly unlocked instruments. Uses only C3–B4, never uses Ctrl, Shift, < or >, "
-            "auto-transposes the song, and keeps bass + melody for clean playback."
+FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
+    "keyboard": {
+        "tier1": PlaybackProfile(
+            instrument="keyboard", code="tier1", label="Tier 1 — C3–B4",
+            summary=(
+                "For the first keyboard unlock. Uses only C3–B4 with no Ctrl, Shift, "
+                "or page keys. The song is automatically fitted to the available notes."
+            ),
+            mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
+            minimum_note=130,
         ),
-        mode="stable",
-        unlock_tier="tier1",
-        mapping="transpose",
-        chord_limit=2,
-        speed=85,
-        note_length=150,
-        minimum_note=130,
-    ),
-    "tier2": PlaybackProfile(
-        code="tier2",
-        label="Tier 2 — C3–B6",
-        summary=(
-            "Uses C3–B6 with Default + Shift. It never presses < or > and keeps bass, melody, "
-            "and one harmony note in dense chords."
+        "tier2": PlaybackProfile(
+            instrument="keyboard", code="tier2", label="Tier 2 — C3–B6",
+            summary=(
+                "Uses C3–B6 with Default + Shift. It never presses < or > and keeps "
+                "a balanced amount of chord detail."
+            ),
+            mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
         ),
-        mode="stable",
-        unlock_tier="tier2",
-        mapping="octave",
-        chord_limit=3,
-    ),
-    "tier3": PlaybackProfile(
-        code="tier3",
-        label="Tier 3 — C2–B6 (Recommended)",
-        summary=(
-            "Uses the full safe middle-page range C2–B6 with Ctrl / Default / Shift. "
-            "It guarantees no < or > page presses and keeps all chord notes."
+        "tier3": PlaybackProfile(
+            instrument="keyboard", code="tier3", label="Tier 3 — C2–B6 (Recommended)",
+            summary=(
+                "Uses the complete safe middle-page range with Ctrl / Default / Shift. "
+                "It guarantees zero < or > page presses."
+            ),
+            mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
         ),
-        mode="stable",
-        unlock_tier="tier3",
-        mapping="octave",
-        chord_limit=0,
-    ),
+    },
+    "guitar": {
+        "tier1": PlaybackProfile(
+            instrument="guitar", code="tier1", label="Tier 1 — C3–B4",
+            summary=(
+                "For the first guitar unlock. Uses C3–B4 in Default mode and never "
+                "presses Ctrl, Shift, < or >."
+            ),
+            mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
+            minimum_note=130,
+        ),
+        "tier2": PlaybackProfile(
+            instrument="guitar", code="tier2", label="Tier 2 — E2–B4",
+            summary=(
+                "Uses Guitar Low Octave (Ctrl) plus Default to cover E2–B4. "
+                "It never changes keyboard pages."
+            ),
+            mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
+        ),
+        "tier3": PlaybackProfile(
+            instrument="guitar", code="tier3", label="Tier 3 — E2–D6",
+            summary=(
+                "Uses Guitar Low Octave, Default and High Octave to cover E2–D6. "
+                "It stays on the middle page and never presses < or >."
+            ),
+            mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
+        ),
+    },
+    "bass": {
+        "tier1": PlaybackProfile(
+            instrument="bass", code="tier1", label="Tier 1 — E1–B2",
+            summary=(
+                "Uses the Bass Default layout from E1–B2. Dense MIDI chords are reduced "
+                "to the lowest bass note so the line remains clean."
+            ),
+            mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=1,
+            note_length=135, minimum_note=130,
+        ),
+        "tier2": PlaybackProfile(
+            instrument="bass", code="tier2", label="Tier 2 — E1–B3",
+            summary=(
+                "Uses Bass High Octave (Shift) to expose E1–B3. The app presses Shift "
+                "at playback start and resets it afterward. Bass has no Low Octave mode."
+            ),
+            mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=1,
+            note_length=135, minimum_note=130,
+        ),
+    },
 }
 
-PROFILE_LABELS: dict[str, str] = {
-    profile.label: code for code, profile in FIXED_PROFILES.items()
-}
-PROFILE_LABELS["Custom — advanced / full range"] = "custom"
-PROFILE_LABELS_REVERSE = {code: label for label, code in PROFILE_LABELS.items()}
+CUSTOM_LABEL = "Custom — advanced settings"
 
 
-def get_fixed_profile(code: str) -> PlaybackProfile:
+def profile_labels_for(instrument: InstrumentCode) -> dict[str, str]:
+    labels = {
+        profile.label: code
+        for code, profile in FIXED_PROFILES[instrument].items()
+    }
+    labels[CUSTOM_LABEL] = "custom"
+    return labels
+
+
+def profile_label_for(instrument: InstrumentCode, code: str) -> str:
+    for label, profile_code in profile_labels_for(instrument).items():
+        if profile_code == code:
+            return label
+    return next(iter(profile_labels_for(instrument)))
+
+
+def default_profile_code(instrument: InstrumentCode) -> str:
+    return "tier2" if instrument == "bass" else "tier3"
+
+
+def get_fixed_profile(instrument: InstrumentCode, code: str) -> PlaybackProfile:
     try:
-        return FIXED_PROFILES[code]
+        return FIXED_PROFILES[instrument][code]
     except KeyError as exc:
-        raise ValueError(f"Unknown fixed profile: {code}") from exc
+        raise ValueError(f"Unknown {instrument} fixed profile: {code}") from exc
 
 
-def allowed_modes_for_unlock(unlock_tier: str) -> tuple[str, ...]:
-    """Return meaningful modes for a Custom unlock range.
-
-    Tier 1, Tier 2 and Tier 3 are all fixed to the middle keyboard page. Full
-    range solo is only useful for the Custom A0–C8 range, where < / > page
-    switching is available.
-    """
-    if unlock_tier in {"tier1", "tier2", "tier3"}:
-        return ("stable", "ensemble")
-    return ("stable", "full", "ensemble")
+def allowed_modes_for_unlock(instrument: InstrumentCode, unlock_tier: str) -> tuple[str, ...]:
+    # Only keyboard/guitar Custom full range can use page switching.
+    if instrument in {"keyboard", "guitar"} and unlock_tier == "tier4":
+        return ("stable", "full", "ensemble")
+    return ("stable", "ensemble")

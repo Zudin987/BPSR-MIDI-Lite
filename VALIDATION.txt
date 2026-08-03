@@ -1,14 +1,16 @@
-BPSR MIDI Lite v0.5.2 validation
+BPSR MIDI Lite v0.6.0 validation
 
-- 30 automated tests passed.
-- Existing profile, MIDI planning, theme, library, and Windows input tests remain passing.
-- Online Sequencer tests cover:
-  - numeric ID and URL extraction
-  - public-search HTML result parsing and deduplication
-  - protobuf sequence/settings/note/BPM-marker parsing
-  - Online Sequencer timing conversion into standard MIDI ticks
-  - saving into the MIDI/Online Sequencer library folder
-- Handcrafted reference data verifies BPM 120 at tick 0 and BPM 140 at tick 960.
-- Imported note timing verifies sequence time 4.0 -> MIDI tick 480 and length 2.0 -> note-off tick 720.
-- The app still requires a Windows smoke test after GitHub builds the EXE.
-- Live Online Sequencer network behavior cannot be tested in the offline build environment and may change independently of this project.
+- 36 automated tests passed.
+- Tkinter UI smoke test passed for switching Keyboard → Guitar → Bass.
+- 48 reference MIDI files were planned across every fixed profile:
+  - Keyboard: 3 profiles
+  - Guitar: 3 profiles
+  - Bass: 2 profiles
+  - Total: 384 successful plans
+- Every fixed profile produced 0 predicted < / > page presses.
+- Guitar profile range checks passed for C3-B4, E2-B4 and E2-D6.
+- Bass mapping checks passed for:
+  - Tier 1 E1-B2 Default key layout
+  - Tier 2 E1-B3 High Octave Shift layout
+- Bass chord filtering verified that the lowest note is retained.
+- Windows keyboard injection cannot be exercised inside BPSR from the Linux build environment; the existing v0.4.3 input implementation is unchanged.

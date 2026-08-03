@@ -10,18 +10,20 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import messagebox, ttk
 
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
-from online_sequencer_dialog import OnlineSequencerDialog
 from player import MidiPlayer
 from profiles import (
-    FIXED_PROFILES,
-    PROFILE_LABELS,
-    PROFILE_LABELS_REVERSE,
+    INSTRUMENT_LABELS,
+    INSTRUMENT_LABELS_REVERSE,
     allowed_modes_for_unlock,
+    default_profile_code,
     get_fixed_profile,
+    profile_label_for,
+    profile_labels_for,
 )
 from theme import apply_theme, system_prefers_dark_mode
 from win_input import (
@@ -34,7 +36,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "0.5.2"
+APP_VERSION = "0.6.0"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -44,13 +46,24 @@ MODE_LABELS = {
     "Ensemble-safe — preserve the original timeline": "ensemble",
 }
 MODE_LABELS_REVERSE = {value: key for key, value in MODE_LABELS.items()}
-UNLOCK_LABELS = {
-    "Tier 1 — C3–B4": "tier1",
-    "Tier 2 — C3–B6": "tier2",
-    "Tier 3 — C2–B6 (no < / >)": "tier3",
-    "Full range — A0–C8 (may use < / >)": "tier4",
+UNLOCK_LABELS_BY_INSTRUMENT: dict[str, dict[str, str]] = {
+    "keyboard": {
+        "Tier 1 — C3–B4": "tier1",
+        "Tier 2 — C3–B6": "tier2",
+        "Tier 3 — C2–B6 (no < / >)": "tier3",
+        "Experimental full range — A0–C8": "tier4",
+    },
+    "guitar": {
+        "Tier 1 — C3–B4": "tier1",
+        "Tier 2 — E2–B4": "tier2",
+        "Tier 3 — E2–D6 (no < / >)": "tier3",
+        "Experimental full range — A0–C8": "tier4",
+    },
+    "bass": {
+        "Tier 1 — E1–B2": "tier1",
+        "Tier 2 — E1–B3": "tier2",
+    },
 }
-UNLOCK_LABELS_REVERSE = {value: key for key, value in UNLOCK_LABELS.items()}
 MAPPING_LABELS = {
     "Octave fold (recommended)": "octave",
     "Nearest playable note": "nearest",
@@ -58,14 +71,20 @@ MAPPING_LABELS = {
     "Skip notes that cannot be played": "skip",
 }
 MAPPING_LABELS_REVERSE = {value: key for key, value in MAPPING_LABELS.items()}
-CHORD_LABELS = {
+STANDARD_CHORD_LABELS = {
     "All notes": 0,
     "Melody only": 1,
     "Bass + melody": 2,
     "Bass + melody + 1 harmony": 3,
     "Bass + melody + 2 harmonies": 4,
 }
-CHORD_LABELS_REVERSE = {value: key for key, value in CHORD_LABELS.items()}
+BASS_CHORD_LABELS = {
+    "All notes": 0,
+    "Lowest bass note only": 1,
+    "Lowest 2 notes": 2,
+    "Lowest 3 notes": 3,
+    "Lowest 4 notes": 4,
+}
 
 MIDI_EXTENSIONS = {".mid", ".midi"}
 
@@ -77,19 +96,27 @@ INPUT_BACKEND_LABELS = {
 }
 INPUT_BACKEND_LABELS_REVERSE = {value: key for key, value in INPUT_BACKEND_LABELS.items()}
 
-CUSTOM_DEFAULTS: dict[str, object] = {
-    "mode": "stable",
-    "unlock_tier": "tier3",
-    "mapping": "octave",
-    "chord_limit": 0,
-    "speed": 85,
-    "length": 150,
-    "minimum_note": 120,
-    "page_delay": 220,
-    "modifier_lead": 55,
-    "pedal": False,
-    "ignore_percussion": True,
+CUSTOM_DEFAULTS_BY_INSTRUMENT: dict[str, dict[str, object]] = {
+    "keyboard": {
+        "mode": "stable", "unlock_tier": "tier3", "mapping": "octave",
+        "chord_limit": 0, "speed": 85, "length": 150, "minimum_note": 120,
+        "page_delay": 220, "modifier_lead": 55, "pedal": False,
+        "ignore_percussion": True,
+    },
+    "guitar": {
+        "mode": "stable", "unlock_tier": "tier3", "mapping": "octave",
+        "chord_limit": 0, "speed": 85, "length": 150, "minimum_note": 120,
+        "page_delay": 220, "modifier_lead": 55, "pedal": False,
+        "ignore_percussion": True,
+    },
+    "bass": {
+        "mode": "stable", "unlock_tier": "tier2", "mapping": "octave",
+        "chord_limit": 1, "speed": 85, "length": 135, "minimum_note": 130,
+        "page_delay": 220, "modifier_lead": 55, "pedal": False,
+        "ignore_percussion": True,
+    },
 }
+
 
 
 def _application_directory() -> Path:
@@ -156,20 +183,27 @@ class App(tk.Tk):
         self.ui_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._last_f10 = False
         self._input_test_running = False
-        self._online_dialog: OnlineSequencerDialog | None = None
         self._analysis_job: str | None = None
         self._suspend_auto_analysis = True
+        self._active_instrument_code = "keyboard"
         self._active_profile_code = "tier3"
-        self._custom_settings: dict[str, object] = dict(CUSTOM_DEFAULTS)
+        self._profile_by_instrument: dict[str, str] = {
+            "keyboard": "tier3", "guitar": "tier3", "bass": "tier2"
+        }
+        self._custom_settings_by_instrument: dict[str, dict[str, object]] = {
+            code: dict(settings)
+            for code, settings in CUSTOM_DEFAULTS_BY_INSTRUMENT.items()
+        }
 
         self.file_var = tk.StringVar()
         self.midi_folder_var = tk.StringVar(value=str(_default_midi_folder()))
         self.midi_display_var = tk.StringVar()
         self._midi_lookup: dict[str, Path] = {}
 
-        self.profile_var = tk.StringVar(value=PROFILE_LABELS_REVERSE["tier3"])
+        self.instrument_var = tk.StringVar(value=INSTRUMENT_LABELS_REVERSE["keyboard"])
+        self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier3"))
         self.mode_var = tk.StringVar(value=MODE_LABELS_REVERSE["stable"])
-        self.unlock_var = tk.StringVar(value=UNLOCK_LABELS_REVERSE["tier3"])
+        self.unlock_var = tk.StringVar(value="Tier 3 — C2–B6 (no < / >)")
         self.speed_var = tk.IntVar(value=85)
         self.length_var = tk.IntVar(value=150)
         self.minimum_note_var = tk.IntVar(value=120)
@@ -177,7 +211,7 @@ class App(tk.Tk):
         self.modifier_lead_var = tk.IntVar(value=55)
         self.start_delay_var = tk.DoubleVar(value=3.0)
         self.mapping_var = tk.StringVar(value=MAPPING_LABELS_REVERSE["octave"])
-        self.chord_var = tk.StringVar(value=CHORD_LABELS_REVERSE[0])
+        self.chord_var = tk.StringVar(value="All notes")
         self.pedal_var = tk.BooleanVar(value=False)
         self.percussion_var = tk.BooleanVar(value=True)
         self.minimize_var = tk.BooleanVar(value=True)
@@ -188,8 +222,8 @@ class App(tk.Tk):
         self.profile_summary_var = tk.StringVar()
         self.notice_var = tk.StringVar(
             value=(
-                "Before Start: open the in-game piano, select the MIDDLE page + Default octave, "
-                "then focus the game during the countdown."
+                "Before Start: open the selected in-game instrument, then focus the game "
+                "during the countdown."
             )
         )
         self.admin_var = tk.StringVar(value="Administrator access: checking…")
@@ -235,7 +269,7 @@ class App(tk.Tk):
         )
         ttk.Label(
             outer,
-            text="Simple MIDI keyboard player for Blue Protocol: Star Resonance",
+            text="Simple MIDI instrument player for Blue Protocol: Star Resonance",
         ).pack(anchor="w")
         ttk.Label(outer, textvariable=self.admin_var, style="Hint.TLabel").pack(
             anchor="w", pady=(2, 10)
@@ -250,18 +284,29 @@ class App(tk.Tk):
             justify="left",
         ).pack(anchor="w")
 
-        profile_frame = ttk.LabelFrame(outer, text="1. Choose your unlocked-key profile", padding=10)
+        profile_frame = ttk.LabelFrame(outer, text="1. Choose instrument and unlock profile", padding=10)
         profile_frame.pack(fill="x", pady=(0, 10))
         profile_frame.columnconfigure(1, weight=1)
-        ttk.Label(profile_frame, text="Profile").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Label(profile_frame, text="Instrument").grid(row=0, column=0, sticky="w", padx=(0, 10), pady=3)
+        self.instrument_combo = ttk.Combobox(
+            profile_frame,
+            textvariable=self.instrument_var,
+            values=list(INSTRUMENT_LABELS),
+            state="readonly",
+            width=20,
+        )
+        self.instrument_combo.grid(row=0, column=1, sticky="w", pady=3)
+        self.instrument_combo.bind("<<ComboboxSelected>>", lambda _event: self._instrument_changed())
+
+        ttk.Label(profile_frame, text="Profile").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=3)
         self.profile_combo = ttk.Combobox(
             profile_frame,
             textvariable=self.profile_var,
-            values=list(PROFILE_LABELS),
+            values=list(profile_labels_for("keyboard")),
             state="readonly",
             width=42,
         )
-        self.profile_combo.grid(row=0, column=1, sticky="ew")
+        self.profile_combo.grid(row=1, column=1, sticky="ew", pady=3)
         self.profile_combo.bind("<<ComboboxSelected>>", lambda _event: self._profile_changed())
         ttk.Label(
             profile_frame,
@@ -269,7 +314,7 @@ class App(tk.Tk):
             wraplength=760,
             justify="left",
             style="Hint.TLabel",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
         file_frame = ttk.LabelFrame(outer, text="2. Choose a song", padding=10)
         file_frame.pack(fill="x", pady=(0, 10))
@@ -283,7 +328,7 @@ class App(tk.Tk):
         )
         self.midi_combo.grid(row=0, column=0, sticky="ew")
         self.midi_combo.bind("<<ComboboxSelected>>", lambda _event: self._midi_selected())
-        ttk.Button(file_frame, text="Find Songs", command=self._open_online_sequencer).grid(
+        ttk.Button(file_frame, text="Find Songs Online", command=self._open_online_sequencer).grid(
             row=0, column=1, padx=(8, 0)
         )
         ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
@@ -379,8 +424,8 @@ class App(tk.Tk):
         ttk.Label(
             outer,
             text=(
-                "F10 is an emergency stop. Tier 1–3 lock safe settings and never press < or >. "
-                "Choose Custom only for manual tuning or full-range page switching. "
+                "F10 is an emergency stop. Instrument profiles lock safe mappings for Keyboard, Guitar and Bass. "
+                "Choose Custom only for manual tuning or experimental full-range page switching. "
                 f"The app follows the Windows light/dark theme automatically. Input ABI: {input_abi_diagnostics()}."
             ),
             wraplength=800,
@@ -410,7 +455,7 @@ class App(tk.Tk):
         self.unlock_combo = ttk.Combobox(
             settings,
             textvariable=self.unlock_var,
-            values=list(UNLOCK_LABELS),
+            values=list(UNLOCK_LABELS_BY_INSTRUMENT["keyboard"]),
             state="readonly",
             width=25,
         )
@@ -442,7 +487,7 @@ class App(tk.Tk):
         self.chord_combo = ttk.Combobox(
             settings,
             textvariable=self.chord_var,
-            values=list(CHORD_LABELS),
+            values=list(STANDARD_CHORD_LABELS),
             state="readonly",
             width=27,
         )
@@ -511,14 +556,34 @@ class App(tk.Tk):
         self.start_delay_var.trace_add("write", lambda *_args: self._save_config_if_ready())
         self.minimize_var.trace_add("write", lambda *_args: self._save_config_if_ready())
 
+    def _instrument_code(self) -> str:
+        return INSTRUMENT_LABELS.get(self.instrument_var.get(), "keyboard")
+
+    def _profile_labels(self) -> dict[str, str]:
+        return profile_labels_for(self._instrument_code())  # type: ignore[arg-type]
+
     def _profile_code(self) -> str:
-        return PROFILE_LABELS.get(self.profile_var.get(), "tier3")
+        return self._profile_labels().get(
+            self.profile_var.get(),
+            default_profile_code(self._instrument_code()),  # type: ignore[arg-type]
+        )
 
     def _mode_code(self) -> str:
         return MODE_LABELS.get(self.mode_var.get(), "stable")
 
+    def _unlock_labels(self) -> dict[str, str]:
+        return UNLOCK_LABELS_BY_INSTRUMENT[self._instrument_code()]
+
     def _unlock_code(self) -> str:
-        return UNLOCK_LABELS.get(self.unlock_var.get(), "tier3")
+        default = "tier2" if self._instrument_code() == "bass" else "tier3"
+        return self._unlock_labels().get(self.unlock_var.get(), default)
+
+    def _unlock_label_for(self, code: str) -> str:
+        reverse = {value: key for key, value in self._unlock_labels().items()}
+        return reverse.get(code, next(iter(self._unlock_labels())))
+
+    def _chord_labels(self) -> dict[str, int]:
+        return BASS_CHORD_LABELS if self._instrument_code() == "bass" else STANDARD_CHORD_LABELS
 
     def _input_backend_code(self) -> str:
         return INPUT_BACKEND_LABELS.get(self.input_backend_var.get(), "scan")
@@ -528,7 +593,7 @@ class App(tk.Tk):
             "mode": self._mode_code(),
             "unlock_tier": self._unlock_code(),
             "mapping": MAPPING_LABELS.get(self.mapping_var.get(), "octave"),
-            "chord_limit": CHORD_LABELS.get(self.chord_var.get(), 0),
+            "chord_limit": self._chord_labels().get(self.chord_var.get(), 0),
             "speed": int(self.speed_var.get()),
             "length": int(self.length_var.get()),
             "minimum_note": int(self.minimum_note_var.get()),
@@ -540,21 +605,21 @@ class App(tk.Tk):
 
     def _apply_settings(self, settings: dict[str, object]) -> None:
         self.mode_var.set(MODE_LABELS_REVERSE.get(str(settings.get("mode", "stable")), MODE_LABELS_REVERSE["stable"]))
-        self.unlock_var.set(
-            UNLOCK_LABELS_REVERSE.get(
-                str(settings.get("unlock_tier", "tier3")),
-                UNLOCK_LABELS_REVERSE["tier3"],
-            )
-        )
+        requested_unlock = str(settings.get("unlock_tier", "tier3"))
+        if requested_unlock not in self._unlock_labels().values():
+            requested_unlock = "tier2" if self._instrument_code() == "bass" else "tier3"
+        self.unlock_var.set(self._unlock_label_for(requested_unlock))
         self.mapping_var.set(
             MAPPING_LABELS_REVERSE.get(
                 str(settings.get("mapping", "octave")),
                 MAPPING_LABELS_REVERSE["octave"],
             )
         )
+        chord_reverse = {value: key for key, value in self._chord_labels().items()}
         self.chord_var.set(
-            CHORD_LABELS_REVERSE.get(int(settings.get("chord_limit", 0)), CHORD_LABELS_REVERSE[0])
+            chord_reverse.get(int(settings.get("chord_limit", 0)), chord_reverse[0])
         )
+        self.chord_combo.configure(values=list(self._chord_labels()))
         self.speed_var.set(int(settings.get("speed", 85)))
         self.length_var.set(int(settings.get("length", 150)))
         self.minimum_note_var.set(int(settings.get("minimum_note", 120)))
@@ -563,21 +628,57 @@ class App(tk.Tk):
         self.pedal_var.set(bool(settings.get("pedal", False)))
         self.percussion_var.set(bool(settings.get("ignore_percussion", True)))
 
+    def _instrument_changed(self) -> None:
+        if self._suspend_auto_analysis:
+            return
+        previous_instrument = self._active_instrument_code
+        if self._active_profile_code == "custom":
+            self._custom_settings_by_instrument[previous_instrument] = self._capture_settings()
+        self._profile_by_instrument[previous_instrument] = self._active_profile_code
+
+        instrument = self._instrument_code()
+        self._active_instrument_code = instrument
+        labels = profile_labels_for(instrument)  # type: ignore[arg-type]
+        self.profile_combo.configure(values=list(labels))
+        selected = self._profile_by_instrument.get(
+            instrument, default_profile_code(instrument)  # type: ignore[arg-type]
+        )
+        if selected not in labels.values():
+            selected = default_profile_code(instrument)  # type: ignore[arg-type]
+
+        self._suspend_auto_analysis = True
+        try:
+            self.profile_var.set(profile_label_for(instrument, selected))  # type: ignore[arg-type]
+            if selected == "custom":
+                self._apply_settings(self._custom_settings_by_instrument[instrument])
+            else:
+                self._apply_settings(get_fixed_profile(instrument, selected).settings())  # type: ignore[arg-type]
+            self._active_profile_code = selected
+            self._profile_by_instrument[instrument] = selected
+            self._apply_profile_ui(schedule=False)
+        finally:
+            self._suspend_auto_analysis = False
+
+        self._schedule_analysis()
+        self._save_config()
+
     def _profile_changed(self) -> None:
         if self._suspend_auto_analysis:
             return
+        instrument = self._instrument_code()
         previous = self._active_profile_code
         selected = self._profile_code()
         if previous == "custom":
-            self._custom_settings = self._capture_settings()
+            self._custom_settings_by_instrument[instrument] = self._capture_settings()
 
         self._suspend_auto_analysis = True
         try:
             if selected == "custom":
-                self._apply_settings(self._custom_settings)
+                self._apply_settings(self._custom_settings_by_instrument[instrument])
             else:
-                self._apply_settings(get_fixed_profile(selected).settings())
+                self._apply_settings(get_fixed_profile(instrument, selected).settings())  # type: ignore[arg-type]
             self._active_profile_code = selected
+            self._profile_by_instrument[instrument] = selected
             self._apply_profile_ui(schedule=False)
         finally:
             self._suspend_auto_analysis = False
@@ -586,50 +687,80 @@ class App(tk.Tk):
         self._save_config()
 
     def _apply_profile_ui(self, schedule: bool = True) -> None:
+        instrument = self._instrument_code()
         profile_code = self._profile_code()
+        self._active_instrument_code = instrument
         self._active_profile_code = profile_code
+        self._profile_by_instrument[instrument] = profile_code
+
+        self.unlock_combo.configure(values=list(self._unlock_labels()))
+        self.chord_combo.configure(values=list(self._chord_labels()))
 
         if profile_code == "custom":
-            self.profile_summary_var.set(
-                "Advanced profile. All playback settings are editable. Choose Full range A0–C8 "
-                "only when you want to experiment with < / > page switching."
-            )
+            if instrument == "bass":
+                summary = (
+                    "Advanced Bass settings. Bass supports Default E1–B2 and High Octave "
+                    "E1–B3; it has no Low Octave (Ctrl) mode."
+                )
+            else:
+                summary = (
+                    "Advanced settings. The experimental full range may use < / > page "
+                    "switching; the normal Tier profiles never do."
+                )
+            self.profile_summary_var.set(summary)
             self.custom_settings_frame.pack_forget()
-            self.custom_settings_frame.pack(
-                fill="x",
-                pady=(0, 10),
-                before=self.analysis_frame,
-            )
+            self.custom_settings_frame.pack(fill="x", pady=(0, 10), before=self.analysis_frame)
             self._refresh_custom_mode_choices()
         else:
-            profile = get_fixed_profile(profile_code)
+            profile = get_fixed_profile(instrument, profile_code)  # type: ignore[arg-type]
             self.profile_summary_var.set(profile.summary + " Settings are locked for this profile.")
             self.custom_settings_frame.pack_forget()
 
         mode = self._mode_code()
         tier = self._unlock_code()
-        profile = get_unlock_profile(tier)  # type: ignore[arg-type]
-        if mode == "full" and tier == "tier4":
+        profile = get_unlock_profile(tier, instrument)  # type: ignore[arg-type]
+        if instrument == "bass":
+            if tier == "tier2":
+                self.notice_var.set(
+                    f"Bass • {profile.label}: open the Bass instrument in Default mode. "
+                    "The app enables High Octave (Shift) at playback start and resets it afterward."
+                )
+            else:
+                self.notice_var.set(
+                    f"Bass • {profile.label}: open the Bass instrument in Default mode before Start."
+                )
+        elif mode == "full" and tier == "tier4":
             self.notice_var.set(
-                f"{profile.label}: open the piano on the MIDDLE page + Default octave. "
-                "Custom Full range may use < / > when low or high notes require another page."
+                f"{instrument.title()} • {profile.label}: start on the MIDDLE page + Default octave. "
+                "Experimental full range may press < / >."
             )
         else:
             self.notice_var.set(
-                f"{profile.label}: open the piano on the MIDDLE page + Default octave. "
-                "This range never needs < or > page switching."
+                f"{instrument.title()} • {profile.label}: start on the MIDDLE page + Default octave. "
+                "This profile never presses < or >."
             )
 
         if schedule:
             self._schedule_analysis()
 
     def _refresh_custom_mode_choices(self) -> None:
-        allowed = allowed_modes_for_unlock(self._unlock_code())
+        instrument = self._instrument_code()
+        unlock_labels = self._unlock_labels()
+        self.unlock_combo.configure(values=list(unlock_labels))
+        if self.unlock_var.get() not in unlock_labels:
+            default_tier = "tier2" if instrument == "bass" else "tier3"
+            self.unlock_var.set(self._unlock_label_for(default_tier))
+
+        allowed = allowed_modes_for_unlock(instrument, self._unlock_code())  # type: ignore[arg-type]
         labels = [MODE_LABELS_REVERSE[code] for code in allowed]
         self.mode_combo.configure(values=labels)
         if self._mode_code() not in allowed:
             self.mode_var.set(MODE_LABELS_REVERSE["stable"])
-        use_pages = self._mode_code() in {"full", "ensemble"} and self._unlock_code() == "tier4"
+        use_pages = (
+            instrument in {"keyboard", "guitar"}
+            and self._mode_code() in {"full", "ensemble"}
+            and self._unlock_code() == "tier4"
+        )
         self.page_delay_spin.configure(state="normal" if use_pages else "disabled")
 
     def _custom_variable_changed(self, *_args: object) -> None:
@@ -639,7 +770,7 @@ class App(tk.Tk):
             self._suspend_auto_analysis = True
             try:
                 self._refresh_custom_mode_choices()
-                self._custom_settings = self._capture_settings()
+                self._custom_settings_by_instrument[self._instrument_code()] = self._capture_settings()
             finally:
                 self._suspend_auto_analysis = False
         self._schedule_analysis()
@@ -685,46 +816,56 @@ class App(tk.Tk):
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 data = {}
 
-        legacy_settings = {
-            "mode": str(data.get("mode", "stable")),
-            "unlock_tier": str(data.get("unlock_tier", "tier3")),
-            "mapping": str(data.get("mapping", "octave")),
-            "chord_limit": int(data.get("chord_limit", 0)),
-            "speed": int(data.get("speed", 85)),
-            "length": int(data.get("length", 150)),
-            "minimum_note": int(data.get("minimum_note", 120)),
-            "page_delay": int(data.get("page_delay", 220)),
-            "modifier_lead": int(data.get("modifier_lead", 55)),
-            "pedal": bool(data.get("pedal", False)),
-            "ignore_percussion": bool(data.get("ignore_percussion", True)),
-        }
-        saved_custom = data.get("custom_settings")
-        if isinstance(saved_custom, dict):
-            self._custom_settings = {**CUSTOM_DEFAULTS, **saved_custom}
+        saved_custom_by_instrument = data.get("custom_settings_by_instrument")
+        if isinstance(saved_custom_by_instrument, dict):
+            for instrument, defaults in CUSTOM_DEFAULTS_BY_INSTRUMENT.items():
+                saved = saved_custom_by_instrument.get(instrument)
+                if isinstance(saved, dict):
+                    self._custom_settings_by_instrument[instrument] = {**defaults, **saved}
         else:
-            self._custom_settings = {**CUSTOM_DEFAULTS, **legacy_settings}
+            # Migrate the old keyboard-only custom settings.
+            saved_custom = data.get("custom_settings")
+            if isinstance(saved_custom, dict):
+                self._custom_settings_by_instrument["keyboard"] = {
+                    **CUSTOM_DEFAULTS_BY_INSTRUMENT["keyboard"], **saved_custom
+                }
 
-        saved_profile = str(data.get("profile", ""))
-        # v0.5.0 exposed Tier 4 as a fixed profile. Keep those users on the
-        # equivalent editable Custom full-range setup after the profile cleanup.
-        if saved_profile == "tier4":
-            saved_profile = "custom"
-            self._custom_settings = {
-                **self._custom_settings,
-                "mode": "full",
-                "unlock_tier": "tier4",
-            }
-        if saved_profile not in {"tier1", "tier2", "tier3", "custom"}:
-            # Preserve a user's old manually tuned v0.4.x settings. Brand-new
-            # installs start on the simple Tier 3 preset.
-            saved_profile = "custom" if config_existed else "tier3"
-        self.profile_var.set(PROFILE_LABELS_REVERSE[saved_profile])
-        self._active_profile_code = saved_profile
+        saved_profiles = data.get("profiles_by_instrument")
+        if isinstance(saved_profiles, dict):
+            for instrument in self._profile_by_instrument:
+                candidate = str(saved_profiles.get(instrument, self._profile_by_instrument[instrument]))
+                if candidate in profile_labels_for(instrument).values():  # type: ignore[arg-type]
+                    self._profile_by_instrument[instrument] = candidate
+        elif config_existed:
+            old_profile = str(data.get("profile", "tier3"))
+            if old_profile == "tier4":
+                old_profile = "custom"
+                self._custom_settings_by_instrument["keyboard"].update(
+                    {"mode": "full", "unlock_tier": "tier4"}
+                )
+            if old_profile in profile_labels_for("keyboard").values():
+                self._profile_by_instrument["keyboard"] = old_profile
 
-        if saved_profile == "custom":
-            self._apply_settings(self._custom_settings)
+        instrument = str(data.get("instrument", "keyboard"))
+        if instrument not in INSTRUMENT_LABELS.values():
+            instrument = "keyboard"
+        self.instrument_var.set(INSTRUMENT_LABELS_REVERSE[instrument])
+        self._active_instrument_code = instrument
+
+        labels = profile_labels_for(instrument)  # type: ignore[arg-type]
+        self.profile_combo.configure(values=list(labels))
+        profile_code = self._profile_by_instrument.get(
+            instrument, default_profile_code(instrument)  # type: ignore[arg-type]
+        )
+        if profile_code not in labels.values():
+            profile_code = default_profile_code(instrument)  # type: ignore[arg-type]
+        self.profile_var.set(profile_label_for(instrument, profile_code))  # type: ignore[arg-type]
+        self._active_profile_code = profile_code
+
+        if profile_code == "custom":
+            self._apply_settings(self._custom_settings_by_instrument[instrument])
         else:
-            self._apply_settings(get_fixed_profile(saved_profile).settings())
+            self._apply_settings(get_fixed_profile(instrument, profile_code).settings())  # type: ignore[arg-type]
 
         self.start_delay_var.set(float(data.get("start_delay", 3.0)))
         self.minimize_var.set(bool(data.get("minimize", True)))
@@ -741,12 +882,15 @@ class App(tk.Tk):
     def _save_config(self) -> None:
         if self._suspend_auto_analysis:
             return
+        instrument = self._instrument_code()
         if self._profile_code() == "custom":
-            self._custom_settings = self._capture_settings()
+            self._custom_settings_by_instrument[instrument] = self._capture_settings()
+        self._profile_by_instrument[instrument] = self._profile_code()
         current = self._capture_settings()
         data = {
-            "profile": self._profile_code(),
-            "custom_settings": self._custom_settings,
+            "instrument": instrument,
+            "profiles_by_instrument": self._profile_by_instrument,
+            "custom_settings_by_instrument": self._custom_settings_by_instrument,
             "selected_midi": self.midi_display_var.get(),
             "start_delay": self.start_delay_var.get(),
             "minimize": self.minimize_var.get(),
@@ -760,6 +904,7 @@ class App(tk.Tk):
 
     def _plan_options(self) -> PlanOptions:
         return PlanOptions(
+            instrument=self._instrument_code(),  # type: ignore[arg-type]
             mode=self._mode_code(),  # type: ignore[arg-type]
             speed_percent=int(self.speed_var.get()),
             note_length_percent=int(self.length_var.get()),
@@ -768,32 +913,19 @@ class App(tk.Tk):
             octave_switch_lead_ms=int(self.modifier_lead_var.get()),
             unlock_tier=self._unlock_code(),  # type: ignore[arg-type]
             mapping_method=MAPPING_LABELS.get(self.mapping_var.get(), "octave"),  # type: ignore[arg-type]
-            max_notes_per_chord=CHORD_LABELS.get(self.chord_var.get(), 0),
+            max_notes_per_chord=self._chord_labels().get(self.chord_var.get(), 0),
             use_sustain_pedal=bool(self.pedal_var.get()),
             ignore_percussion=bool(self.percussion_var.get()),
         )
 
     def _open_online_sequencer(self) -> None:
-        if self._online_dialog is not None and self._online_dialog.winfo_exists():
-            self._online_dialog.deiconify()
-            self._online_dialog.lift()
-            self._online_dialog.focus_force()
-            return
-        self._online_dialog = OnlineSequencerDialog(
-            self,
-            Path(self.midi_folder_var.get()),
-            self._online_sequence_imported,
-        )
-
-    def _online_sequence_imported(self, path: Path) -> None:
-        folder = Path(self.midi_folder_var.get())
         try:
-            display = path.resolve().relative_to(folder.resolve()).as_posix()
-        except (OSError, ValueError):
-            display = ""
-        self._reload_midi_library(analyze=True, preferred_display=display)
-        self.deiconify()
-        self.lift()
+            webbrowser.open_new("https://onlinesequencer.net/sequences")
+            self.status_var.set(
+                "Online Sequencer opened in your browser. Download a MIDI, put it in the MIDI folder, then press Reload."
+            )
+        except webbrowser.Error as exc:
+            messagebox.showerror(APP_NAME, f"Could not open the browser:\n{exc}")
 
     def _open_midi_folder(self) -> None:
         folder = Path(self.midi_folder_var.get())
@@ -868,6 +1000,7 @@ class App(tk.Tk):
 
         self.current_plan = plan
         profile_name = self.profile_var.get().split(" — ", 1)[0]
+        instrument_name = self.instrument_var.get()
         page_rate = plan.page_switches / max(plan.duration / 60.0, 0.001)
         original_range = f"{midi_note_name(plan.source_min_pitch)}–{midi_note_name(plan.source_max_pitch)}"
         played_range = f"{midi_note_name(plan.planned_min_pitch)}–{midi_note_name(plan.planned_max_pitch)}"
@@ -894,7 +1027,7 @@ class App(tk.Tk):
             warning = "\n⚠ Frequent page changes: a Custom Stable profile may sound smoother."
 
         self.analysis_var.set(
-            f"Ready • {profile_name} • {plan.note_count:,} played notes • {_duration_text(plan.duration)}\n"
+            f"Ready • {instrument_name} • {profile_name} • {plan.note_count:,} played notes • {_duration_text(plan.duration)}\n"
             f"Original range {original_range} → played range {played_range} • {change_text}\n"
             f"{page_line} • {plan.octave_switches:,} Ctrl/Shift switch(es){warning}"
         )
@@ -925,7 +1058,7 @@ class App(tk.Tk):
         self._input_test_running = True
         self.test_button.configure(state="disabled")
         self.start_button.configure(state="disabled")
-        self.status_var.set("Input test starts in 3 seconds. Focus Notepad or the game piano.")
+        self.status_var.set("Input test starts in 3 seconds. Focus Notepad or the selected game instrument.")
         if self.minimize_var.get():
             self.after(250, self.iconify)
 
@@ -1021,9 +1154,9 @@ class App(tk.Tk):
                         self.status_var.set(f"Playback error: {payload}")
                         messagebox.showerror(APP_NAME, str(payload))
                     elif self.player.stop_event.is_set():
-                        self.status_var.set("Stopped. All keys released and keyboard reset.")
+                        self.status_var.set("Stopped. All keys released and instrument mode reset.")
                     else:
-                        self.status_var.set("Playback completed. Keyboard reset to middle/default.")
+                        self.status_var.set("Playback completed. Instrument mode reset.")
         except queue.Empty:
             pass
         self.after(50, self._drain_ui_queue)
@@ -1036,17 +1169,21 @@ class App(tk.Tk):
         self.after(60, self._poll_f10)
 
     def _reset_defaults(self) -> None:
+        instrument = self._instrument_code()
         if self._profile_code() == "custom":
-            self._custom_settings = dict(CUSTOM_DEFAULTS)
+            self._custom_settings_by_instrument[instrument] = dict(
+                CUSTOM_DEFAULTS_BY_INSTRUMENT[instrument]
+            )
             self._suspend_auto_analysis = True
             try:
-                self._apply_settings(self._custom_settings)
+                self._apply_settings(self._custom_settings_by_instrument[instrument])
                 self._refresh_custom_mode_choices()
             finally:
                 self._suspend_auto_analysis = False
             self._schedule_analysis()
         else:
-            self.profile_var.set(PROFILE_LABELS_REVERSE["tier3"])
+            default_code = default_profile_code(instrument)  # type: ignore[arg-type]
+            self.profile_var.set(profile_label_for(instrument, default_code))  # type: ignore[arg-type]
             self._profile_changed()
         self.start_delay_var.set(3.0)
         self.minimize_var.set(True)
@@ -1054,8 +1191,6 @@ class App(tk.Tk):
         self._save_config()
 
     def _on_close(self) -> None:
-        if self._online_dialog is not None and self._online_dialog.winfo_exists():
-            self._online_dialog.destroy()
         if self.player.is_playing:
             self.player.stop()
             deadline = time.time() + 1.5
@@ -1069,6 +1204,7 @@ class App(tk.Tk):
 def dry_run(path: str, options: PlanOptions) -> int:
     plan = build_plan(path, options)
     print(f"File: {path}")
+    print(f"Instrument: {plan.instrument}")
     print(f"Mode: {plan.mode}")
     print(f"Unlock tier: {plan.unlock_tier or 'custom'}")
     print(
@@ -1095,6 +1231,7 @@ def dry_run(path: str, options: PlanOptions) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--dry-run", metavar="MIDI", help="Analyze a MIDI without sending keys.")
+    parser.add_argument("--instrument", choices=("keyboard", "guitar", "bass"), default="keyboard")
     parser.add_argument("--mode", choices=("stable", "full", "ensemble"), default="stable")
     parser.add_argument("--speed", type=int, default=85)
     parser.add_argument("--length", type=int, default=150)
@@ -1118,6 +1255,7 @@ def main() -> int:
         return dry_run(
             args.dry_run,
             PlanOptions(
+                instrument=args.instrument,
                 mode=args.mode,
                 speed_percent=args.speed,
                 note_length_percent=args.length,
