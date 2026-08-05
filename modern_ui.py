@@ -6,7 +6,7 @@ from tkinter import ttk
 from typing import Any, Callable
 
 
-# Linear / Modern visual layer for the existing BPSR MIDI Lite application.
+# Botanical / Organic Serif visual layer for the existing BPSR MIDI Lite application.
 # Playback, MIDI analysis, saved settings, and keyboard input stay in app.py.
 
 
@@ -83,7 +83,7 @@ def _register_panel(app: Any, panel: Any) -> None:
 
 
 class _AmbientBackdrop(tk.Canvas):
-    """Low-cost ambient light, grid, and pointer glow behind the application."""
+    """Warm paper-like background with slow organic light and subtle grain."""
 
     def __init__(self, parent: Any, app: Any) -> None:
         self._app = app
@@ -102,7 +102,7 @@ class _AmbientBackdrop(tk.Canvas):
         self.bind("<Configure>", self._queue_redraw, add="+")
         app.bind_all("<Motion>", self._pointer_moved, add="+")
         _register_visual(app, self)
-        self.after(180, self._animate)
+        self.after(550, self._animate)
 
     def _pointer_moved(self, event: Any) -> None:
         try:
@@ -120,15 +120,16 @@ class _AmbientBackdrop(tk.Canvas):
         self._queue_redraw()
 
     def _animate(self) -> None:
+        delay = 650
         try:
             if self.winfo_exists() and self._app.state() != "iconic":
                 playing = bool(getattr(getattr(self._app, "player", None), "is_playing", False))
-                delay = 450 if playing else 180
-                self._phase = (self._phase + 0.115 * (delay / 180.0)) % (math.tau)
+                delay = 1100 if playing else 650
+                self._phase = (self._phase + 0.075 * (delay / 650.0)) % math.tau
                 self._queue_redraw()
         except tk.TclError:
             return
-        self.after(delay if "delay" in locals() else 180, self._animate)
+        self.after(delay, self._animate)
 
     def _queue_redraw(self, _event: Any = None) -> None:
         if self._redraw_job is None:
@@ -142,13 +143,13 @@ class _AmbientBackdrop(tk.Canvas):
         height: float,
         colour: str,
         strength: float,
-        steps: int = 11,
+        steps: int = 10,
     ) -> None:
         palette = self._app._modern_palette
         base = palette["background"]
         for index in range(steps, 0, -1):
             ratio = index / steps
-            tint = strength * (1.0 - ratio * 0.82)
+            tint = strength * (1.0 - ratio * 0.80)
             fill = _blend(base, colour, tint)
             self.create_oval(
                 cx - width * ratio / 2,
@@ -169,8 +170,8 @@ class _AmbientBackdrop(tk.Canvas):
         height = max(2, self.winfo_height())
         self.delete("ambient")
 
-        # Vertical depth: near-black base with a slightly brighter top.
-        stripes = 42
+        # Warm alabaster / forest depth instead of a flat application canvas.
+        stripes = 36
         for index in range(stripes):
             y1 = height * index / stripes
             y2 = height * (index + 1) / stripes + 1
@@ -178,23 +179,43 @@ class _AmbientBackdrop(tk.Canvas):
             fill = _blend(palette["background_top"], palette["background"], mix)
             self.create_rectangle(0, y1, width, y2, fill=fill, outline="", tags="ambient")
 
-        # Slow ambient pools. Low refresh rate keeps the UI lightweight during playback.
-        sway = math.sin(self._phase) * 18
-        lift = math.cos(self._phase * 0.83) * 12
-        self._soft_blob(width * 0.58 + sway, -30 + lift, width * 0.82, height * 0.56, palette["accent"], 0.19)
-        self._soft_blob(width * 0.08 - sway * 0.5, height * 0.46, width * 0.52, height * 0.56, palette["ambient_purple"], 0.10)
-        self._soft_blob(width * 0.93 + sway * 0.35, height * 0.56, width * 0.42, height * 0.48, palette["ambient_blue"], 0.09)
+        # Slow, asymmetrical pools of sage, clay, and warm daylight.
+        sway = math.sin(self._phase) * 14
+        lift = math.cos(self._phase * 0.77) * 10
+        self._soft_blob(width * 0.16 + sway, height * 0.12 + lift, width * 0.56, height * 0.48, palette["ambient_sage"], 0.13)
+        self._soft_blob(width * 0.91 - sway * 0.45, height * 0.32, width * 0.48, height * 0.54, palette["ambient_clay"], 0.10)
+        self._soft_blob(width * 0.54, height * 0.96 + lift * 0.4, width * 0.66, height * 0.34, palette["ambient_sun"], 0.075)
 
-        # Pointer spotlight is deliberately weak and only visible around open space.
+        # A very soft cursor-lit patch, like light moving over textured paper.
         px, py = self._pointer
-        if -200 < px < width + 200 and -200 < py < height + 200:
-            self._soft_blob(px, py, 310, 310, palette["accent"], 0.075, steps=8)
+        if -180 < px < width + 180 and -180 < py < height + 180:
+            self._soft_blob(px, py, 280, 240, palette["ambient_sun"], 0.045, steps=7)
 
-        grid = palette["grid"]
-        for x in range(0, width + 1, 64):
-            self.create_line(x, 0, x, height, fill=grid, width=1, tags="ambient")
-        for y in range(0, height + 1, 64):
-            self.create_line(0, y, width, y, fill=grid, width=1, tags="ambient")
+        # Fine meandering lines suggest vines without becoming decorative clutter.
+        vine = palette["vine"]
+        self.create_line(
+            -20, height * 0.70,
+            width * 0.10, height * 0.62,
+            width * 0.18, height * 0.71,
+            width * 0.27, height * 0.66,
+            smooth=True, splinesteps=32, fill=vine, width=1, tags="ambient",
+        )
+        self.create_line(
+            width * 0.82, -20,
+            width * 0.88, height * 0.10,
+            width * 0.84, height * 0.22,
+            width + 20, height * 0.31,
+            smooth=True, splinesteps=32, fill=vine, width=1, tags="ambient",
+        )
+
+        # Deterministic sparse grain: tactile, inexpensive, and dependency-free.
+        grain = palette["grain"]
+        for gy in range(9, int(height), 27):
+            for gx in range(11, int(width), 29):
+                if ((gx * 17 + gy * 31) // 7) % 6 == 0:
+                    offset = ((gx * 13 + gy * 19) % 9) - 4
+                    self.create_oval(gx + offset, gy, gx + offset + 1, gy + 1, fill=grain, outline="", tags="ambient")
+
         self.tag_lower("ambient")
 
     def apply_palette(self) -> None:
@@ -203,7 +224,7 @@ class _AmbientBackdrop(tk.Canvas):
 
 
 class _RoundedPanel(tk.Frame):
-    """Layered rounded card with subtle hover depth and optional accent emphasis."""
+    """Soft organic card with diffused elevation and restrained hover bloom."""
 
     def __init__(
         self,
@@ -212,14 +233,14 @@ class _RoundedPanel(tk.Frame):
         *,
         fill_key: str = "surface",
         outside_key: str = "background",
-        radius: int = 16,
-        padding: tuple[int, int] = (18, 16),
+        radius: int = 24,
+        padding: tuple[int, int] = (20, 18),
         title: str | None = None,
         eyebrow: str | None = None,
         variant: str = "default",
     ) -> None:
         self._app = app
-        self._fill_key = fill_key
+        self._fill_key = "surface_accent" if variant == "accent" and fill_key == "surface" else fill_key
         self._outside_key = outside_key
         self._radius = radius
         self._variant = variant
@@ -236,15 +257,22 @@ class _RoundedPanel(tk.Frame):
         )
         self._canvas.place(x=0, y=0, relwidth=1, relheight=1)
 
-        self._inner = tk.Frame(self, background=palette[fill_key], borderwidth=0, highlightthickness=0)
+        self._inner = tk.Frame(self, background=palette[self._fill_key], borderwidth=0, highlightthickness=0)
         self._inner.pack(fill="both", expand=True, padx=padding[0], pady=padding[1])
 
+        eyebrow_style = "AccentEyebrow.TLabel" if self._fill_key == "surface_accent" else "Eyebrow.TLabel"
+        title_style = "AccentCardTitle.TLabel" if self._fill_key == "surface_accent" else "CardTitle.TLabel"
         if eyebrow:
-            ttk.Label(self._inner, text=eyebrow.upper(), style="Eyebrow.TLabel").pack(anchor="w", pady=(0, 5))
+            ttk.Label(self._inner, text=eyebrow.upper(), style=eyebrow_style).pack(anchor="w", pady=(0, 5))
         if title:
-            ttk.Label(self._inner, text=title, style="CardTitle.TLabel").pack(anchor="w", pady=(0, 12))
+            ttk.Label(self._inner, text=title, style=title_style).pack(anchor="w", pady=(0, 13))
 
-        frame_style = "SurfaceAlt.TFrame" if fill_key == "surface_alt" else "Surface.TFrame"
+        if self._fill_key == "surface_alt":
+            frame_style = "SurfaceAlt.TFrame"
+        elif self._fill_key == "surface_accent":
+            frame_style = "SurfaceAccent.TFrame"
+        else:
+            frame_style = "Surface.TFrame"
         self.content = ttk.Frame(self._inner, style=frame_style)
         self.content.pack(fill="both", expand=True)
 
@@ -264,7 +292,7 @@ class _RoundedPanel(tk.Frame):
         height = max(1, self.winfo_height())
         inside = left <= x_root <= left + width and top <= y_root <= top + height
         ratio = max(0.0, min(1.0, (x_root - left) / width))
-        changed = inside != self._hovered or (inside and abs(ratio - self._cursor_ratio) > 0.05)
+        changed = inside != self._hovered or (inside and abs(ratio - self._cursor_ratio) > 0.08)
         self._hovered = inside
         self._cursor_ratio = ratio
         if changed:
@@ -283,15 +311,16 @@ class _RoundedPanel(tk.Frame):
         height = max(2, self.winfo_height())
         self._canvas.delete("all")
 
-        # Three-layer elevation: ambient shadow, close shadow, and hairline border.
+        # Diffused botanical elevation: broad, low-contrast, and never harsh.
+        shadow_offset = 7 if self._hovered else 5
         _rounded_polygon(
             self._canvas,
-            4,
-            7,
-            width - 4,
+            5,
+            shadow_offset,
+            width - 5,
             height - 1,
-            self._radius,
-            fill=palette["shadow_deep"],
+            self._radius + 1,
+            fill=palette["shadow_large"] if self._hovered else palette["shadow_soft"],
             outline="",
         )
         _rounded_polygon(
@@ -299,46 +328,30 @@ class _RoundedPanel(tk.Frame):
             2,
             3,
             width - 2,
-            height - 2,
+            height - 3,
             self._radius,
-            fill=palette["shadow_soft"],
+            fill=palette["shadow_near"],
             outline="",
         )
 
         fill = palette[self._fill_key]
-        border = palette["accent_border"] if self._variant == "accent" else palette["border"]
+        border = palette["border_accent"] if self._variant == "accent" else palette["border"]
         if self._hovered:
-            fill = palette["surface_hover"] if self._fill_key == "surface" else palette["surface_alt_hover"]
-            border = palette["accent_border"] if self._variant == "accent" else palette["border_hover"]
+            border = palette["interactive_soft"] if self._variant == "accent" else palette["border_hover"]
 
         _rounded_polygon(
             self._canvas,
             1,
             1,
             width - 1,
-            height - 4,
+            height - 5,
             self._radius,
             fill=fill,
             outline=border,
             width=1,
         )
 
-        # Accent-tinted pointer spotlight along the upper edge.
-        if self._hovered or self._variant == "accent":
-            center = width * self._cursor_ratio
-            glow_width = min(260, width * 0.62)
-            for index in range(5, 0, -1):
-                ratio = index / 5
-                colour = _blend(fill, palette["accent"], 0.025 + (1 - ratio) * 0.06)
-                self._canvas.create_line(
-                    max(self._radius, center - glow_width * ratio / 2),
-                    2,
-                    min(width - self._radius, center + glow_width * ratio / 2),
-                    2,
-                    fill=colour,
-                    width=max(1, round(5 - index * 0.7)),
-                )
-
+        # A delicate upper highlight and small leaf-like accent on emphasized cards.
         self._canvas.create_line(
             self._radius,
             2,
@@ -347,6 +360,13 @@ class _RoundedPanel(tk.Frame):
             fill=palette["inner_highlight"],
             width=1,
         )
+        if self._variant == "accent" and width > 90:
+            leaf = palette["leaf_line_hover"] if self._hovered else palette["leaf_line"]
+            x = width - 35
+            self._canvas.create_oval(x - 10, 12, x + 2, 27, outline=leaf, width=1)
+            self._canvas.create_oval(x, 8, x + 13, 24, outline=leaf, width=1)
+            self._canvas.create_line(x - 3, 28, x + 7, 10, fill=leaf, width=1)
+
         self._canvas.tag_lower("all")
 
     def apply_palette(self) -> None:
@@ -358,7 +378,7 @@ class _RoundedPanel(tk.Frame):
 
 
 class _RoundedButton(tk.Canvas):
-    """Canvas button with focus ring, layered depth, and precise active motion."""
+    """Pill button with soft focus, subtle lift, and calm transitions."""
 
     def __init__(
         self,
@@ -369,9 +389,9 @@ class _RoundedButton(tk.Canvas):
         command: Callable[[], None],
         role: str = "secondary",
         state: str = "normal",
-        height: int = 38,
+        height: int = 40,
         width: int = 120,
-        radius: int = 9,
+        radius: int = 999,
         background_key: str = "surface",
     ) -> None:
         self._app = app
@@ -413,19 +433,19 @@ class _RoundedButton(tk.Canvas):
             return palette["disabled_fill"], palette["border"], palette["muted"]
         if self._role == "primary":
             return (
-                palette["accent_pressed"] if self._pressed else palette["accent_hover"] if self._hovered else palette["accent"],
-                palette["accent_border"],
-                "#FFFFFF",
+                palette["primary_pressed"] if self._pressed else palette["interactive"] if self._hovered else palette["primary"],
+                palette["primary_border"],
+                palette["primary_text"],
             )
         if self._role == "danger":
             return (
                 palette["danger_pressed"] if self._pressed else palette["danger_hover"] if self._hovered else palette["danger"],
                 palette["danger_border"],
-                "#FFFFFF",
+                palette["danger_text"],
             )
         return (
             palette["surface_pressed"] if self._pressed else palette["surface_alt_hover"] if self._hovered else palette["surface_alt"],
-            palette["border_hover"] if self._hovered else palette["border"],
+            palette["accent"] if self._hovered else palette["border_hover"],
             palette["foreground"],
         )
 
@@ -436,16 +456,12 @@ class _RoundedButton(tk.Canvas):
         fill, outline, text = self._colours()
         width = max(2, self.winfo_width())
         height = max(2, self.winfo_height())
+        radius = min(height / 2, width / 2)
         self.delete("all")
         inset = 2 if self._pressed else 1
 
-        if self._role == "primary" and self._state != "disabled":
-            glow = palette["accent_glow_hover"] if self._hovered else palette["accent_glow"]
-            _rounded_polygon(self, 3, 5, width - 3, height - 1, self._radius, fill=glow, outline="")
-        elif self._role == "danger" and self._state != "disabled":
-            _rounded_polygon(self, 3, 5, width - 3, height - 1, self._radius, fill=palette["danger_glow"], outline="")
-        else:
-            _rounded_polygon(self, 3, 5, width - 3, height - 1, self._radius, fill=palette["shadow_soft"], outline="")
+        shadow = palette["button_shadow_hover"] if self._hovered else palette["button_shadow"]
+        _rounded_polygon(self, 4, 6, width - 4, height - 1, radius, fill=shadow, outline="")
 
         if self._focused and self._state != "disabled":
             _rounded_polygon(
@@ -454,7 +470,7 @@ class _RoundedButton(tk.Canvas):
                 0,
                 width,
                 height - 2,
-                self._radius + 1,
+                radius,
                 fill=palette[self._background_key],
                 outline=palette["focus"],
                 width=2,
@@ -465,21 +481,21 @@ class _RoundedButton(tk.Canvas):
             inset,
             inset,
             width - inset,
-            height - 3 - inset,
-            self._radius,
+            height - 4 - inset,
+            radius,
             fill=fill,
             outline=outline,
             width=1,
         )
         self.create_line(
-            self._radius + 3,
+            radius,
             inset + 1,
-            width - self._radius - 3,
+            width - radius,
             inset + 1,
             fill=palette["button_highlight"],
             width=1,
         )
-        font = ("Segoe UI Semibold", 10) if self._role in {"primary", "danger"} else ("Segoe UI", 9)
+        font = ("Segoe UI Semibold", 9) if self._role in {"primary", "danger"} else ("Segoe UI", 9)
         y = height / 2 + (1 if self._pressed else -1)
         self.create_text(width / 2, y, text=self._text, fill=text, font=font)
 
@@ -558,7 +574,7 @@ class _RoundedButton(tk.Canvas):
 
 
 class _RoundedProgress(tk.Canvas):
-    def __init__(self, parent: Any, app: Any, *, maximum: float = 1.0, height: int = 8) -> None:
+    def __init__(self, parent: Any, app: Any, *, maximum: float = 1.0, height: int = 9) -> None:
         self._app = app
         self._maximum = float(maximum)
         self._value = 0.0
@@ -566,7 +582,7 @@ class _RoundedProgress(tk.Canvas):
         super().__init__(
             parent,
             height=height,
-            background=palette["surface"],
+            background=palette["surface_accent"],
             borderwidth=0,
             highlightthickness=0,
         )
@@ -593,7 +609,7 @@ class _RoundedProgress(tk.Canvas):
                 fill=palette["accent"],
                 outline=palette["accent"],
             )
-            self.create_line(height / 2, 1, max(height / 2, fill_width - height / 2), 1, fill=palette["button_highlight"])
+            self.create_line(height / 2, 1, max(height / 2, fill_width - height / 2), 1, fill=palette["progress_highlight"])
 
     def __setitem__(self, key: str, value: Any) -> None:
         if key == "value":
@@ -614,118 +630,151 @@ class _RoundedProgress(tk.Canvas):
         return super().__getitem__(key)
 
     def apply_palette(self) -> None:
-        self.configure(background=self._app._modern_palette["surface"])
+        self.configure(background=self._app._modern_palette["surface_accent"])
         self._redraw()
 
 
 def _apply_modern_styles(app: Any) -> None:
-    """Apply the centralized Linear / Modern design tokens."""
+    """Apply centralized Botanical / Organic Serif design tokens."""
     style = app._style
     dark = bool(app._dark_mode)
 
     if dark:
         palette = {
-            "background": "#050506",
-            "background_top": "#0A0A0F",
-            "surface": "#0B0B0E",
-            "surface_alt": "#101014",
-            "surface_strong": "#15151B",
-            "surface_hover": "#0F0F14",
-            "surface_alt_hover": "#17171D",
-            "surface_pressed": "#0D0D11",
-            "disabled_fill": "#141419",
-            "foreground": "#EDEDEF",
-            "muted": "#8A8F98",
-            "subtle": "#B0B3BA",
-            "border": "#1B1B21",
-            "border_hover": "#292932",
-            "inner_highlight": "#25252D",
-            "button_highlight": "#A4AAEF",
-            "accent": "#5E6AD2",
-            "accent_hover": "#6872D9",
-            "accent_pressed": "#535FC4",
-            "accent_border": "#373B68",
-            "accent_glow": "#16182A",
-            "accent_glow_hover": "#202443",
-            "ambient_purple": "#7B4D9B",
-            "ambient_blue": "#345CA8",
-            "danger": "#C9555B",
-            "danger_hover": "#D66066",
-            "danger_pressed": "#B9494F",
-            "danger_border": "#66373B",
-            "danger_glow": "#241315",
-            "focus": "#7C86E8",
-            "shadow_deep": "#020203",
-            "shadow_soft": "#060608",
-            "grid": "#0D0D11",
-            "success": "#62C79B",
-            "warning": "#D7AD68",
+            "background": "#18201B",
+            "background_top": "#222B25",
+            "surface": "#222C26",
+            "surface_alt": "#29352E",
+            "surface_accent": "#2D3931",
+            "surface_strong": "#354239",
+            "surface_hover": "#263129",
+            "surface_alt_hover": "#334138",
+            "surface_pressed": "#222C26",
+            "disabled_fill": "#303831",
+            "foreground": "#F1EEE6",
+            "muted": "#AEB5AA",
+            "subtle": "#D0D2C9",
+            "border": "#3B473F",
+            "border_hover": "#59675D",
+            "border_accent": "#71806F",
+            "inner_highlight": "#46544A",
+            "button_highlight": "#D9E0D3",
+            "progress_highlight": "#DDE6D8",
+            "accent": "#A7B69F",
+            "accent_text": "#CBD5C5",
+            "accent_fill_text": "#18201B",
+            "primary": "#A7B69F",
+            "primary_pressed": "#91A28A",
+            "primary_border": "#C2CEBC",
+            "primary_text": "#18201B",
+            "interactive": "#C78470",
+            "interactive_soft": "#986758",
+            "ambient_sage": "#6E806C",
+            "ambient_clay": "#8A5F52",
+            "ambient_sun": "#B8A77F",
+            "vine": "#2C3A31",
+            "grain": "#2D3730",
+            "leaf_line": "#667865",
+            "leaf_line_hover": "#C78470",
+            "danger": "#B96B58",
+            "danger_hover": "#C78470",
+            "danger_pressed": "#A85F4E",
+            "danger_border": "#D39A89",
+            "danger_text": "#FFFDF8",
+            "focus": "#A7B69F",
+            "shadow_large": "#101612",
+            "shadow_soft": "#121915",
+            "shadow_near": "#1B241E",
+            "button_shadow": "#111713",
+            "button_shadow_hover": "#0E130F",
+            "success": "#A9C6A4",
+            "warning": "#D1A46F",
         }
     else:
         palette = {
-            "background": "#F4F4F7",
-            "background_top": "#FFFFFF",
+            "background": "#F9F8F4",
+            "background_top": "#FFFDF8",
             "surface": "#FFFFFF",
-            "surface_alt": "#F7F7FA",
-            "surface_strong": "#ECECF2",
-            "surface_hover": "#FBFBFD",
-            "surface_alt_hover": "#F0F0F6",
-            "surface_pressed": "#E9E9F0",
-            "disabled_fill": "#E6E6EB",
-            "foreground": "#17171B",
-            "muted": "#6D717B",
-            "subtle": "#4E525B",
-            "border": "#E1E1E7",
-            "border_hover": "#CBCBD5",
+            "surface_alt": "#F2F0EB",
+            "surface_accent": "#EEF1E9",
+            "surface_strong": "#E7E4DC",
+            "surface_hover": "#FFFEFB",
+            "surface_alt_hover": "#EAE8E1",
+            "surface_pressed": "#E3E0D8",
+            "disabled_fill": "#ECE9E2",
+            "foreground": "#2D3A31",
+            "muted": "#6C766F",
+            "subtle": "#536159",
+            "border": "#E6E2DA",
+            "border_hover": "#BFC9BA",
+            "border_accent": "#A7B39F",
             "inner_highlight": "#FFFFFF",
-            "button_highlight": "#D9DCF8",
-            "accent": "#5E6AD2",
-            "accent_hover": "#505CC7",
-            "accent_pressed": "#4551BA",
-            "accent_border": "#9CA3E5",
-            "accent_glow": "#E5E7F8",
-            "accent_glow_hover": "#D9DCF5",
-            "ambient_purple": "#C9A5DA",
-            "ambient_blue": "#A9C0E8",
-            "danger": "#C24D55",
-            "danger_hover": "#AF4048",
-            "danger_pressed": "#9B353D",
-            "danger_border": "#E0A7AA",
-            "danger_glow": "#F6E2E3",
-            "focus": "#5E6AD2",
-            "shadow_deep": "#DADAE2",
-            "shadow_soft": "#E8E8ED",
-            "grid": "#ECECF1",
-            "success": "#23845E",
-            "warning": "#996A1E",
+            "button_highlight": "#F4F6F1",
+            "progress_highlight": "#D8E0D3",
+            "accent": "#8C9A84",
+            "accent_text": "#66735F",
+            "accent_fill_text": "#243027",
+            "primary": "#2D3A31",
+            "primary_pressed": "#253129",
+            "primary_border": "#2D3A31",
+            "primary_text": "#FFFFFF",
+            "interactive": "#C27B66",
+            "interactive_soft": "#D7A797",
+            "ambient_sage": "#B9C5B2",
+            "ambient_clay": "#DCCFC2",
+            "ambient_sun": "#EFE1B9",
+            "vine": "#E2E6DE",
+            "grain": "#E6E2DA",
+            "leaf_line": "#C2CCBC",
+            "leaf_line_hover": "#C27B66",
+            "danger": "#B96A56",
+            "danger_hover": "#C27B66",
+            "danger_pressed": "#A85C49",
+            "danger_border": "#D9A596",
+            "danger_text": "#FFFFFF",
+            "focus": "#8C9A84",
+            "shadow_large": "#DDDAD2",
+            "shadow_soft": "#E7E3DC",
+            "shadow_near": "#F1EFEA",
+            "button_shadow": "#E2DED6",
+            "button_shadow_hover": "#D6D2CA",
+            "success": "#607A61",
+            "warning": "#A56F3F",
         }
 
     app._modern_palette = palette
     app.configure(background=palette["background"])
 
-    # Use the same rendering path in light and dark mode so the custom tokens are consistent.
     if "clam" in set(style.theme_names()):
         style.theme_use("clam")
 
-    style.configure(".", font=("Segoe UI", 9), background=palette["background"], foreground=palette["foreground"])
+    heading_font = "Georgia"
+    body_font = "Segoe UI"
+    style.configure(".", font=(body_font, 9), background=palette["background"], foreground=palette["foreground"])
     style.configure("Modern.TFrame", background=palette["background"])
     style.configure("Surface.TFrame", background=palette["surface"])
     style.configure("SurfaceAlt.TFrame", background=palette["surface_alt"])
+    style.configure("SurfaceAccent.TFrame", background=palette["surface_accent"])
 
-    style.configure("ModernTitle.TLabel", background=palette["background"], foreground=palette["foreground"], font=("Segoe UI Semibold", 24))
-    style.configure("ModernSubtitle.TLabel", background=palette["background"], foreground=palette["muted"], font=("Segoe UI", 10))
-    style.configure("ModernAuthor.TLabel", background=palette["background"], foreground=palette["accent"], font=("Segoe UI Semibold", 10))
-    style.configure("Eyebrow.TLabel", background=palette["surface"], foreground=palette["accent"], font=("Consolas", 8, "bold"))
-    style.configure("HeaderEyebrow.TLabel", background=palette["background"], foreground=palette["accent"], font=("Consolas", 8, "bold"))
-    style.configure("NoticeDot.TLabel", background=palette["surface_alt"], foreground=palette["accent"], font=("Segoe UI", 8))
-    style.configure("CardTitle.TLabel", background=palette["surface"], foreground=palette["foreground"], font=("Segoe UI Semibold", 12))
-    style.configure("ModernVersion.TLabel", background=palette["surface_alt"], foreground=palette["muted"], font=("Consolas", 9, "bold"))
-    style.configure("CardText.TLabel", background=palette["surface"], foreground=palette["foreground"], font=("Segoe UI", 10))
-    style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=("Segoe UI", 9))
-    style.configure("InfoStrip.TLabel", background=palette["surface_alt"], foreground=palette["subtle"], font=("Segoe UI", 10))
-    style.configure("Footer.TLabel", background=palette["background"], foreground=palette["muted"], font=("Segoe UI", 9))
+    style.configure("ModernTitle.TLabel", background=palette["background"], foreground=palette["foreground"], font=(heading_font, 25, "bold"))
+    style.configure("ModernSubtitle.TLabel", background=palette["background"], foreground=palette["muted"], font=(body_font, 10))
+    style.configure("ModernAuthor.TLabel", background=palette["background"], foreground=palette["interactive"], font=(heading_font, 10, "italic"))
+    style.configure("Eyebrow.TLabel", background=palette["surface"], foreground=palette["accent_text"], font=(body_font, 8, "bold"))
+    style.configure("AccentEyebrow.TLabel", background=palette["surface_accent"], foreground=palette["accent_text"], font=(body_font, 8, "bold"))
+    style.configure("HeaderEyebrow.TLabel", background=palette["background"], foreground=palette["accent_text"], font=(body_font, 8, "bold"))
+    style.configure("NoticeDot.TLabel", background=palette["surface_alt"], foreground=palette["accent_text"], font=(heading_font, 10, "bold"))
+    style.configure("CardTitle.TLabel", background=palette["surface"], foreground=palette["foreground"], font=(heading_font, 14, "bold"))
+    style.configure("ModernVersion.TLabel", background=palette["surface_alt"], foreground=palette["accent_text"], font=(body_font, 9, "bold"))
+    style.configure("CardText.TLabel", background=palette["surface"], foreground=palette["foreground"], font=(body_font, 10))
+    style.configure("CardMuted.TLabel", background=palette["surface"], foreground=palette["muted"], font=(body_font, 9))
+    style.configure("InfoStrip.TLabel", background=palette["surface_alt"], foreground=palette["subtle"], font=(body_font, 10))
+    style.configure("Footer.TLabel", background=palette["background"], foreground=palette["muted"], font=(body_font, 9))
 
-    # Inputs retain native accessibility and keyboard behavior while matching the design tokens.
+    # Matching text styles for the sage playback card.
+    style.configure("AccentCardTitle.TLabel", background=palette["surface_accent"], foreground=palette["foreground"], font=(heading_font, 14, "bold"))
+    style.configure("AccentCardText.TLabel", background=palette["surface_accent"], foreground=palette["foreground"], font=(body_font, 10))
+    style.configure("AccentCardMuted.TLabel", background=palette["surface_accent"], foreground=palette["muted"], font=(body_font, 9))
+
     for widget_style in ("TCombobox", "TEntry", "TSpinbox"):
         style.configure(
             widget_style,
@@ -736,37 +785,38 @@ def _apply_modern_styles(app: Any) -> None:
             lightcolor=palette["border"],
             darkcolor=palette["border"],
             insertcolor=palette["foreground"],
-            arrowcolor=palette["muted"],
-            padding=(9, 7),
+            arrowcolor=palette["accent_text"],
+            padding=(10, 8),
         )
         style.map(
             widget_style,
-            fieldbackground=[("focus", palette["surface_strong"]), ("readonly", palette["surface_alt"]), ("disabled", palette["disabled_fill"])],
+            fieldbackground=[("focus", palette["surface_accent"]), ("readonly", palette["surface_alt"]), ("disabled", palette["disabled_fill"])],
             bordercolor=[("focus", palette["focus"]), ("active", palette["border_hover"])],
             foreground=[("disabled", palette["muted"]), ("readonly", palette["foreground"])],
         )
 
-    style.configure("TCheckbutton", background=palette["surface"], foreground=palette["foreground"], focuscolor=palette["focus"], padding=(0, 2))
+    style.configure("TCheckbutton", background=palette["surface"], foreground=palette["foreground"], focuscolor=palette["focus"], padding=(0, 3))
     style.map("TCheckbutton", background=[("active", palette["surface"])], foreground=[("disabled", palette["muted"])])
+    style.configure("Accent.TCheckbutton", background=palette["surface_accent"], foreground=palette["foreground"], focuscolor=palette["focus"], padding=(0, 3))
+    style.map("Accent.TCheckbutton", background=[("active", palette["surface_accent"])], foreground=[("disabled", palette["muted"])])
     style.configure("TSeparator", background=palette["border"])
 
     style.configure("Modern.TNotebook", background=palette["surface"], borderwidth=0, tabmargins=(0, 0, 0, 10))
-    style.configure("Modern.TNotebook.Tab", background=palette["surface_alt"], foreground=palette["muted"], padding=(14, 7), borderwidth=0, font=("Segoe UI Semibold", 9))
+    style.configure("Modern.TNotebook.Tab", background=palette["surface_alt"], foreground=palette["muted"], padding=(16, 8), borderwidth=0, font=(body_font, 9, "bold"))
     style.map(
         "Modern.TNotebook.Tab",
         background=[("selected", palette["accent"]), ("active", palette["surface_alt_hover"])],
-        foreground=[("selected", "#FFFFFF"), ("active", palette["foreground"])],
+        foreground=[("selected", palette["accent_fill_text"]), ("active", palette["foreground"])],
     )
 
-    # Re-style suitability labels created by app.py so they sit correctly inside cards.
-    style.configure("Good.TLabel", background=palette["surface"], foreground=palette["success"], font=("Segoe UI Semibold", 10))
-    style.configure("Warning.TLabel", background=palette["surface"], foreground=palette["warning"], font=("Segoe UI Semibold", 10))
-    style.configure("Danger.TLabel", background=palette["surface"], foreground=palette["danger_hover"], font=("Segoe UI Semibold", 10))
+    style.configure("Good.TLabel", background=palette["surface"], foreground=palette["success"], font=(body_font, 10, "bold"))
+    style.configure("Warning.TLabel", background=palette["surface"], foreground=palette["warning"], font=(body_font, 10, "bold"))
+    style.configure("Danger.TLabel", background=palette["surface"], foreground=palette["danger_hover"], font=(body_font, 10, "bold"))
 
     app.option_add("*TCombobox*Listbox.background", palette["surface_alt"])
     app.option_add("*TCombobox*Listbox.foreground", palette["foreground"])
     app.option_add("*TCombobox*Listbox.selectBackground", palette["accent"])
-    app.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
+    app.option_add("*TCombobox*Listbox.selectForeground", palette["accent_fill_text"])
 
     live_visuals = []
     for widget in getattr(app, "_modern_visuals", []):
@@ -798,7 +848,7 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
         style="CardMuted.TLabel",
         wraplength=530,
         justify="left",
-    ).grid(row=0, column=0, sticky="w", pady=(0, 12))
+    ).grid(row=0, column=0, sticky="w", pady=(0, 14))
 
     tabs = ttk.Notebook(settings, style="Modern.TNotebook")
     tabs.grid(row=1, column=0, sticky="nsew")
@@ -813,7 +863,7 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
 
     _field_label(notes_tab, "Playback mode", 0, 0)
     self.mode_combo = ttk.Combobox(notes_tab, textvariable=self.mode_var, values=list(self._modern_module.MODE_LABELS), state="readonly")
-    self.mode_combo.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+    self.mode_combo.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 14))
 
     _field_label(notes_tab, "Unlocked range", 2, 0, padx=(0, 7))
     _field_label(notes_tab, "Chord detail", 2, 1, padx=(7, 0))
@@ -823,18 +873,18 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
         values=list(self._modern_module.UNLOCK_LABELS_BY_INSTRUMENT["keyboard"]),
         state="readonly",
     )
-    self.unlock_combo.grid(row=3, column=0, sticky="ew", padx=(0, 7), pady=(0, 12))
+    self.unlock_combo.grid(row=3, column=0, sticky="ew", padx=(0, 7), pady=(0, 14))
     self.chord_combo = ttk.Combobox(
         notes_tab,
         textvariable=self.chord_var,
         values=list(self._modern_module.STANDARD_CHORD_LABELS),
         state="readonly",
     )
-    self.chord_combo.grid(row=3, column=1, sticky="ew", padx=(7, 0), pady=(0, 12))
+    self.chord_combo.grid(row=3, column=1, sticky="ew", padx=(7, 0), pady=(0, 14))
 
     _field_label(notes_tab, "Unavailable notes", 4, 0)
     self.mapping_combo = ttk.Combobox(notes_tab, textvariable=self.mapping_var, values=list(self._modern_module.MAPPING_LABELS), state="readonly")
-    self.mapping_combo.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+    self.mapping_combo.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(0, 14))
 
     checks = ttk.Frame(notes_tab, style="Surface.TFrame")
     checks.grid(row=6, column=0, columnspan=2, sticky="ew")
@@ -880,27 +930,27 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
 
 def _modern_build_ui(self: Any) -> None:
     self._apply_system_theme(force=True)
-    self.geometry("1080x880")
-    self.minsize(940, 720)
+    self.geometry("1080x900")
+    self.minsize(940, 740)
 
     _AmbientBackdrop(self, self)
 
     outer = tk.Frame(self, background=self._modern_palette["background"], borderwidth=0, highlightthickness=0)
-    outer.place(x=22, y=18, relwidth=1, relheight=1, width=-44, height=-36)
+    outer.place(x=26, y=22, relwidth=1, relheight=1, width=-52, height=-44)
 
     header = ttk.Frame(outer, style="Modern.TFrame")
-    header.pack(fill="x", pady=(0, 16))
+    header.pack(fill="x", pady=(0, 18))
     title_group = ttk.Frame(header, style="Modern.TFrame")
     title_group.pack(side="left", fill="x", expand=True)
 
-    ttk.Label(title_group, text="MIDI PLAYER", style="HeaderEyebrow.TLabel").pack(anchor="w", pady=(0, 4))
+    ttk.Label(title_group, text="BPSR INSTRUMENT STUDIO", style="HeaderEyebrow.TLabel").pack(anchor="w", pady=(0, 4))
     title_line = ttk.Frame(title_group, style="Modern.TFrame")
     title_line.pack(anchor="w")
     ttk.Label(title_line, text=self._modern_module.APP_NAME, style="ModernTitle.TLabel").pack(side="left")
     ttk.Label(title_line, text="by MrEz", style="ModernAuthor.TLabel").pack(side="left", padx=(12, 0), pady=(10, 0))
     ttk.Label(
         title_group,
-        text="Precise MIDI playback for Keyboard, Guitar, and Bass in BPSR",
+        text="A calm, focused MIDI player for Keyboard, Guitar, and Bass in BPSR",
         style="ModernSubtitle.TLabel",
     ).pack(anchor="w", pady=(4, 0))
 
@@ -909,7 +959,7 @@ def _modern_build_ui(self: Any) -> None:
         self,
         fill_key="surface_alt",
         radius=999,
-        padding=(11, 6),
+        padding=(13, 7),
         variant="accent",
     )
     version_panel.pack(side="right", anchor="n", pady=(6, 0))
@@ -919,14 +969,14 @@ def _modern_build_ui(self: Any) -> None:
         outer,
         self,
         fill_key="surface_alt",
-        radius=14,
-        padding=(16, 11),
+        radius=22,
+        padding=(18, 12),
         variant="accent",
     )
     notice_panel.pack(fill="x", pady=(0, 16))
     notice_row = ttk.Frame(notice_panel.content, style="SurfaceAlt.TFrame")
     notice_row.pack(fill="x")
-    ttk.Label(notice_row, text="●", style="NoticeDot.TLabel").pack(side="left", padx=(0, 9))
+    ttk.Label(notice_row, text="❧", style="NoticeDot.TLabel").pack(side="left", padx=(0, 9))
     ttk.Label(
         notice_row,
         textvariable=self.notice_var,
@@ -942,12 +992,12 @@ def _modern_build_ui(self: Any) -> None:
     content.rowconfigure(0, weight=1)
 
     left = ttk.Frame(content, style="Modern.TFrame")
-    left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+    left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
     right = ttk.Frame(content, style="Modern.TFrame")
-    right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+    right.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=(18, 0))
 
     setup_card = _RoundedPanel(left, self, eyebrow="01  SETUP", title="Choose your instrument")
-    setup_card.pack(fill="x", pady=(0, 12))
+    setup_card.pack(fill="x", pady=(0, 14))
     setup = setup_card.content
     setup.columnconfigure(0, weight=1)
     setup.columnconfigure(1, weight=1)
@@ -970,7 +1020,7 @@ def _modern_build_ui(self: Any) -> None:
     )
 
     library_card = _RoundedPanel(left, self, eyebrow="02  SONG", title="Select a MIDI file")
-    library_card.pack(fill="x", pady=(0, 12))
+    library_card.pack(fill="x", pady=(0, 14))
     library = library_card.content
     library.columnconfigure(0, weight=1)
     _field_label(library, "MIDI library", 0, 0)
@@ -985,7 +1035,7 @@ def _modern_build_ui(self: Any) -> None:
     _RoundedButton(tools, self, text="Find MIDI online", command=self._open_online_sequencer, width=126, height=35).pack(side="right")
     ttk.Label(
         library,
-        text="Simple piano, melody, and solo arrangements usually translate best.",
+        text="Simple piano, melody, and solo arrangements usually sound the most natural.",
         style="CardMuted.TLabel",
         wraplength=560,
         justify="left",
@@ -994,18 +1044,18 @@ def _modern_build_ui(self: Any) -> None:
     self.custom_settings_frame = _RoundedPanel(left, self, eyebrow="CUSTOM", title="Fine-tune playback")
     self._build_custom_settings(self.custom_settings_frame.content)
 
-    playback_card = _RoundedPanel(right, self, eyebrow="03  PLAY", title="Ready when you are", variant="accent")
-    playback_card.pack(fill="x", pady=(0, 12))
+    playback_card = _RoundedPanel(right, self, eyebrow="03  PLAY", title="Begin when ready", variant="accent")
+    playback_card.pack(fill="x", pady=(0, 14))
     playback = playback_card.content
     playback.columnconfigure(0, weight=1)
     playback.columnconfigure(1, weight=1)
 
-    _field_label(playback, "Countdown", 0, 0, padx=(0, 8))
-    _field_label(playback, "Input method", 0, 1, padx=(8, 0))
-    delay_row = ttk.Frame(playback, style="Surface.TFrame")
+    ttk.Label(playback, text="COUNTDOWN", style="AccentCardMuted.TLabel", font=("Segoe UI", 8, "bold")).grid(row=0, column=0, sticky="w", pady=(0, 6), padx=(0, 8))
+    ttk.Label(playback, text="INPUT METHOD", style="AccentCardMuted.TLabel", font=("Segoe UI", 8, "bold")).grid(row=0, column=1, sticky="w", pady=(0, 6), padx=(8, 0))
+    delay_row = ttk.Frame(playback, style="SurfaceAccent.TFrame")
     delay_row.grid(row=1, column=0, sticky="w", padx=(0, 8))
     ttk.Spinbox(delay_row, from_=0, to=30, increment=0.5, textvariable=self.start_delay_var, width=7).pack(side="left")
-    ttk.Label(delay_row, text="sec", style="CardMuted.TLabel").pack(side="left", padx=(7, 0))
+    ttk.Label(delay_row, text="sec", style="AccentCardMuted.TLabel").pack(side="left", padx=(7, 0))
     self.input_backend_combo = ttk.Combobox(
         playback,
         textvariable=self.input_backend_var,
@@ -1015,15 +1065,15 @@ def _modern_build_ui(self: Any) -> None:
     self.input_backend_combo.grid(row=1, column=1, sticky="ew", padx=(8, 0))
     self.input_backend_combo.bind("<<ComboboxSelected>>", lambda _event: self._save_config())
 
-    ttk.Checkbutton(playback, text="Minimize after Play", variable=self.minimize_var, command=self._save_config).grid(
+    ttk.Checkbutton(playback, text="Minimize after Play", variable=self.minimize_var, command=self._save_config, style="Accent.TCheckbutton").grid(
         row=2, column=0, columnspan=2, sticky="w", pady=(14, 0)
     )
 
-    action_row = ttk.Frame(playback, style="Surface.TFrame")
+    action_row = ttk.Frame(playback, style="SurfaceAccent.TFrame")
     action_row.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(18, 0))
     action_row.columnconfigure(0, weight=1)
     action_row.columnconfigure(1, weight=1)
-    self.start_button = _RoundedButton(action_row, self, text="Play", role="primary", command=self._start, height=44)
+    self.start_button = _RoundedButton(action_row, self, text="Play", role="primary", command=self._start, height=44, background_key="surface_accent")
     self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
     self.stop_button = _RoundedButton(
         action_row,
@@ -1033,20 +1083,21 @@ def _modern_build_ui(self: Any) -> None:
         command=self._stop,
         state="disabled",
         height=44,
+        background_key="surface_accent",
     )
     self.stop_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
     self.progress = _RoundedProgress(playback, self, maximum=1.0, height=8)
     self.progress.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(20, 9))
-    ttk.Label(playback, textvariable=self.status_var, style="CardText.TLabel", wraplength=360, justify="left").grid(
+    ttk.Label(playback, textvariable=self.status_var, style="AccentCardText.TLabel", wraplength=360, justify="left").grid(
         row=5, column=0, columnspan=2, sticky="w"
     )
 
     ttk.Separator(playback).grid(row=6, column=0, columnspan=2, sticky="ew", pady=17)
-    footer_row = ttk.Frame(playback, style="Surface.TFrame")
+    footer_row = ttk.Frame(playback, style="SurfaceAccent.TFrame")
     footer_row.grid(row=7, column=0, columnspan=2, sticky="ew")
-    ttk.Label(footer_row, text="Keep BPSR focused while playing.", style="CardMuted.TLabel").pack(side="left")
-    _RoundedButton(footer_row, self, text="Reset", command=self._reset_defaults, width=72, height=32).pack(side="right")
+    ttk.Label(footer_row, text="Keep BPSR focused while the song plays.", style="AccentCardMuted.TLabel").pack(side="left")
+    _RoundedButton(footer_row, self, text="Reset", command=self._reset_defaults, width=72, height=32, background_key="surface_accent").pack(side="right")
 
     self.analysis_frame = _RoundedPanel(right, self, eyebrow="SONG FIT", title="Automatic check")
     self.analysis_frame.pack(fill="x")
@@ -1090,7 +1141,7 @@ def install_modern_ui(app_module: Any) -> None:
                 summary = "Manual controls. Full-range modes may use the < and > page keys."
             self.profile_summary_var.set(summary)
             self.custom_settings_frame.pack_forget()
-            self.custom_settings_frame.pack(fill="x", pady=(0, 12))
+            self.custom_settings_frame.pack(fill="x", pady=(0, 14))
             self._refresh_custom_mode_choices()
         else:
             profile = app_module.get_fixed_profile(instrument, profile_code)
