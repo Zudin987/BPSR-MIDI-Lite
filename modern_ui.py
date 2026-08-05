@@ -1,8 +1,180 @@
 from __future__ import annotations
 
+import json
 import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable
+
+
+THEME_NAMES = (
+    "Light",
+    "Dark",
+    "Dracula",
+    "Nord",
+    "Catppuccin Mocha",
+    "Solarized Dark",
+    "Tokyo Night",
+)
+DEFAULT_THEME = "Dark"
+
+# Centralized UI tokens. The extra themes adapt established developer palettes
+# to this app's rounded desktop controls rather than changing any MIDI behavior.
+THEME_PALETTES: dict[str, dict[str, str | bool]] = {
+    "Light": {
+        "is_dark": False,
+        "background": "#F4F4F7",
+        "surface": "#FFFFFF",
+        "surface_alt": "#F7F7FA",
+        "surface_hover": "#F0F0F6",
+        "disabled_fill": "#E6E6EB",
+        "foreground": "#17171B",
+        "muted": "#686C76",
+        "border": "#DFDFE7",
+        "accent": "#5E6AD2",
+        "accent_hover": "#505CC7",
+        "accent_text": "#FFFFFF",
+        "danger": "#F7F7FA",
+        "danger_hover": "#EEEEF4",
+        "danger_border": "#DFDFE7",
+        "danger_text": "#606579",
+        "danger_label": "#AF4048",
+        "success": "#23845E",
+        "warning": "#996A1E",
+        "focus": "#5E6AD2",
+    },
+    "Dark": {
+        "is_dark": True,
+        "background": "#050506",
+        "surface": "#0B0B0E",
+        "surface_alt": "#101014",
+        "surface_hover": "#17171D",
+        "disabled_fill": "#141419",
+        "foreground": "#EDEDEF",
+        "muted": "#8A8F98",
+        "border": "#25252D",
+        "accent": "#5E6AD2",
+        "accent_hover": "#6872D9",
+        "accent_text": "#FFFFFF",
+        "danger": "#101014",
+        "danger_hover": "#17171D",
+        "danger_border": "#25252D",
+        "danger_text": "#A8ACC4",
+        "danger_label": "#D66066",
+        "success": "#62C79B",
+        "warning": "#D7AD68",
+        "focus": "#7C86E8",
+    },
+    "Dracula": {
+        "is_dark": True,
+        "background": "#282A36",
+        "surface": "#30323F",
+        "surface_alt": "#44475A",
+        "surface_hover": "#50546A",
+        "disabled_fill": "#3A3D4F",
+        "foreground": "#F8F8F2",
+        "muted": "#A7ADCB",
+        "border": "#6272A4",
+        "accent": "#BD93F9",
+        "accent_hover": "#C9A7FA",
+        "accent_text": "#282A36",
+        "danger": "#44475A",
+        "danger_hover": "#50546A",
+        "danger_border": "#6272A4",
+        "danger_text": "#F8F8F2",
+        "danger_label": "#FF5555",
+        "success": "#50FA7B",
+        "warning": "#F1FA8C",
+        "focus": "#8BE9FD",
+    },
+    "Nord": {
+        "is_dark": True,
+        "background": "#2E3440",
+        "surface": "#3B4252",
+        "surface_alt": "#434C5E",
+        "surface_hover": "#4C566A",
+        "disabled_fill": "#394150",
+        "foreground": "#ECEFF4",
+        "muted": "#D8DEE9",
+        "border": "#4C566A",
+        "accent": "#88C0D0",
+        "accent_hover": "#8FBCBB",
+        "accent_text": "#2E3440",
+        "danger": "#434C5E",
+        "danger_hover": "#4C566A",
+        "danger_border": "#5B6579",
+        "danger_text": "#ECEFF4",
+        "danger_label": "#BF616A",
+        "success": "#A3BE8C",
+        "warning": "#EBCB8B",
+        "focus": "#81A1C1",
+    },
+    "Catppuccin Mocha": {
+        "is_dark": True,
+        "background": "#1E1E2E",
+        "surface": "#181825",
+        "surface_alt": "#313244",
+        "surface_hover": "#45475A",
+        "disabled_fill": "#292A3B",
+        "foreground": "#CDD6F4",
+        "muted": "#A6ADC8",
+        "border": "#45475A",
+        "accent": "#CBA6F7",
+        "accent_hover": "#B4BEFE",
+        "accent_text": "#1E1E2E",
+        "danger": "#313244",
+        "danger_hover": "#45475A",
+        "danger_border": "#585B70",
+        "danger_text": "#CDD6F4",
+        "danger_label": "#F38BA8",
+        "success": "#A6E3A1",
+        "warning": "#F9E2AF",
+        "focus": "#89B4FA",
+    },
+    "Solarized Dark": {
+        "is_dark": True,
+        "background": "#002B36",
+        "surface": "#073642",
+        "surface_alt": "#0B404C",
+        "surface_hover": "#124C58",
+        "disabled_fill": "#173C45",
+        "foreground": "#EEE8D5",
+        "muted": "#93A1A1",
+        "border": "#586E75",
+        "accent": "#2AA198",
+        "accent_hover": "#3AB1A7",
+        "accent_text": "#002B36",
+        "danger": "#073642",
+        "danger_hover": "#124C58",
+        "danger_border": "#586E75",
+        "danger_text": "#93A1A1",
+        "danger_label": "#DC322F",
+        "success": "#859900",
+        "warning": "#B58900",
+        "focus": "#2AA198",
+    },
+    "Tokyo Night": {
+        "is_dark": True,
+        "background": "#1A1B26",
+        "surface": "#24283B",
+        "surface_alt": "#292E42",
+        "surface_hover": "#3B4261",
+        "disabled_fill": "#252A3C",
+        "foreground": "#C0CAF5",
+        "muted": "#A9B1D6",
+        "border": "#3B4261",
+        "accent": "#7AA2F7",
+        "accent_hover": "#BB9AF7",
+        "accent_text": "#1A1B26",
+        "danger": "#292E42",
+        "danger_hover": "#3B4261",
+        "danger_border": "#565F89",
+        "danger_text": "#C0CAF5",
+        "danger_label": "#F7768E",
+        "success": "#9ECE6A",
+        "warning": "#E0AF68",
+        "focus": "#7DCFFF",
+    },
+}
 
 
 def _rounded_polygon(canvas: tk.Canvas, x1: float, y1: float, x2: float, y2: float, radius: float, **kwargs: Any) -> int:
@@ -158,7 +330,7 @@ class _RoundedButton(tk.Canvas):
         if self._state == "disabled":
             return palette["disabled_fill"], palette["border"], palette["muted"]
         if self._role == "primary":
-            return (palette["accent_hover"] if self._hovered else palette["accent"], palette["accent"], "#FFFFFF")
+            return (palette["accent_hover"] if self._hovered else palette["accent"], palette["accent"], palette["accent_text"])
         if self._role == "danger":
             return (
                 palette["danger_hover"] if self._hovered else palette["danger"],
@@ -277,52 +449,19 @@ class _RoundedProgress(tk.Canvas):
         self._redraw()
 
 
-def _apply_modern_styles(app: Any) -> None:
-    """Apply the rounded layout with a Linear-inspired neutral-indigo palette."""
-    style = app._style
-    dark = bool(app._dark_mode)
+def _selected_theme_name(app: Any) -> str:
+    name = str(getattr(app, "_selected_theme", DEFAULT_THEME))
+    return name if name in THEME_PALETTES else DEFAULT_THEME
 
-    if dark:
-        palette = {
-            "background": "#050506",
-            "surface": "#0B0B0E",
-            "surface_alt": "#101014",
-            "surface_hover": "#17171D",
-            "disabled_fill": "#141419",
-            "foreground": "#EDEDEF",
-            "muted": "#8A8F98",
-            "border": "#25252D",
-            "accent": "#5E6AD2",
-            "accent_hover": "#6872D9",
-            # Stop remains visually quiet like the reference theme instead of using red.
-            "danger": "#101014",
-            "danger_hover": "#17171D",
-            "danger_border": "#25252D",
-            "danger_text": "#A8ACC4",
-            "success": "#62C79B",
-            "warning": "#D7AD68",
-            "focus": "#7C86E8",
-        }
-    else:
-        palette = {
-            "background": "#F4F4F7",
-            "surface": "#FFFFFF",
-            "surface_alt": "#F7F7FA",
-            "surface_hover": "#F0F0F6",
-            "disabled_fill": "#E6E6EB",
-            "foreground": "#17171B",
-            "muted": "#6D717B",
-            "border": "#DFDFE7",
-            "accent": "#5E6AD2",
-            "accent_hover": "#505CC7",
-            "danger": "#F7F7FA",
-            "danger_hover": "#EEEEF4",
-            "danger_border": "#DFDFE7",
-            "danger_text": "#606579",
-            "success": "#23845E",
-            "warning": "#996A1E",
-            "focus": "#5E6AD2",
-        }
+
+def _apply_modern_styles(app: Any) -> None:
+    """Apply the selected palette to the rounded desktop interface."""
+    style = app._style
+    theme_name = _selected_theme_name(app)
+    palette = dict(THEME_PALETTES[theme_name])
+    dark = bool(palette.pop("is_dark"))
+    app._selected_theme = theme_name
+    app._dark_mode = dark
 
     app._modern_palette = palette
     app.configure(background=palette["background"])
@@ -396,13 +535,13 @@ def _apply_modern_styles(app: Any) -> None:
     style.map(
         "TNotebook.Tab",
         background=[("selected", palette["accent"]), ("active", palette["surface_hover"])],
-        foreground=[("selected", "#FFFFFF"), ("active", palette["foreground"])],
+        foreground=[("selected", palette["accent_text"]), ("active", palette["foreground"])],
     )
 
     style.configure(
         "Primary.TButton",
         background=palette["accent"],
-        foreground="#FFFFFF",
+        foreground=palette["accent_text"],
         bordercolor=palette["accent"],
         focusthickness=0,
         padding=(18, 10),
@@ -442,12 +581,12 @@ def _apply_modern_styles(app: Any) -> None:
 
     style.configure("Good.TLabel", background=palette["surface"], foreground=palette["success"], font=("Segoe UI Semibold", 10))
     style.configure("Warning.TLabel", background=palette["surface"], foreground=palette["warning"], font=("Segoe UI Semibold", 10))
-    style.configure("Danger.TLabel", background=palette["surface"], foreground="#D66066" if dark else "#AF4048", font=("Segoe UI Semibold", 10))
+    style.configure("Danger.TLabel", background=palette["surface"], foreground=palette["danger_label"], font=("Segoe UI Semibold", 10))
 
     app.option_add("*TCombobox*Listbox.background", palette["surface_alt"])
     app.option_add("*TCombobox*Listbox.foreground", palette["foreground"])
     app.option_add("*TCombobox*Listbox.selectBackground", palette["accent"])
-    app.option_add("*TCombobox*Listbox.selectForeground", "#FFFFFF")
+    app.option_add("*TCombobox*Listbox.selectForeground", palette["accent_text"])
 
     live_widgets = []
     for widget in getattr(app, "_modern_rounded_widgets", []):
@@ -617,20 +756,34 @@ def _modern_build_ui(self: Any) -> None:
         style="ModernSubtitle.TLabel",
     ).pack(anchor="w", pady=(3, 0))
 
+    theme_controls = ttk.Frame(header, style="Modern.TFrame")
+    theme_controls.pack(side="right", anchor="n")
+
     version_panel = _RoundedPanel(
-        header,
+        theme_controls,
         self,
         fill_key="surface_alt",
         border_key="border",
         radius=11,
         padding=(9, 5),
     )
-    version_panel.pack(side="right", anchor="n", pady=(4, 0))
+    version_panel.pack(anchor="e", pady=(4, 7))
     ttk.Label(
         version_panel.content,
         text=f"v{self._modern_module.APP_VERSION}",
         style="ModernVersion.TLabel",
     ).pack()
+
+    self.theme_var = tk.StringVar(value=_selected_theme_name(self))
+    self.theme_combo = ttk.Combobox(
+        theme_controls,
+        textvariable=self.theme_var,
+        values=THEME_NAMES,
+        state="readonly",
+        width=18,
+    )
+    self.theme_combo.pack(anchor="e")
+    self.theme_combo.bind("<<ComboboxSelected>>", lambda _event: self._theme_changed())
 
     notice_panel = _RoundedPanel(
         outer,
@@ -836,13 +989,63 @@ def _modern_build_ui(self: Any) -> None:
 
 
 def install_modern_ui(app_module: Any) -> None:
-    """Install the modern UI on the existing application without changing playback logic."""
+    """Install the themed rounded UI without changing MIDI or input behavior."""
     app_class = app_module.App
-    original_apply_system_theme = app_class._apply_system_theme
+    original_load_config = app_class._load_config
+    original_save_config = app_class._save_config
 
-    def apply_system_theme(self: Any, force: bool = False) -> None:
-        original_apply_system_theme(self, force)
+    def apply_selected_theme(self: Any, force: bool = False) -> None:
+        del force  # Kept for compatibility with the original method signature.
+        theme_name = _selected_theme_name(self)
+        dark = bool(THEME_PALETTES[theme_name]["is_dark"])
+        self._dark_mode = dark
+        app_module.apply_theme(self, self._style, dark)
         _apply_modern_styles(self)
+
+    def poll_system_theme(self: Any) -> None:
+        # Theme choice is explicit now; do not follow Windows appearance changes.
+        return None
+
+    def theme_changed(self: Any) -> None:
+        selected = str(self.theme_var.get())
+        if selected not in THEME_PALETTES:
+            selected = DEFAULT_THEME
+            self.theme_var.set(selected)
+        self._selected_theme = selected
+        self._apply_system_theme(force=True)
+        self._save_config()
+
+    def load_config(self: Any) -> None:
+        saved_theme = DEFAULT_THEME
+        try:
+            data = json.loads(self._config_path().read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                candidate = str(data.get("theme", DEFAULT_THEME))
+                if candidate in THEME_PALETTES:
+                    saved_theme = candidate
+        except (OSError, ValueError, TypeError):
+            pass
+
+        self._selected_theme = saved_theme
+        original_load_config(self)
+        self.theme_var.set(saved_theme)
+        self._apply_system_theme(force=True)
+
+    def save_config(self: Any) -> None:
+        original_save_config(self)
+        if self._suspend_auto_analysis:
+            return
+        try:
+            path = self._config_path()
+            data: dict[str, Any] = {}
+            if path.exists():
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    data = loaded
+            data["theme"] = _selected_theme_name(self)
+            path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        except (OSError, ValueError, TypeError):
+            pass
 
     def apply_profile_ui(self: Any, schedule: bool = True) -> None:
         instrument = self._instrument_code()
@@ -893,8 +1096,13 @@ def install_modern_ui(app_module: Any) -> None:
         if schedule:
             self._schedule_analysis()
 
+
     app_class._modern_module = app_module
-    app_class._apply_system_theme = apply_system_theme
+    app_class._apply_system_theme = apply_selected_theme
+    app_class._poll_system_theme = poll_system_theme
+    app_class._theme_changed = theme_changed
+    app_class._load_config = load_config
+    app_class._save_config = save_config
     app_class._build_ui = _modern_build_ui
     app_class._build_custom_settings = _modern_build_custom_settings
     app_class._apply_profile_ui = apply_profile_ui
