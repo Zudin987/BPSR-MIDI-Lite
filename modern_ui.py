@@ -1,7 +1,276 @@
 from __future__ import annotations
 
+import tkinter as tk
 from tkinter import ttk
-from typing import Any
+from typing import Any, Callable
+
+
+def _rounded_polygon(canvas: tk.Canvas, x1: float, y1: float, x2: float, y2: float, radius: float, **kwargs: Any) -> int:
+    """Draw a smooth rounded rectangle without adding another UI dependency."""
+    radius = max(2.0, min(radius, (x2 - x1) / 2, (y2 - y1) / 2))
+    points = (
+        x1 + radius, y1,
+        x2 - radius, y1,
+        x2, y1,
+        x2, y1 + radius,
+        x2, y2 - radius,
+        x2, y2,
+        x2 - radius, y2,
+        x1 + radius, y2,
+        x1, y2,
+        x1, y2 - radius,
+        x1, y1 + radius,
+        x1, y1,
+    )
+    return canvas.create_polygon(points, smooth=True, splinesteps=24, **kwargs)
+
+
+def _register_rounded_widget(app: Any, widget: Any) -> None:
+    widgets = getattr(app, "_modern_rounded_widgets", None)
+    if widgets is None:
+        widgets = []
+        app._modern_rounded_widgets = widgets
+    widgets.append(widget)
+
+
+class _RoundedPanel(tk.Frame):
+    """Rounded surface that can contain ordinary ttk widgets."""
+
+    def __init__(
+        self,
+        parent: Any,
+        app: Any,
+        *,
+        fill_key: str = "surface",
+        outside_key: str = "background",
+        border_key: str | None = "border",
+        radius: int = 16,
+        padding: tuple[int, int] = (14, 12),
+        title: str | None = None,
+    ) -> None:
+        self._app = app
+        self._fill_key = fill_key
+        self._outside_key = outside_key
+        self._border_key = border_key
+        self._radius = radius
+        palette = app._modern_palette
+        super().__init__(parent, background=palette[outside_key], borderwidth=0, highlightthickness=0)
+
+        self._canvas = tk.Canvas(
+            self,
+            background=palette[outside_key],
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        self._canvas.place(x=0, y=0, relwidth=1, relheight=1)
+
+        self._inner = tk.Frame(self, background=palette[fill_key], borderwidth=0, highlightthickness=0)
+        self._inner.pack(fill="both", expand=True, padx=padding[0], pady=padding[1])
+
+        if title:
+            ttk.Label(self._inner, text=title, style="CardTitle.TLabel").pack(anchor="w", pady=(0, 10))
+
+        frame_style = "SurfaceAlt.TFrame" if fill_key == "surface_alt" else "Surface.TFrame"
+        self.content = ttk.Frame(self._inner, style=frame_style)
+        self.content.pack(fill="both", expand=True)
+
+        self.bind("<Configure>", self._redraw, add="+")
+        _register_rounded_widget(app, self)
+        self.after_idle(self._redraw)
+
+    def _redraw(self, _event: Any = None) -> None:
+        if not self.winfo_exists():
+            return
+        palette = self._app._modern_palette
+        width = max(2, self.winfo_width())
+        height = max(2, self.winfo_height())
+        self._canvas.delete("rounded-panel")
+        outline = palette[self._border_key] if self._border_key else palette[self._fill_key]
+        _rounded_polygon(
+            self._canvas,
+            1,
+            1,
+            width - 1,
+            height - 1,
+            self._radius,
+            fill=palette[self._fill_key],
+            outline=outline,
+            width=1,
+            tags="rounded-panel",
+        )
+        self._canvas.tag_lower("rounded-panel")
+
+    def apply_palette(self) -> None:
+        palette = self._app._modern_palette
+        self.configure(background=palette[self._outside_key])
+        self._canvas.configure(background=palette[self._outside_key])
+        self._inner.configure(background=palette[self._fill_key])
+        self._redraw()
+
+
+class _RoundedButton(tk.Canvas):
+    """Small Canvas button compatible with the existing start/stop lifecycle."""
+
+    def __init__(
+        self,
+        parent: Any,
+        app: Any,
+        *,
+        text: str,
+        command: Callable[[], None],
+        role: str = "secondary",
+        state: str = "normal",
+        height: int = 36,
+        width: int = 120,
+        radius: int = 10,
+        background_key: str = "surface",
+    ) -> None:
+        self._app = app
+        self._text = text
+        self._command = command
+        self._role = role
+        self._state = state
+        self._hovered = False
+        self._radius = radius
+        self._background_key = background_key
+        palette = app._modern_palette
+        super().__init__(
+            parent,
+            height=height,
+            width=width,
+            background=palette[background_key],
+            borderwidth=0,
+            highlightthickness=0,
+            cursor="hand2" if state != "disabled" else "arrow",
+            takefocus=True,
+        )
+        self.bind("<Configure>", self._redraw, add="+")
+        self.bind("<Enter>", self._enter, add="+")
+        self.bind("<Leave>", self._leave, add="+")
+        self.bind("<ButtonRelease-1>", self._activate, add="+")
+        self.bind("<Return>", self._activate, add="+")
+        self.bind("<space>", self._activate, add="+")
+        _register_rounded_widget(app, self)
+        self.after_idle(self._redraw)
+
+    def _colours(self) -> tuple[str, str, str]:
+        palette = self._app._modern_palette
+        if self._state == "disabled":
+            return palette["disabled_fill"], palette["border"], palette["muted"]
+        if self._role == "primary":
+            return (palette["accent_hover"] if self._hovered else palette["accent"], palette["accent"], "#FFFFFF")
+        if self._role == "danger":
+            return (palette["danger_hover"] if self._hovered else palette["danger"], palette["danger"], "#FFFFFF")
+        return (palette["surface_hover"] if self._hovered else palette["surface_alt"], palette["border"], palette["foreground"])
+
+    def _redraw(self, _event: Any = None) -> None:
+        if not self.winfo_exists():
+            return
+        fill, outline, text = self._colours()
+        width = max(2, self.winfo_width())
+        height = max(2, self.winfo_height())
+        self.delete("all")
+        _rounded_polygon(self, 1, 1, width - 1, height - 1, self._radius, fill=fill, outline=outline, width=1)
+        font = ("Segoe UI Semibold", 10) if self._role in {"primary", "danger"} else ("Segoe UI", 9)
+        self.create_text(width / 2, height / 2, text=self._text, fill=text, font=font)
+
+    def _enter(self, _event: Any = None) -> None:
+        if self._state != "disabled":
+            self._hovered = True
+            self._redraw()
+
+    def _leave(self, _event: Any = None) -> None:
+        self._hovered = False
+        self._redraw()
+
+    def _activate(self, _event: Any = None) -> None:
+        if self._state != "disabled" and self._command:
+            self._command()
+
+    def configure(self, cnf: Any = None, **kwargs: Any) -> Any:
+        if cnf:
+            kwargs.update(cnf)
+        redraw = False
+        if "state" in kwargs:
+            self._state = str(kwargs.pop("state"))
+            self.configure(cursor="arrow" if self._state == "disabled" else "hand2")
+            redraw = True
+        if "text" in kwargs:
+            self._text = str(kwargs.pop("text"))
+            redraw = True
+        if "command" in kwargs:
+            self._command = kwargs.pop("command")
+        result = super().configure(**kwargs) if kwargs else None
+        if redraw:
+            self._redraw()
+        return result
+
+    config = configure
+
+    def state(self, statespec: Any = None) -> tuple[str, ...]:
+        if statespec is not None:
+            disabled = any(str(value) == "disabled" for value in statespec)
+            enabled = any(str(value) == "!disabled" for value in statespec)
+            if disabled:
+                self.configure(state="disabled")
+            elif enabled:
+                self.configure(state="normal")
+        return ("disabled",) if self._state == "disabled" else ()
+
+    def apply_palette(self) -> None:
+        self.configure(background=self._app._modern_palette[self._background_key])
+        self._redraw()
+
+
+class _RoundedProgress(tk.Canvas):
+    def __init__(self, parent: Any, app: Any, *, maximum: float = 1.0, height: int = 8) -> None:
+        self._app = app
+        self._maximum = float(maximum)
+        self._value = 0.0
+        palette = app._modern_palette
+        super().__init__(
+            parent,
+            height=height,
+            background=palette["surface"],
+            borderwidth=0,
+            highlightthickness=0,
+        )
+        self.bind("<Configure>", self._redraw, add="+")
+        _register_rounded_widget(app, self)
+
+    def _redraw(self, _event: Any = None) -> None:
+        width = max(2, self.winfo_width())
+        height = max(2, self.winfo_height())
+        palette = self._app._modern_palette
+        self.delete("all")
+        radius = height / 2
+        _rounded_polygon(self, 0, 0, width, height, radius, fill=palette["surface_alt"], outline=palette["surface_alt"])
+        ratio = 0.0 if self._maximum <= 0 else max(0.0, min(1.0, self._value / self._maximum))
+        fill_width = width * ratio
+        if fill_width > 1:
+            _rounded_polygon(self, 0, 0, max(height, fill_width), height, radius, fill=palette["accent"], outline=palette["accent"])
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key == "value":
+            self._value = float(value)
+            self._redraw()
+            return
+        if key == "maximum":
+            self._maximum = float(value)
+            self._redraw()
+            return
+        super().__setitem__(key, value)
+
+    def __getitem__(self, key: str) -> Any:
+        if key == "value":
+            return self._value
+        if key == "maximum":
+            return self._maximum
+        return super().__getitem__(key)
+
+    def apply_palette(self) -> None:
+        self.configure(background=self._app._modern_palette["surface"])
+        self._redraw()
 
 
 def _apply_modern_styles(app: Any) -> None:
@@ -19,6 +288,23 @@ def _apply_modern_styles(app: Any) -> None:
     accent_hover = "#7DB6FB" if dark else "#1D4ED8"
     danger = "#F87171" if dark else "#C24141"
     danger_hover = "#FB8B8B" if dark else "#A93434"
+    surface_hover = "#334155" if dark else "#EEF2F7"
+    disabled_fill = "#2A3648" if dark else "#E5EAF0"
+
+    app._modern_palette = {
+        "background": background,
+        "surface": surface,
+        "surface_alt": surface_alt,
+        "surface_hover": surface_hover,
+        "disabled_fill": disabled_fill,
+        "foreground": foreground,
+        "muted": muted,
+        "border": border,
+        "accent": accent,
+        "accent_hover": accent_hover,
+        "danger": danger,
+        "danger_hover": danger_hover,
+    }
 
     app.configure(background=background)
 
@@ -55,11 +341,22 @@ def _apply_modern_styles(app: Any) -> None:
         font=("Segoe UI", 10),
     )
     style.configure(
+        "ModernAuthor.TLabel",
+        background=background,
+        foreground=accent,
+        font=("Segoe UI Semibold", 10),
+    )
+    style.configure(
+        "CardTitle.TLabel",
+        background=surface,
+        foreground=foreground,
+        font=("Segoe UI Semibold", 11),
+    )
+    style.configure(
         "ModernVersion.TLabel",
         background=surface_alt,
         foreground=muted,
         font=("Segoe UI Semibold", 9),
-        padding=(8, 4),
     )
     style.configure(
         "CardText.TLabel",
@@ -78,7 +375,6 @@ def _apply_modern_styles(app: Any) -> None:
         background=surface_alt,
         foreground=foreground,
         font=("Segoe UI", 10),
-        padding=(14, 10),
     )
     style.configure(
         "Footer.TLabel",
@@ -131,6 +427,16 @@ def _apply_modern_styles(app: Any) -> None:
         darkcolor=accent,
         thickness=8,
     )
+
+    live_widgets = []
+    for widget in getattr(app, "_modern_rounded_widgets", []):
+        try:
+            if widget.winfo_exists():
+                widget.apply_palette()
+                live_widgets.append(widget)
+        except tk.TclError:
+            pass
+    app._modern_rounded_widgets = live_widgets
 
 
 def _field_label(parent: Any, text: str, row: int, column: int = 0, **grid: Any) -> None:
@@ -281,25 +587,47 @@ def _modern_build_ui(self: Any) -> None:
     header.pack(fill="x", pady=(0, 16))
     title_group = ttk.Frame(header, style="Modern.TFrame")
     title_group.pack(side="left", fill="x", expand=True)
-    ttk.Label(title_group, text=self._modern_module.APP_NAME, style="ModernTitle.TLabel").pack(anchor="w")
+    title_line = ttk.Frame(title_group, style="Modern.TFrame")
+    title_line.pack(anchor="w")
+    ttk.Label(title_line, text=self._modern_module.APP_NAME, style="ModernTitle.TLabel").pack(side="left")
+    ttk.Label(title_line, text="by MrEz", style="ModernAuthor.TLabel").pack(side="left", padx=(10, 0), pady=(8, 0))
     ttk.Label(
         title_group,
         text="Play MIDI through Keyboard, Guitar, or Bass in Blue Protocol: Star Resonance",
         style="ModernSubtitle.TLabel",
     ).pack(anchor="w", pady=(3, 0))
-    ttk.Label(
+
+    version_panel = _RoundedPanel(
         header,
+        self,
+        fill_key="surface_alt",
+        border_key="border",
+        radius=11,
+        padding=(9, 5),
+    )
+    version_panel.pack(side="right", anchor="n", pady=(4, 0))
+    ttk.Label(
+        version_panel.content,
         text=f"v{self._modern_module.APP_VERSION}",
         style="ModernVersion.TLabel",
-    ).pack(side="right", anchor="n", pady=(4, 0))
+    ).pack()
 
-    ttk.Label(
+    notice_panel = _RoundedPanel(
         outer,
+        self,
+        fill_key="surface_alt",
+        border_key="border",
+        radius=14,
+        padding=(14, 10),
+    )
+    notice_panel.pack(fill="x", pady=(0, 16))
+    ttk.Label(
+        notice_panel.content,
         textvariable=self.notice_var,
         style="InfoStrip.TLabel",
-        wraplength=970,
+        wraplength=940,
         justify="left",
-    ).pack(fill="x", pady=(0, 16))
+    ).pack(fill="x")
 
     content = ttk.Frame(outer, style="Modern.TFrame")
     content.pack(fill="both", expand=True)
@@ -312,8 +640,9 @@ def _modern_build_ui(self: Any) -> None:
     right = ttk.Frame(content, style="Modern.TFrame")
     right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
-    setup = ttk.LabelFrame(left, text="Instrument setup", style="Card.TLabelframe")
-    setup.pack(fill="x", pady=(0, 12))
+    setup_card = _RoundedPanel(left, self, title="Instrument setup")
+    setup_card.pack(fill="x", pady=(0, 12))
+    setup = setup_card.content
     setup.columnconfigure(0, weight=1)
     setup.columnconfigure(1, weight=1)
 
@@ -343,8 +672,9 @@ def _modern_build_ui(self: Any) -> None:
         justify="left",
     ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-    library = ttk.LabelFrame(left, text="Song library", style="Card.TLabelframe")
-    library.pack(fill="x", pady=(0, 12))
+    library_card = _RoundedPanel(left, self, title="Song library")
+    library_card.pack(fill="x", pady=(0, 12))
+    library = library_card.content
     library.columnconfigure(0, weight=1)
     _field_label(library, "Selected MIDI", 0, 0)
     self.midi_combo = ttk.Combobox(
@@ -358,23 +688,14 @@ def _modern_build_ui(self: Any) -> None:
 
     tools = ttk.Frame(library, style="Surface.TFrame")
     tools.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-    ttk.Button(
-        tools,
-        text="Open MIDI folder",
-        style="Utility.TButton",
-        command=self._open_midi_folder,
+    _RoundedButton(
+        tools, self, text="Open MIDI folder", command=self._open_midi_folder, width=126, height=34
     ).pack(side="left")
-    ttk.Button(
-        tools,
-        text="Refresh",
-        style="Utility.TButton",
-        command=self._reload_midi_library,
+    _RoundedButton(
+        tools, self, text="Refresh", command=self._reload_midi_library, width=78, height=34
     ).pack(side="left", padx=(8, 0))
-    ttk.Button(
-        tools,
-        text="Find songs online",
-        style="Utility.TButton",
-        command=self._open_online_sequencer,
+    _RoundedButton(
+        tools, self, text="Find songs online", command=self._open_online_sequencer, width=132, height=34
     ).pack(side="right")
     ttk.Label(
         library,
@@ -384,15 +705,12 @@ def _modern_build_ui(self: Any) -> None:
         justify="left",
     ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
 
-    self.custom_settings_frame = ttk.LabelFrame(
-        left,
-        text="Custom profile",
-        style="Card.TLabelframe",
-    )
-    self._build_custom_settings(self.custom_settings_frame)
+    self.custom_settings_frame = _RoundedPanel(left, self, title="Custom profile")
+    self._build_custom_settings(self.custom_settings_frame.content)
 
-    playback = ttk.LabelFrame(right, text="Playback", style="Card.TLabelframe")
-    playback.pack(fill="x", pady=(0, 12))
+    playback_card = _RoundedPanel(right, self, title="Playback")
+    playback_card.pack(fill="x", pady=(0, 12))
+    playback = playback_card.content
     playback.columnconfigure(0, weight=1)
     playback.columnconfigure(1, weight=1)
 
@@ -431,28 +749,16 @@ def _modern_build_ui(self: Any) -> None:
     action_row.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(16, 0))
     action_row.columnconfigure(0, weight=1)
     action_row.columnconfigure(1, weight=1)
-    self.start_button = ttk.Button(
-        action_row,
-        text="Play",
-        style="Primary.TButton",
-        command=self._start,
+    self.start_button = _RoundedButton(
+        action_row, self, text="Play", role="primary", command=self._start, height=40
     )
     self.start_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-    self.stop_button = ttk.Button(
-        action_row,
-        text="Stop  ·  F10",
-        style="Danger.TButton",
-        command=self._stop,
-        state="disabled",
+    self.stop_button = _RoundedButton(
+        action_row, self, text="Stop  ·  F10", role="danger", command=self._stop, state="disabled", height=40
     )
     self.stop_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
-    self.progress = ttk.Progressbar(
-        playback,
-        maximum=1.0,
-        mode="determinate",
-        style="Modern.Horizontal.TProgressbar",
-    )
+    self.progress = _RoundedProgress(playback, self, maximum=1.0, height=8)
     self.progress.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(18, 8))
     ttk.Label(
         playback,
@@ -470,23 +776,21 @@ def _modern_build_ui(self: Any) -> None:
         wraplength=350,
         justify="left",
     ).grid(row=7, column=0, columnspan=2, sticky="w")
-    ttk.Button(
-        playback,
-        text="Restore defaults",
-        style="Utility.TButton",
-        command=self._reset_defaults,
+    _RoundedButton(
+        playback, self, text="Restore defaults", command=self._reset_defaults, width=118, height=34
     ).grid(row=8, column=0, columnspan=2, sticky="w", pady=(14, 0))
 
-    self.analysis_frame = ttk.LabelFrame(right, text="Song check", style="Card.TLabelframe")
+    self.analysis_frame = _RoundedPanel(right, self, title="Song check")
     self.analysis_frame.pack(fill="x")
+    analysis = self.analysis_frame.content
     self.suitability_label = ttk.Label(
-        self.analysis_frame,
+        analysis,
         textvariable=self.suitability_var,
         style="Good.TLabel",
     )
     self.suitability_label.pack(anchor="w", pady=(0, 6))
     ttk.Label(
-        self.analysis_frame,
+        analysis,
         textvariable=self.analysis_var,
         style="CardText.TLabel",
         wraplength=350,
@@ -502,7 +806,7 @@ def _modern_build_ui(self: Any) -> None:
     ).pack(side="left")
     ttk.Label(
         footer,
-        text=f"{self._modern_module.APP_AUTHOR}  ·  AGPL-3.0  ·  Settings save automatically",
+        text="AGPL-3.0  ·  Settings save automatically",
         style="Footer.TLabel",
     ).pack(side="right")
 
