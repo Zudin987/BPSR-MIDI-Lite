@@ -24,7 +24,7 @@ Press `F10` at any time to stop playback and release all keys.
 
 Fixed profiles are recommended because they use safe note ranges and avoid the `<` and `>` page keys.
 
-Custom is for advanced tuning. Full-range Custom modes may change pages, so the app adds a guarded wait before the following note.
+Custom is for advanced tuning. Full-range Custom modes may change pages, so the app waits briefly before playing the following note. Later notes are shifted by the same amount instead of rushing to catch up.
 
 ## Song check
 
@@ -40,13 +40,28 @@ Simple piano, melody, acoustic, and solo-instrument MIDI files usually work best
 
 - **Countdown** gives you time to focus BPSR before playback begins.
 - **Minimize app after Play** hides the app after starting.
-- **Keyboard input** selects how Windows sends keys to the game. Keep the recommended scan-code method unless it does not work on your system.
+- **Keyboard input** controls how Windows sends keys to the game. Keep the recommended scan-code method unless it does not work on your system.
+- **Restore defaults** resets the normal app and Custom-profile settings.
+
+## Themes
+
+Use the dropdown below the version badge to switch themes immediately:
+
+- Light
+- Dark
+- Dracula
+- Nord
+- Catppuccin Mocha
+- Solarized Dark
+- Tokyo Night
+
+The selected theme is saved automatically and restored the next time the app opens.
 
 ## Custom profile
 
 ### Notes tab
 
-- **Playback mode** controls whether the app stays in a safe range or uses the full unlocked range.
+- **Playback mode** selects safe-range or experimental full-range playback.
 - **Unlocked range** matches your in-game instrument unlock.
 - **Chord detail** limits simultaneous notes when a MIDI is too dense.
 - **Fit unavailable notes** controls how notes outside the game range are handled.
@@ -57,9 +72,9 @@ Simple piano, melody, acoustic, and solo-instrument MIDI files usually work best
 
 - **Page-change wait** gives BPSR time to finish changing pages.
 - **Ctrl / Shift lead** sends octave controls slightly before their notes.
-- **Speed** changes the overall playback speed.
+- **Speed** changes overall playback speed.
 - **Note length** changes how long notes are held.
-- **Minimum note** prevents very short taps.
+- **Minimum note** prevents extremely short taps.
 
 ## Common problems
 
@@ -67,18 +82,19 @@ Simple piano, melody, acoustic, and solo-instrument MIDI files usually work best
 
 - Confirm the app was opened with Administrator permission.
 - Keep the in-game instrument open.
-- Make sure the instrument and profile match your unlock.
-- Try a different Keyboard input method.
+- Make sure the selected instrument and profile match your unlock.
+- Try another **Keyboard input** method.
 
 ### The song sounds crowded or strange
 
 - Try a simpler MIDI.
 - Use a fixed profile.
-- Reduce Chord detail in Custom.
+- Reduce **Chord detail** in Custom.
 - Avoid full-band, orchestral, drum-heavy, impossible-piano, and Black MIDI files.
 
 ## Important notes
 
 - Keep BPSR focused during playback.
+- Press `F10` for an emergency stop.
 - The song check is guidance, not a guarantee.
 - The game may still limit or delay extremely dense input.

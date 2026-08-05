@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.2.0
+
+- Redesigned the app with a cleaner rounded two-column interface.
+- Added **by MrEz** to the main header.
+- Added a manual theme selector below the version badge.
+- Added seven saved themes: Light, Dark, Dracula, Nord, Catppuccin Mocha, Solarized Dark, and Tokyo Night.
+- Reorganized advanced Custom settings into **Notes** and **Timing** tabs.
+- Simplified labels, instructions, and status text.
+- Removed the visible **Test input** and **Copy diagnostics** controls.
+- Prevented control-key taps and frequent UI status updates from blocking MIDI timing.
+- Added a guarded wait after `<` or `>` page changes and shifts later events by the same delay instead of rushing.
+- Relaxed a flaky Windows CI timing assertion while keeping page-guard coverage.
+- Updated the README, user guide, screenshot, release notes, and Windows version metadata.
+
 ## v1.1.1
 
 - Restored the mandatory Windows Administrator manifest after real BPSR testing showed that standard-permission input was not reliable.

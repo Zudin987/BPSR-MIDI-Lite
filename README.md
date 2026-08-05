@@ -1,92 +1,112 @@
-# 🎹 BPSR MIDI Lite
+<h1 align="center">🎹 BPSR MIDI Lite</h1>
 
-A lightweight MIDI instrument player for **Blue Protocol: Star Resonance**.
-Supports Keyboard, Guitar, and Bass.
+<p align="center">
+  A lightweight MIDI instrument player for <strong>Blue Protocol: Star Resonance</strong>.
+  <br>
+  Supports <strong>Keyboard, Guitar, and Bass</strong>.
+  <br>
+  Created by <strong>MrEz</strong>.
+</p>
 
-Created by **MrEz**.
+<p align="center">
+  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe">
+    <img alt="Download Latest EXE" src="https://img.shields.io/badge/Download-Latest%20EXE-2ea44f?style=for-the-badge&logo=windows">
+  </a>
+</p>
 
-> **Windows 10/11, 64-bit.** Accept the Administrator prompt when opening the app. Administrator permission is required for reliable BPSR input.
+<p align="center">
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows">
+  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/Zudin987/BPSR-MIDI-Lite?display_name=tag">
+  </a>
+  <a href="./LICENSE">
+    <img alt="AGPL-3.0 licence" src="https://img.shields.io/badge/License-AGPL--3.0-blue">
+  </a>
+</p>
+
+> [!IMPORTANT]
+> Requires **Windows 10 or Windows 11, 64-bit**.  
+> Accept the Administrator prompt when opening the app. Administrator permission is required for reliable BPSR input.
+
+![BPSR MIDI Lite v1.2.0 interface](docs/screenshots/bpsr-midi-lite-v1.2.0.png)
 
 ## Download
 
 ### [⬇ Download BPSR-MIDI-Lite.exe](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe)
 
-No installation, ZIP extraction, Python, or extra dependency is required.
-Windows may show a SmartScreen warning because the EXE is not code-signed. Download it only from this repository's Releases page.
+The EXE is standalone. No Python installation, setup wizard, or ZIP extraction is required.
+
+Windows may show a SmartScreen warning because the EXE is not code-signed. Only download it from this repository's official **Releases** page.
 
 ## What it does
 
 BPSR MIDI Lite reads `.mid` and `.midi` files and converts their notes into keyboard input for BPSR's in-game instruments.
 
-It is a single-purpose music utility. It does not automate combat, gathering, fishing, dungeons, or other gameplay.
+It is a single-purpose music tool. It does **not** automate combat, fishing, gathering, dungeons, or other gameplay.
 
-## Main features
+## Highlights
 
 - Keyboard, Guitar, and Bass support
-- Unlock-based instrument profiles
-- Automatic song suitability check
-- Automatic folding and remapping of unavailable notes
-- Custom profile for advanced tuning and experimental full-range playback
-- Guarded delay for `<` and `>` page changes
-- MIDI folder and song website shortcuts
+- Simple unlock-based instrument profiles
+- Fixed profiles avoid the `<` and `>` page keys
+- Automatic **Good fit / Busy / Very complex** song check
+- Automatic note folding and remapping
+- Guarded page switching for experimental full-range playback
+- Reduced timing stalls during dense songs
+- Rounded modern interface
+- Seven selectable colour themes
 - `F10` emergency stop
-- Automatic Windows light/dark theme
 - Standalone Windows EXE
 
 ## Quick start
 
 1. Download and open `BPSR-MIDI-Lite.exe`.
 2. Accept the Administrator prompt.
-3. Choose your instrument and matching unlock profile.
-4. Click **Open MIDI folder** and add your `.mid` or `.midi` files.
-5. Click **Refresh** and select a song.
-6. Open the matching instrument in BPSR:
+3. Choose **Keyboard**, **Guitar**, or **Bass**.
+4. Choose the profile matching your in-game unlock.
+5. Click **Open MIDI folder** and add your `.mid` or `.midi` files.
+6. Click **Refresh**, then select a song.
+7. Open the matching BPSR instrument:
    - Keyboard/Guitar: middle page + Default octave
    - Bass: Default mode
-7. Click **Play**, then focus BPSR during the countdown.
-8. Press `F10` whenever you need to stop.
+8. Click **Play** and focus BPSR before the countdown ends.
+9. Press `F10` to stop at any time.
 
 ## Instrument profiles
 
 | Instrument | Tier 1 | Tier 2 | Tier 3 | Custom |
 |---|---|---|---|---|
-| Keyboard | C3–B4 | C3–B6 | C2–B6 — recommended | Configurable; experimental A0–C8 |
-| Guitar | C3–B4 | E2–B4 | E2–D6 | Configurable experimental range |
-| Bass | E1–B2 | E1–B3 | — | Manual E1–B2 or E1–B3 |
+| **Keyboard** | C3–B4 | C3–B6 | **C2–B6 — recommended** | Configurable; experimental A0–C8 |
+| **Guitar** | C3–B4 | E2–B4 | **E2–D6** | Configurable experimental range |
+| **Bass** | E1–B2 | **E1–B3** | — | Manual E1–B2 or E1–B3 |
 
-Fixed profiles avoid the `<` and `>` page keys. Custom full-range playback may use them and adds a guarded wait before the next playable input.
+Fixed profiles are recommended because they use safe ranges and avoid page switching. Custom is available for advanced tuning.
 
-## Choosing a MIDI
+## Colour themes
 
-The app checks the selected song and labels it as:
+Use the dropdown below the version number to choose:
 
-- **Good fit** — should translate cleanly
-- **Busy** — may sound crowded but can still work
-- **Very complex** — likely to sound messy in-game
+- Light
+- Dark
+- Dracula
+- Nord
+- Catppuccin Mocha
+- Solarized Dark
+- Tokyo Night
 
-For better results, use piano, melody-only, acoustic, solo-instrument, easy, or simplified MIDI files. Dense orchestral, full-band, drum-heavy, impossible-piano, and Black MIDI arrangements usually do not translate well to the game's limited instrument range.
+The selected theme is saved automatically.
 
-## Basic troubleshooting
+## Choosing MIDI files
 
-### Nothing happens in BPSR
+Simple piano, melody, acoustic, and solo-instrument arrangements usually work best.
 
-- Confirm that the Administrator prompt was accepted.
-- Keep the game instrument window open.
-- Check that the selected instrument and profile match your in-game unlock.
-- Try another keyboard input method from the Playback panel.
-
-### The song sounds strange
-
-- Check the song suitability result.
-- Try a simpler version of the MIDI.
-- Try a lower fixed profile.
-- In Custom, reduce chord detail.
+Very dense orchestral, full-band, drum-heavy, impossible-piano, and Black MIDI files may sound crowded because BPSR has fewer playable notes than a full MIDI arrangement.
 
 ## Notes
 
 - Keep BPSR focused during playback.
-- `F10` stops playback and releases all pressed keys.
-- Suitability is guidance; the final result depends on the MIDI and the game's instrument behavior.
+- The song check is guidance, not a guarantee.
+- Experimental full-range Custom profiles may use `<` and `>` and can briefly delay the song while BPSR changes pages.
 - Only use MIDI files you have permission to download and use.
 
 ## Credits
@@ -97,4 +117,4 @@ Independent MIDI-only implementation inspired by `Sanheiii/ok-star-resonance`.
 
 ## Licence
 
-Licensed under the GNU Affero General Public License v3.0. See [LICENSE](LICENSE).
+Licensed under the **GNU Affero General Public License v3.0**. See [LICENSE](LICENSE).
