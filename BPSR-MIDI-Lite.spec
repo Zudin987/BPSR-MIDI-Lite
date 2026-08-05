@@ -1,10 +1,11 @@
 # Run with: pyinstaller BPSR-MIDI-Lite.spec
+
 from pathlib import Path
 
 project = Path(SPECPATH)
 
 a = Analysis(
-    [str(project / "app.py")],
+    [str(project / "modern_launcher.py")],
     pathex=[str(project)],
     binaries=[],
     datas=[],
@@ -16,7 +17,9 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
 pyz = PYZ(a.pure)
+
 exe = EXE(
     pyz,
     a.scripts,

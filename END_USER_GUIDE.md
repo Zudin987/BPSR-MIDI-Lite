@@ -1,84 +1,84 @@
-# BPSR MIDI Lite v1.1.1 — User Guide
+# BPSR MIDI Lite — User Guide
 
-## First setup
+## Before you start
 
-1. Download `BPSR-MIDI-Lite.exe` from the latest GitHub Release.
-2. Put the EXE in any convenient folder.
-3. Run it and accept the Windows Administrator prompt. Administrator access is required for BPSR input.
-4. Click **Open Folder**.
-5. Copy `.mid` or `.midi` files into the opened `MIDI` folder.
-6. Click **Reload**.
+- Use Windows 10 or Windows 11, 64-bit.
+- Accept the Administrator prompt when opening the app.
+- Download MIDI files only from sources you trust and have permission to use.
 
-## Choose the instrument first
+## Play a song
 
-### Keyboard
+1. Choose **Keyboard**, **Guitar**, or **Bass**.
+2. Choose the profile matching your in-game unlock.
+3. Click **Open MIDI folder** and add `.mid` or `.midi` files.
+4. Click **Refresh** and select a song.
+5. Open the matching instrument in BPSR:
+   - Keyboard/Guitar: middle page + Default octave
+   - Bass: Default mode
+6. Click **Play**.
+7. Focus BPSR before the countdown ends.
 
-- Tier 1: C3–B4
-- Tier 2: C3–B6
-- Tier 3: C2–B6
+Press `F10` at any time to stop playback and release all keys.
 
-Before Start, use the middle keyboard page and Default octave.
+## Profiles
 
-### Guitar
+Fixed profiles are recommended because they use safe note ranges and avoid the `<` and `>` page keys.
 
-- Tier 1: C3–B4
-- Tier 2: E2–B4
-- Tier 3: E2–D6
+Custom is for advanced tuning. Full-range Custom modes may change pages, so the app adds a guarded wait before the following note.
 
-Before Start, use the middle guitar page and Default octave. The app changes Low/High Octave when required.
+## Song check
 
-### Bass
+The selected MIDI is rated automatically:
 
-- Tier 1: E1–B2
-- Tier 2: E1–B3
+- **Good fit** — should translate cleanly
+- **Busy** — may sound crowded
+- **Very complex** — likely to sound messy in-game
 
-Before Start, open Bass in Default mode. Tier 2 automatically presses Shift for the High Octave layout. Bass has no Low Octave Ctrl mode.
+Simple piano, melody, acoustic, and solo-instrument MIDI files usually work best.
 
-## Song suitability
+## Playback settings
 
-The preview shows one of these ratings:
-
-- **Good fit:** the MIDI should translate cleanly.
-- **Busy:** the MIDI may sound crowded.
-- **Very complex:** a simpler version is strongly recommended.
-
-The app also explains the main reasons, such as fast note density, large chords, many remapped notes, many tracks, drums, or frequent page switching.
-
-Prefer simple piano, melody, acoustic, or solo-instrument arrangements. Dense orchestral, full-band, percussion-heavy, or multi-instrument files can still sound strange because the game has fewer playable keys and simultaneous-note limits.
-
-## Playing
-
-1. Select a MIDI from the song list.
-2. Wait for the automatic preview to say Ready.
-3. Open the selected instrument in BPSR.
-4. Click Start.
-5. Focus BPSR before the countdown ends.
-6. Press F10 to stop at any time.
-
-## Administrator permission
-
-The app requests Administrator permission whenever it starts. This is required because BPSR did not reliably receive simulated input from the standard-permission build during real testing.
-
-The public EXE already starts elevated, so no separate Administrator restart button is needed.
-
-## Copy diagnostics
-
-Click **Copy diagnostics** before asking for help. Paste the copied report into Discord, GitHub, or a message to the tester. It contains useful settings and the last error but does not expose the full local MIDI path.
-
-## Find Songs Online
-
-The button opens Online Sequencer in your browser. Download a MIDI manually, copy it into the app MIDI folder, then click Reload.
+- **Countdown** gives you time to focus BPSR before playback begins.
+- **Minimize app after Play** hides the app after starting.
+- **Keyboard input** selects how Windows sends keys to the game. Keep the recommended scan-code method unless it does not work on your system.
 
 ## Custom profile
 
-Custom reveals advanced controls for speed, note length, mapping and chord detail. Keyboard and Guitar also expose an experimental full range that may use `<` / `>` page switching. Bass Custom is limited to its known E1–B2 and E1–B3 layouts.
+### Notes tab
 
-## Troubleshooting
+- **Playback mode** controls whether the app stays in a safe range or uses the full unlocked range.
+- **Unlocked range** matches your in-game instrument unlock.
+- **Chord detail** limits simultaneous notes when a MIDI is too dense.
+- **Fit unavailable notes** controls how notes outside the game range are handled.
+- **Ignore drum channel** removes MIDI percussion.
+- **Use MIDI sustain pedal** follows sustain events stored in the MIDI.
 
-- No input anywhere: use **Test input (3s)** with Notepad, then try another input method.
-- Notepad works but BPSR does not: confirm the Administrator prompt was accepted, then try another input method.
-- Wrong notes: confirm the selected instrument and unlock profile match the game.
-- Bass Tier 2 sounds wrong: start from Bass Default mode; do not manually enable Shift first.
-- New songs missing: place them in the MIDI folder and click Reload.
-- Song sounds messy: look for a Good fit or simpler piano/solo MIDI.
-- App looks too bright/dark: it follows the Windows app theme automatically.
+### Timing tab
+
+- **Page-change wait** gives BPSR time to finish changing pages.
+- **Ctrl / Shift lead** sends octave controls slightly before their notes.
+- **Speed** changes the overall playback speed.
+- **Note length** changes how long notes are held.
+- **Minimum note** prevents very short taps.
+
+## Common problems
+
+### Nothing happens
+
+- Confirm the app was opened with Administrator permission.
+- Keep the in-game instrument open.
+- Make sure the instrument and profile match your unlock.
+- Try a different Keyboard input method.
+
+### The song sounds crowded or strange
+
+- Try a simpler MIDI.
+- Use a fixed profile.
+- Reduce Chord detail in Custom.
+- Avoid full-band, orchestral, drum-heavy, impossible-piano, and Black MIDI files.
+
+## Important notes
+
+- Keep BPSR focused during playback.
+- The song check is guidance, not a guarantee.
+- The game may still limit or delay extremely dense input.
