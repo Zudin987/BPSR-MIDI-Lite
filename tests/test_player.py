@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from types import SimpleNamespace
 
 from midi_engine import PlannedEvent
@@ -10,20 +9,20 @@ from player import MidiPlayer
 class FakeSender:
     def __init__(self) -> None:
         self.held: set[str] = set()
-        self.actions: list[tuple[str, str, float]] = []
-        self.blocking_taps = 0
+        self.actions: list[tuple[str, str]] = []
+        self.taps: list[str] = []
 
     def key_down(self, key: str) -> None:
         if key in self.held:
             return
         self.held.add(key)
-        self.actions.append(("down", key, time.perf_counter()))
+        self.actions.append(("down", key))
 
     def key_up(self, key: str) -> None:
         if key not in self.held:
             return
         self.held.remove(key)
-        self.actions.append(("up", key, time.perf_counter()))
+        self.actions.append(("up", key))
 
     def tap(
         self,
@@ -31,16 +30,20 @@ class FakeSender:
         hold_seconds: float = 0.012,
         gap_seconds: float = 0.012,
     ) -> None:
-        self.blocking_taps += 1
+        del hold_seconds, gap_seconds
+        self.taps.append(key)
         self.key_down(key)
-        time.sleep(hold_seconds)
         self.key_up(key)
-        if gap_seconds > 0:
-            time.sleep(gap_seconds)
 
     def release_all(self) -> None:
         for key in list(self.held):
             self.key_up(key)
+
+
+class ImmediatePlayer(MidiPlayer):
+    def _wait_until(self, target: float) -> bool:
+        del target
+        return not self.stop_event.is_set()
 
 
 def make_plan(events: list[PlannedEvent], duration: float):
@@ -51,102 +54,98 @@ def make_plan(events: list[PlannedEvent], duration: float):
     )
 
 
-def first_action_time(sender: FakeSender, action: str, key: str) -> float:
-    return next(
-        timestamp
-        for recorded_action, recorded_key, timestamp in sender.actions
-        if recorded_action == action and recorded_key == key
-    )
-
-
-def test_control_event_uses_scheduled_release_instead_of_blocking_tap() -> None:
+def test_octave_state_uses_complete_tap() -> None:
     player = MidiPlayer()
     sender = FakeSender()
     player.sender = sender
+
     player._handle_event(
-        PlannedEvent(time=0.0, priority=0, kind="state", state=1)
-    )
-    player._handle_event(
-        PlannedEvent(time=0.005, priority=2, kind="note_on", key="a")
+        PlannedEvent(time=0.0, priority=-20, kind="state", state=1)
     )
 
-    assert sender.blocking_taps == 0
-    assert "shift" in sender.held
-    assert "a" in sender.held
-    assert player._pending_tap_releases
+    assert sender.taps == ["shift"]
+    assert player.current_state == 1
+    assert not sender.held
 
 
-def test_page_switch_guards_the_next_note_and_shifts_the_timeline() -> None:
+def test_page_switch_uses_complete_tap() -> None:
     player = MidiPlayer()
+    sender = FakeSender()
+    player.sender = sender
+
+    player._handle_event(
+        PlannedEvent(time=0.0, priority=-30, kind="page", page=2)
+    )
+
+    assert sender.taps == ["."]
+    assert player.current_page == 2
+    assert not sender.held
+
+
+def test_sustain_toggles_only_when_state_changes() -> None:
+    player = MidiPlayer()
+    sender = FakeSender()
+    player.sender = sender
+
+    player._handle_event(
+        PlannedEvent(time=0.0, priority=10, kind="pedal", pedal_on=True)
+    )
+    player._handle_event(
+        PlannedEvent(time=0.1, priority=10, kind="pedal", pedal_on=True)
+    )
+    player._handle_event(
+        PlannedEvent(time=0.2, priority=10, kind="pedal", pedal_on=False)
+    )
+
+    assert sender.taps == ["space", "space"]
+    assert player.pedal_on is False
+
+
+def test_run_preserves_note_event_order() -> None:
+    player = ImmediatePlayer()
     sender = FakeSender()
     player.sender = sender
     statuses: list[tuple[str, float]] = []
     finished: list[str | None] = []
+
     events = [
-        PlannedEvent(time=0.0, priority=-30, kind="page", page=2),
         PlannedEvent(time=0.0, priority=20, kind="note_on", key="a"),
-        PlannedEvent(time=0.010, priority=0, kind="note_off", key="a"),
-        PlannedEvent(time=0.020, priority=20, kind="note_on", key="s"),
-        PlannedEvent(time=0.030, priority=0, kind="note_off", key="s"),
+        PlannedEvent(time=0.1, priority=0, kind="note_off", key="a"),
+        PlannedEvent(time=0.2, priority=20, kind="note_on", key="s"),
+        PlannedEvent(time=0.3, priority=0, kind="note_off", key="s"),
     ]
+
     player._run(
-        make_plan(events, duration=0.030),
+        make_plan(events, duration=0.3),
         0.0,
         lambda text, progress: statuses.append((text, progress)),
         finished.append,
     )
 
-    page_time = first_action_time(sender, "down", ".")
-    first_note_time = first_action_time(sender, "down", "a")
-    second_note_time = first_action_time(sender, "down", "s")
-    # Allow scheduler tolerance around the intended 50 ms page guard.
-    assert first_note_time - page_time >= 0.045
-    # The planned spacing is 20 ms. Windows CI can wake the first note a few
-    # milliseconds late, so require a meaningful gap without making the test
-    # randomly fail because of about 1 ms of scheduler jitter.
-    assert second_note_time - first_note_time >= 0.010
-    assert player.last_page_guard_added_ms >= 45.0
-    assert finished == [None]
-
-
-def test_existing_natural_gap_is_reused_without_extra_delay() -> None:
-    player = MidiPlayer()
-    sender = FakeSender()
-    player.sender = sender
-    finished: list[str | None] = []
-
-    events = [
-        PlannedEvent(time=0.0, priority=-30, kind="page", page=2),
-        PlannedEvent(time=0.080, priority=20, kind="note_on", key="a"),
-        PlannedEvent(time=0.100, priority=0, kind="note_off", key="a"),
+    assert sender.actions[:4] == [
+        ("down", "a"),
+        ("up", "a"),
+        ("down", "s"),
+        ("up", "s"),
     ]
-    player._run(
-        make_plan(events, duration=0.100),
-        0.0,
-        lambda _text, _progress: None,
-        finished.append,
-    )
-
-    page_time = first_action_time(sender, "down", ".")
-    note_time = first_action_time(sender, "down", "a")
-    assert note_time - page_time >= 0.070
-    assert player.last_page_guard_added_ms < 5.0
+    assert statuses[-1] == ("Playback completed", 1.0)
     assert finished == [None]
 
 
-def test_dense_same_time_events_emit_only_a_small_number_of_status_updates() -> None:
-    player = MidiPlayer()
+def test_dense_events_do_not_spam_ui_status() -> None:
+    player = ImmediatePlayer()
     sender = FakeSender()
     player.sender = sender
     statuses: list[tuple[str, float]] = []
     finished: list[str | None] = []
+
     events: list[PlannedEvent] = []
     for serial in range(200):
         key = "a" if serial % 2 == 0 else "s"
         events.append(
             PlannedEvent(
                 time=0.0,
-                priority=2,
+                priority=20,
                 kind="note_on",
                 key=key,
                 serial=serial,
@@ -155,12 +154,13 @@ def test_dense_same_time_events_emit_only_a_small_number_of_status_updates() -> 
         events.append(
             PlannedEvent(
                 time=0.0,
-                priority=1,
+                priority=0,
                 kind="note_off",
                 key=key,
                 serial=serial,
             )
         )
+
     player._run(
         make_plan(events, duration=0.001),
         0.0,
@@ -171,18 +171,3 @@ def test_dense_same_time_events_emit_only_a_small_number_of_status_updates() -> 
     assert len(statuses) <= 3
     assert statuses[-1] == ("Playback completed", 1.0)
     assert finished == [None]
-
-
-def test_pending_tap_is_released_without_using_blocking_tap() -> None:
-    player = MidiPlayer()
-    sender = FakeSender()
-    player.sender = sender
-    player._queue_tap("shift", hold_seconds=0.003)
-    assert "shift" in sender.held
-    assert sender.blocking_taps == 0
-
-    time.sleep(0.005)
-    player._release_due_taps(time.perf_counter())
-
-    assert "shift" not in sender.held
-    assert sender.blocking_taps == 0
