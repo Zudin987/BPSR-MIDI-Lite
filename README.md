@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe">
-    <img alt="Download Latest EXE" src="https://img.shields.io/badge/Download-Latest%20EXE-2ea44f?style=for-the-badge&logo=windows">
+  <a href="https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest">
+    <img alt="Download Latest Release" src="https://img.shields.io/badge/Download-Latest%20Release-2ea44f?style=for-the-badge&logo=github">
   </a>
 </p>
 
@@ -32,9 +32,9 @@
 
 ## Download
 
-### [⬇ Download BPSR-MIDI-Lite.exe](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest/download/BPSR-MIDI-Lite.exe)
+### [⬇ Download the latest release here](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest)
 
-The EXE is standalone. No Python installation, setup wizard, or ZIP extraction is required.
+Download `BPSR-MIDI-Lite.exe` from the Releases page. The EXE is standalone. No Python installation, setup wizard, or ZIP extraction is required.
 
 Windows may show a SmartScreen warning because the EXE is not code-signed. Only download it from this repository's official **Releases** page.
 
@@ -60,7 +60,7 @@ It is a single-purpose music tool. It does **not** automate combat, fishing, gat
 
 ## Quick start
 
-1. Download and open `BPSR-MIDI-Lite.exe`.
+1. Download `BPSR-MIDI-Lite.exe` from the **Releases** tab and open it.
 2. Accept the Administrator prompt.
 3. Choose **Keyboard**, **Guitar**, or **Bass**.
 4. Choose the profile matching your in-game unlock.
