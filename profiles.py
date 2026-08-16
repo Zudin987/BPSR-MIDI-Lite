@@ -49,55 +49,55 @@ class PlaybackProfile:
         }
 
 
-# The labels and summaries below are deliberately beginner-facing. The actual
-# planner settings are unchanged from the established profiles.
+# Beginner-facing names are intentionally independent from the technical note
+# ranges. The actual planner settings below are unchanged.
 FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
     "keyboard": {
         "tier1": PlaybackProfile(
-            instrument="keyboard", code="tier1", label="Basic — C3 to B4",
-            summary="For the first Keyboard unlock. The app automatically fits larger songs into this range.",
+            instrument="keyboard", code="tier1", label="First unlock",
+            summary="Choose this if you only have the first Keyboard range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
             minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="keyboard", code="tier2", label="Expanded — C3 to B6",
-            summary="For the second Keyboard unlock. Uses your extra high notes automatically and stays on one page.",
+            instrument="keyboard", code="tier2", label="Second unlock",
+            summary="Choose this after unlocking the second Keyboard range. Extra high notes are handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
         ),
         "tier3": PlaybackProfile(
-            instrument="keyboard", code="tier3", label="Full safe range — C2 to B6 (Recommended)",
-            summary="Best normal Keyboard choice. Uses the full safe range automatically without changing pages.",
+            instrument="keyboard", code="tier3", label="Fully unlocked (Recommended)",
+            summary="Best normal Keyboard choice when all regular ranges are unlocked. No page changes are needed.",
             mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
         ),
     },
     "guitar": {
         "tier1": PlaybackProfile(
-            instrument="guitar", code="tier1", label="Basic — C3 to B4",
-            summary="For the first Guitar unlock. The app automatically fits larger songs into this range.",
+            instrument="guitar", code="tier1", label="First unlock",
+            summary="Choose this if you only have the first Guitar range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
             minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="guitar", code="tier2", label="Expanded — E2 to B4",
-            summary="For the second Guitar unlock. Low notes are handled automatically and the app stays on one page.",
+            instrument="guitar", code="tier2", label="Second unlock",
+            summary="Choose this after unlocking the second Guitar range. Extra low notes are handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
         ),
         "tier3": PlaybackProfile(
-            instrument="guitar", code="tier3", label="Full safe range — E2 to D6 (Recommended)",
-            summary="Best normal Guitar choice. Uses the full safe range automatically without changing pages.",
+            instrument="guitar", code="tier3", label="Fully unlocked (Recommended)",
+            summary="Best normal Guitar choice when all regular ranges are unlocked. No page changes are needed.",
             mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
         ),
     },
     "bass": {
         "tier1": PlaybackProfile(
-            instrument="bass", code="tier1", label="Basic — E1 to B2",
-            summary="For the first Bass unlock. Large chords are simplified into a clean bass line automatically.",
+            instrument="bass", code="tier1", label="First unlock",
+            summary="Choose this for the first Bass range. Large chords are simplified into a clean bass line automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=1,
             note_length=135, minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="bass", code="tier2", label="Full range — E1 to B3 (Recommended)",
-            summary="Best Bass choice when fully unlocked. The app switches to the extended Bass range automatically.",
+            instrument="bass", code="tier2", label="Fully unlocked (Recommended)",
+            summary="Best Bass choice when the regular Bass range is fully unlocked. The extra range is handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=1,
             note_length=135, minimum_note=130,
         ),
