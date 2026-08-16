@@ -49,84 +49,62 @@ class PlaybackProfile:
         }
 
 
+# Beginner-facing names are intentionally independent from the technical note
+# ranges. The actual planner settings below are unchanged.
 FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
     "keyboard": {
         "tier1": PlaybackProfile(
-            instrument="keyboard", code="tier1", label="Tier 1 — C3–B4",
-            summary=(
-                "For the first keyboard unlock. Uses only C3–B4 with no Ctrl, Shift, "
-                "or page keys. The song is automatically fitted to the available notes."
-            ),
+            instrument="keyboard", code="tier1", label="First unlock",
+            summary="Choose this if you only have the first Keyboard range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
             minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="keyboard", code="tier2", label="Tier 2 — C3–B6",
-            summary=(
-                "Uses C3–B6 with Default + Shift. It never presses < or > and keeps "
-                "a balanced amount of chord detail."
-            ),
+            instrument="keyboard", code="tier2", label="Second unlock",
+            summary="Choose this after unlocking the second Keyboard range. Extra high notes are handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
         ),
         "tier3": PlaybackProfile(
-            instrument="keyboard", code="tier3", label="Tier 3 — C2–B6 (Recommended)",
-            summary=(
-                "Uses the complete safe middle-page range with Ctrl / Default / Shift. "
-                "It guarantees zero < or > page presses."
-            ),
+            instrument="keyboard", code="tier3", label="Fully unlocked (Recommended)",
+            summary="Best normal Keyboard choice when all regular ranges are unlocked. No page changes are needed.",
             mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
         ),
     },
     "guitar": {
         "tier1": PlaybackProfile(
-            instrument="guitar", code="tier1", label="Tier 1 — C3–B4",
-            summary=(
-                "For the first guitar unlock. Uses C3–B4 in Default mode and never "
-                "presses Ctrl, Shift, < or >."
-            ),
+            instrument="guitar", code="tier1", label="First unlock",
+            summary="Choose this if you only have the first Guitar range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
             minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="guitar", code="tier2", label="Tier 2 — E2–B4",
-            summary=(
-                "Uses Guitar Low Octave (Ctrl) plus Default to cover E2–B4. "
-                "It never changes keyboard pages."
-            ),
+            instrument="guitar", code="tier2", label="Second unlock",
+            summary="Choose this after unlocking the second Guitar range. Extra low notes are handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=3,
         ),
         "tier3": PlaybackProfile(
-            instrument="guitar", code="tier3", label="Tier 3 — E2–D6",
-            summary=(
-                "Uses Guitar Low Octave, Default and High Octave to cover E2–D6. "
-                "It stays on the middle page and never presses < or >."
-            ),
+            instrument="guitar", code="tier3", label="Fully unlocked (Recommended)",
+            summary="Best normal Guitar choice when all regular ranges are unlocked. No page changes are needed.",
             mode="stable", unlock_tier="tier3", mapping="octave", chord_limit=0,
         ),
     },
     "bass": {
         "tier1": PlaybackProfile(
-            instrument="bass", code="tier1", label="Tier 1 — E1–B2",
-            summary=(
-                "Uses the Bass Default layout from E1–B2. Dense MIDI chords are reduced "
-                "to the lowest bass note so the line remains clean."
-            ),
+            instrument="bass", code="tier1", label="First unlock",
+            summary="Choose this for the first Bass range. Large chords are simplified into a clean bass line automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=1,
             note_length=135, minimum_note=130,
         ),
         "tier2": PlaybackProfile(
-            instrument="bass", code="tier2", label="Tier 2 — E1–B3",
-            summary=(
-                "Uses Bass High Octave (Shift) to expose E1–B3. The app presses Shift "
-                "at playback start and resets it afterward. Bass has no Low Octave mode."
-            ),
+            instrument="bass", code="tier2", label="Fully unlocked (Recommended)",
+            summary="Best Bass choice when the regular Bass range is fully unlocked. The extra range is handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=1,
             note_length=135, minimum_note=130,
         ),
     },
 }
 
-CUSTOM_LABEL = "Custom — advanced settings"
+CUSTOM_LABEL = "Advanced setup…"
 
 
 def profile_labels_for(instrument: InstrumentCode) -> dict[str, str]:
@@ -157,7 +135,7 @@ def get_fixed_profile(instrument: InstrumentCode, code: str) -> PlaybackProfile:
 
 
 def allowed_modes_for_unlock(instrument: InstrumentCode, unlock_tier: str) -> tuple[str, ...]:
-    # Only keyboard/guitar Custom full range can use page switching.
+    # Only keyboard/guitar Advanced full range can use page switching.
     if instrument in {"keyboard", "guitar"} and unlock_tier == "tier4":
         return ("stable", "full", "ensemble")
     return ("stable", "ensemble")

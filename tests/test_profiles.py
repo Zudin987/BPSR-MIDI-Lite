@@ -14,8 +14,14 @@ def test_instrument_profile_counts_and_ranges() -> None:
     assert set(FIXED_PROFILES["bass"]) == {"tier1", "tier2"}
 
     assert get_fixed_profile("keyboard", "tier3").unlock_tier == "tier3"
-    assert get_fixed_profile("guitar", "tier3").label.endswith("E2–D6")
-    assert get_fixed_profile("bass", "tier2").label.endswith("E1–B3")
+    assert get_fixed_profile("guitar", "tier3").unlock_tier == "tier3"
+    assert get_fixed_profile("bass", "tier2").unlock_tier == "tier2"
+
+
+def test_beginner_profile_labels_do_not_require_note_names() -> None:
+    assert get_fixed_profile("keyboard", "tier1").label == "First unlock"
+    assert get_fixed_profile("guitar", "tier2").label == "Second unlock"
+    assert get_fixed_profile("bass", "tier2").label == "Fully unlocked (Recommended)"
 
 
 def test_custom_is_available_for_every_instrument() -> None:
