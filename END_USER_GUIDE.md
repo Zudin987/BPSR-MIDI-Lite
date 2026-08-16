@@ -5,7 +5,7 @@
 You only need four things on the main screen:
 
 1. **Instrument** — choose Keyboard, Guitar, or Bass.
-2. **Unlocked range** — choose the highest range you actually have unlocked in BPSR.
+2. **How much you unlocked** — choose First unlock, Second unlock, or Fully unlocked when available.
 3. **Song** — click **Add MIDI…** once and choose a `.mid` or `.midi` file.
 4. **Play** — open the matching BPSR instrument and click **Play in BPSR**.
 
@@ -13,28 +13,15 @@ During the countdown, click back into BPSR. Keep BPSR focused while the song is 
 
 Press **F10** at any time to stop. The app releases held keys and returns the instrument to its normal state.
 
-## Which unlocked range should I choose?
+## Which unlock should I choose?
 
-Use the highest option that matches what you have unlocked in the game.
+Use the highest choice that matches your progress in the game.
 
-### Keyboard
+- Keyboard: **First unlock**, **Second unlock**, or **Fully unlocked (Recommended)**.
+- Guitar: **First unlock**, **Second unlock**, or **Fully unlocked (Recommended)**.
+- Bass: **First unlock** or **Fully unlocked (Recommended)**.
 
-- Basic — C3 to B4
-- Expanded — C3 to B6
-- Full safe range — C2 to B6 (Recommended when unlocked)
-
-### Guitar
-
-- Basic — C3 to B4
-- Expanded — E2 to B4
-- Full safe range — E2 to D6 (Recommended when unlocked)
-
-### Bass
-
-- Basic — E1 to B2
-- Full range — E1 to B3 (Recommended when unlocked)
-
-The normal profiles automatically fit notes into the selected range. You do not need to set note-remapping rules yourself.
+The app already knows the exact playable notes for each choice and automatically fits the song to them. You do not need to understand the note ranges yourself.
 
 ## Adding songs
 
@@ -50,9 +37,9 @@ The app shows a simple result before playback:
 
 - **Ready to play** — the song should fit reasonably well.
 - **Playable, but this song is busy** — it can work, but some parts may sound crowded.
-- **This song may sound crowded** — the MIDI is much denser than a BPSR instrument can reproduce cleanly.
+- **This song may sound crowded** — the song is much denser than a BPSR instrument can reproduce cleanly.
 
-Simple piano, melody, acoustic, and solo-instrument MIDI arrangements usually work best.
+Simple piano, melody, acoustic, and solo-instrument arrangements usually work best.
 
 ## Where did all the old settings go?
 
@@ -86,4 +73,4 @@ For Keyboard and Guitar, the experimental full range can use automatic page chan
 
 ## Safety stop
 
-**F10** is always the emergency stop during playback. It stops the song, releases held keys, resets octave state, and returns page position to the normal middle page when required.
+**F10** is always the emergency stop during playback. It stops the song, releases held keys, resets the instrument mode, and returns it to the normal starting page when required.
