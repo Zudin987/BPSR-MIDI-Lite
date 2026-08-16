@@ -1,10 +1,11 @@
 name: Build Windows EXE
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v1.1.1. Leave blank to build only."
+        description: "Optional version to publish, for example v2.0.0. Leave blank to build only."
         required: false
         type: string
 
@@ -71,7 +72,7 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub Release when a version was entered
-        if: ${{ inputs.release_version != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
