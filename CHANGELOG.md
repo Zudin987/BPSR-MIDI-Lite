@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.0.0
+
+- Rebuilt the main interface around four beginner actions: **Instrument → Unlocked range → Song → Play**.
+- Added **Add MIDI…** so users can choose files normally; the app copies them into the song library, refreshes the list, selects the new song, and checks it automatically.
+- Removed manual Refresh, theme selection, input-method selection, timing controls, diagnostics, and other technical choices from the main screen.
+- Moved countdown, minimization, Advanced song fitting, keyboard-input testing, and support diagnostics into **Settings** and **Troubleshooting**.
+- Rewrote unlock-profile names and descriptions in plain language while keeping the established planner settings unchanged.
+- Replaced detailed MIDI statistics on the main screen with simple readiness messages such as **Ready to play**, **Playable, but this song is busy**, and **This song may sound crowded**.
+- Disabled Play until the selected MIDI has been successfully planned.
+- Kept F10 as the always-available emergency stop.
+- Preserved the established MIDI engine, instrument ranges, note folding/remapping, chord handling, sustain behavior, note-duration handling, modifier switching, guarded `<` / `>` page switching, and timing compensation.
+- Rewrote README and end-user documentation for the new no-manual-needed workflow.
+
 ## v1.2.0
 
 - Redesigned the app with a cleaner rounded two-column interface.
