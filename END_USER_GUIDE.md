@@ -1,100 +1,89 @@
-# BPSR MIDI Lite — User Guide
+# BPSR MIDI Lite — Beginner Guide
 
-## Before you start
+## Normal use
 
-- Use Windows 10 or Windows 11, 64-bit.
-- Accept the Administrator prompt when opening the app.
-- Download MIDI files only from sources you trust and have permission to use.
+You only need four things on the main screen:
 
-## Play a song
+1. **Instrument** — choose Keyboard, Guitar, or Bass.
+2. **Unlocked range** — choose the highest range you actually have unlocked in BPSR.
+3. **Song** — click **Add MIDI…** once and choose a `.mid` or `.midi` file.
+4. **Play** — open the matching BPSR instrument and click **Play in BPSR**.
 
-1. Choose **Keyboard**, **Guitar**, or **Bass**.
-2. Choose the profile matching your in-game unlock.
-3. Click **Open MIDI folder** and add `.mid` or `.midi` files.
-4. Click **Refresh** and select a song.
-5. Open the matching instrument in BPSR:
-   - Keyboard/Guitar: middle page + Default octave
-   - Bass: Default mode
-6. Click **Play**.
-7. Focus BPSR before the countdown ends.
+During the countdown, click back into BPSR. Keep BPSR focused while the song is playing.
 
-Press `F10` at any time to stop playback and release all keys.
+Press **F10** at any time to stop. The app releases held keys and returns the instrument to its normal state.
 
-## Profiles
+## Which unlocked range should I choose?
 
-Fixed profiles are recommended because they use safe note ranges and avoid the `<` and `>` page keys.
+Use the highest option that matches what you have unlocked in the game.
 
-Custom is for advanced tuning. Full-range Custom modes may change pages, so the app waits briefly before playing the following note. Later notes are shifted by the same amount instead of rushing to catch up.
+### Keyboard
+
+- Basic — C3 to B4
+- Expanded — C3 to B6
+- Full safe range — C2 to B6 (Recommended when unlocked)
+
+### Guitar
+
+- Basic — C3 to B4
+- Expanded — E2 to B4
+- Full safe range — E2 to D6 (Recommended when unlocked)
+
+### Bass
+
+- Basic — E1 to B2
+- Full range — E1 to B3 (Recommended when unlocked)
+
+The normal profiles automatically fit notes into the selected range. You do not need to set note-remapping rules yourself.
+
+## Adding songs
+
+Click **Add MIDI…** and choose one or more MIDI files.
+
+The app copies them into its song library, refreshes the list, selects the newest added song, and checks it automatically. You do not need to manually copy files into a folder or press Refresh.
+
+Use **Open folder** only if you want to manage the library yourself.
 
 ## Song check
 
-The selected MIDI is rated automatically:
+The app shows a simple result before playback:
 
-- **Good fit** — should translate cleanly
-- **Busy** — may sound crowded
-- **Very complex** — likely to sound messy in-game
+- **Ready to play** — the song should fit reasonably well.
+- **Playable, but this song is busy** — it can work, but some parts may sound crowded.
+- **This song may sound crowded** — the MIDI is much denser than a BPSR instrument can reproduce cleanly.
 
-Simple piano, melody, acoustic, and solo-instrument MIDI files usually work best.
+Simple piano, melody, acoustic, and solo-instrument MIDI arrangements usually work best.
 
-## Playback settings
+## Where did all the old settings go?
 
-- **Countdown** gives you time to focus BPSR before playback begins.
-- **Minimize app after Play** hides the app after starting.
-- **Keyboard input** controls how Windows sends keys to the game. Keep the recommended scan-code method unless it does not work on your system.
-- **Restore defaults** resets the normal app and Custom-profile settings.
+They are still available, but they no longer block the normal workflow.
 
-## Themes
+Open **Settings** for:
 
-Use the dropdown below the version badge to switch themes immediately:
+- countdown length
+- minimize-after-Play
+- Advanced song fitting
+- troubleshooting
 
-- Light
-- Dark
-- Dracula
-- Nord
-- Catppuccin Mocha
-- Solarized Dark
-- Tokyo Night
+Inside **Troubleshooting** you can change the keyboard input method, test keyboard input, or copy support information.
 
-The selected theme is saved automatically and restored the next time the app opens.
+## Advanced setup
 
-## Custom profile
+Choose **Advanced setup…** only if you know why you need it.
 
-### Notes tab
+This keeps the existing custom controls for song speed, note length, chord detail, sustain, mapping behavior, and experimental full-range playback.
 
-- **Playback mode** selects safe-range or experimental full-range playback.
-- **Unlocked range** matches your in-game instrument unlock.
-- **Chord detail** limits simultaneous notes when a MIDI is too dense.
-- **Fit unavailable notes** controls how notes outside the game range are handled.
-- **Ignore drum channel** removes MIDI percussion.
-- **Use MIDI sustain pedal** follows sustain events stored in the MIDI.
+For Keyboard and Guitar, the experimental full range can use automatic page changes. The app schedules those changes with the configured wait time and protects the following notes from being sent too early.
 
-### Timing tab
+## If playback does not work
 
-- **Page-change wait** gives BPSR time to finish changing pages.
-- **Ctrl / Shift lead** sends octave controls slightly before their notes.
-- **Speed** changes overall playback speed.
-- **Note length** changes how long notes are held.
-- **Minimum note** prevents extremely short taps.
+1. Make sure BPSR MIDI Lite was opened with Administrator permission.
+2. Open the correct BPSR instrument before pressing Play.
+3. During the countdown, click back into BPSR.
+4. Open **Settings → Troubleshooting → Test keyboard input**.
+5. If needed, try another Keyboard connection option.
+6. Use **Copy support info** when reporting a problem.
 
-## Common problems
+## Safety stop
 
-### Nothing happens
-
-- Confirm the app was opened with Administrator permission.
-- Keep the in-game instrument open.
-- Make sure the selected instrument and profile match your unlock.
-- Try another **Keyboard input** method.
-
-### The song sounds crowded or strange
-
-- Try a simpler MIDI.
-- Use a fixed profile.
-- Reduce **Chord detail** in Custom.
-- Avoid full-band, orchestral, drum-heavy, impossible-piano, and Black MIDI files.
-
-## Important notes
-
-- Keep BPSR focused during playback.
-- Press `F10` for an emergency stop.
-- The song check is guidance, not a guarantee.
-- The game may still limit or delay extremely dense input.
+**F10** is always the emergency stop during playback. It stops the song, releases held keys, resets octave state, and returns page position to the normal middle page when required.
