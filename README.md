@@ -28,36 +28,21 @@ The app is only for MIDI instrument playback. It does not automate combat, gathe
 
 1. Open **BPSR MIDI Lite**.
 2. Choose **Keyboard**, **Guitar**, or **Bass**.
-3. Choose the range you have unlocked.
+3. Choose **First unlock**, **Second unlock**, or **Fully unlocked** as shown for that instrument.
 4. Click **Add MIDI…** and select a song.
 5. Open the matching instrument in BPSR.
 6. Click **Play in BPSR**.
 7. Click back into BPSR during the countdown.
 
-That is the normal workflow. There is no manual Refresh step and you do not need to understand MIDI ranges, page timing, input methods, or note-remapping settings.
+That is the normal workflow. There is no manual Refresh step and you do not need to understand note ranges, page timing, input methods, or note-remapping settings.
 
 Press **F10** at any time to stop playback and release held keys.
 
 ## Unlock choices
 
-### Keyboard
+Keyboard and Guitar show **First unlock**, **Second unlock**, and **Fully unlocked (Recommended)**. Bass shows **First unlock** and **Fully unlocked (Recommended)**.
 
-- **Basic — C3 to B4**
-- **Expanded — C3 to B6**
-- **Full safe range — C2 to B6 (Recommended)**
-
-### Guitar
-
-- **Basic — C3 to B4**
-- **Expanded — E2 to B4**
-- **Full safe range — E2 to D6 (Recommended)**
-
-### Bass
-
-- **Basic — E1 to B2**
-- **Full range — E1 to B3 (Recommended)**
-
-Normal profiles avoid Keyboard/Guitar page changes. **Advanced setup…** keeps the experimental A0–C8 workflow available for users who specifically want it.
+The exact note ranges are intentionally hidden from the normal interface. The app already knows the correct range for each choice. **Advanced setup…** keeps the experimental full-range workflow available for users who specifically need it.
 
 ## Song check
 
@@ -92,7 +77,7 @@ The v2 interface is a redesign of the user flow, not a replacement of the MIDI e
 
 The Windows release is built with PyInstaller from `BPSR-MIDI-Lite.spec`.
 
-The GitHub Actions workflow can run the test suite, build the standalone EXE, and optionally publish a release when a version is supplied manually.
+The GitHub Actions workflow runs the test suite and builds the standalone EXE for pull requests. A release is only published when a version is supplied in a manual workflow run.
 
 ## License
 
