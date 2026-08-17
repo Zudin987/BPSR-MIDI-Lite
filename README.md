@@ -34,9 +34,9 @@ The app is only for MIDI instrument playback. It does not automate combat, gathe
 2. Choose **Keyboard**, **Guitar**, or **Bass**.
 3. Choose **First unlock**, **Second unlock**, or **Fully unlocked** as shown for that instrument.
 4. Click **Add MIDI…** and select a song.
-5. Open the matching instrument in BPSR.
-6. Click **Play in BPSR**.
-7. Click back into BPSR during the countdown.
+5. Leave **Song speed** at **100%** for the original MIDI tempo, or adjust it if you want the song slower/faster.
+6. Open the matching instrument in BPSR.
+7. Click **Play in BPSR** and click back into BPSR during the countdown.
 
 That is the normal workflow. There is no manual Refresh step and you do not need to understand note ranges, page timing, input methods, or note-remapping settings.
 
@@ -47,6 +47,8 @@ Press **F10** at any time to stop playback and release held keys.
 Keyboard and Guitar show **First unlock**, **Second unlock**, and **Fully unlocked (Recommended)**. Bass shows **First unlock** and **Fully unlocked (Recommended)**.
 
 The exact note ranges are intentionally hidden from the normal interface. The app already knows the correct range for each choice. **Advanced setup…** keeps the experimental full-range workflow available for users who specifically need it.
+
+**Song speed is independent from the unlock choice.** Switching between unlock tiers or instruments keeps the speed you selected instead of resetting it.
 
 ## Song check
 
@@ -60,9 +62,11 @@ Dense orchestral, full-band, drum-heavy, impossible-piano, and Black MIDI arrang
 
 ## Settings
 
-The main screen intentionally hides settings that most people should not touch.
+There is no separate Settings window. Click **More settings** and the extra controls expand inside the main app window. Click **Hide settings** to collapse them again.
 
-Open **Settings** if you want to change the countdown, minimization behavior, Advanced song fitting, or troubleshooting tools. Keyboard input methods and support diagnostics are hidden inside **Troubleshooting**.
+The same-window settings area contains countdown, minimize-after-Play, song-library tools, Advanced song fitting when **Advanced setup…** is selected, and a collapsible **Troubleshooting** area for keyboard input methods, input testing, and support information.
+
+**Song speed stays on the normal Song section** because it is useful for every unlock tier.
 
 ## Technical core
 
