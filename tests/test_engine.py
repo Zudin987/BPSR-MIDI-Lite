@@ -364,9 +364,9 @@ def test_unlock_tier3_c2_b6_never_uses_page_keys(tmp_path: Path) -> None:
     )
 
 
-def test_unlock_tier4_can_preserve_c8_with_right_page(tmp_path: Path) -> None:
+def test_unlock_tier4_stays_c2_b6_and_never_uses_page_keys(tmp_path: Path) -> None:
     midi_path = tmp_path / "tier4.mid"
-    make_test_midi(midi_path, [60, 108], gap_ticks=960, duration_ticks=120)
+    make_test_midi(midi_path, [21, 36, 60, 95, 108], gap_ticks=480, duration_ticks=120)
     plan = build_plan(
         midi_path,
         PlanOptions(
@@ -376,12 +376,11 @@ def test_unlock_tier4_can_preserve_c8_with_right_page(tmp_path: Path) -> None:
             note_length_percent=100,
         ),
     )
-
-    assert plan.effective_min_pitch == 21
-    assert plan.effective_max_pitch == 108
-    assert plan.planned_max_pitch == 108
-    assert plan.page_switches > 0
-    assert any(event.kind == "page" and event.page == 2 for event in plan.events)
+    assert plan.effective_min_pitch == 36
+    assert plan.effective_max_pitch == 95
+    assert 36 <= plan.planned_min_pitch <= plan.planned_max_pitch <= 95
+    assert plan.page_switches == 0
+    assert all(event.kind != "page" for event in plan.events)
 
 
 def test_stable_mode_uses_safe_subset_of_large_unlock_tier(tmp_path: Path) -> None:
@@ -392,9 +391,56 @@ def test_stable_mode_uses_safe_subset_of_large_unlock_tier(tmp_path: Path) -> No
         PlanOptions(mode="stable", unlock_tier="tier4", speed_percent=100),
     )
 
-    assert plan.configured_min_pitch == 21
-    assert plan.configured_max_pitch == 108
+    assert plan.configured_min_pitch == 36
+    assert plan.configured_max_pitch == 95
     assert plan.effective_min_pitch == 36
     assert plan.effective_max_pitch == 95
     assert plan.page_switches == 0
     assert 36 <= plan.planned_min_pitch <= plan.planned_max_pitch <= 95
+
+
+
+def test_raw_keyboard_skips_out_of_range_without_remapping(tmp_path: Path) -> None:
+    from profiles import get_fixed_profile
+
+    midi_path = tmp_path / "raw_keyboard.mid"
+    make_test_midi(midi_path, [21, 36, 60, 95, 108], gap_ticks=480, duration_ticks=120)
+    profile = get_fixed_profile("keyboard", "raw")
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            instrument="keyboard",
+            mode=profile.mode,
+            unlock_tier=profile.unlock_tier,
+            mapping_method=profile.mapping,
+            max_notes_per_chord=profile.chord_limit,
+            speed_percent=100,
+            note_length_percent=100,
+        ),
+    )
+    assert plan.folded_notes == 0
+    assert plan.skipped_notes == 2
+    assert (plan.planned_min_pitch, plan.planned_max_pitch) == (36, 95)
+    assert plan.page_switches == 0
+
+
+def test_every_selectable_profile_is_page_free(tmp_path: Path) -> None:
+    from profiles import FIXED_PROFILES
+
+    midi_path = tmp_path / "all_profiles.mid"
+    make_test_midi(midi_path, [21, 28, 36, 48, 60, 71, 83, 95, 108], gap_ticks=480)
+    for instrument, profiles in FIXED_PROFILES.items():
+        for profile in profiles.values():
+            plan = build_plan(
+                midi_path,
+                PlanOptions(
+                    instrument=instrument,
+                    mode=profile.mode,
+                    unlock_tier=profile.unlock_tier,
+                    mapping_method=profile.mapping,
+                    max_notes_per_chord=profile.chord_limit,
+                    speed_percent=100,
+                ),
+            )
+            assert plan.page_switches == 0, (instrument, profile.code)
+            assert all(event.kind != "page" for event in plan.events), (instrument, profile.code)

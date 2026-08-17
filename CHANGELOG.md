@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.3.0
+
+- Replaced Advanced setup with explicit BPSR Category choices plus **Raw MIDI — no remap**.
+- Piano Category 4 still plays only inside **C2–B6**, so selectable profiles never require `<` / `>`.
+- Guitar is capped to **E2–D6** and Bass to **E1–B3** for safe no-page playback.
+- Raw MIDI preserves pitches and full chords; physically unavailable pitches are skipped instead of remapped.
+- Removed playback-style, mapping, chord, page-delay, note-length, sustain, and percussion controls from the UI; safe defaults are automatic.
+- Removed Minimize-after-Play and automatic minimizing. The app stays open while the user returns to BPSR.
+- Song speed remains the normal user-facing musical control.
+- Play is blocked if a selectable profile ever unexpectedly generates a page-key event.
+
 ## v2.2.0
 
 - Removed the separate Settings window. **More settings** now expands and collapses inside the main app window.
