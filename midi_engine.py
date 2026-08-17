@@ -487,34 +487,76 @@ def _auto_transpose_notes(
     notes: list[SourceNote],
     low: int,
     high: int,
+    instrument: InstrumentCode = "keyboard",
 ) -> tuple[list[SourceNote], int]:
-    """Choose one song-wide semitone shift before any local range handling.
+    """Choose one coherent song-wide shift before local range handling.
 
-    A global transpose preserves intervals better than independently folding every
-    outlier. Remaining notes may still require the selected local mapping policy.
+    Piano keeps the established neutral policy. Guitar uses melody-aware
+    tie-breaking: when two shifts leave the same number/distance of outliers,
+    prefer the one that keeps the upper voice in range. Bass keeps the neutral
+    global shift because its local octave choice is handled by a contour-aware
+    pass below.
     """
     if not notes:
         return notes, 0
 
+    guitar_weight_by_serial: dict[int, float] = {}
+    if instrument == "guitar":
+        for group in _group_notes_by_start(notes):
+            if not group:
+                continue
+            highest = max(note.pitch for note in group)
+            lowest = min(note.pitch for note in group)
+            for note in group:
+                if note.pitch == highest:
+                    guitar_weight_by_serial[note.serial] = 3.0
+                elif note.pitch == lowest and highest != lowest:
+                    guitar_weight_by_serial[note.serial] = 1.25
+                else:
+                    guitar_weight_by_serial[note.serial] = 1.0
+
     best_shift = 0
-    best_score: tuple[int, int, int, float] | None = None
+    best_score: tuple[float, ...] | None = None
     for shift in range(-36, 37):
         outside_count = 0
         outside_distance = 0
+        weighted_outside = 0.0
+        weighted_distance = 0.0
         center_distance = 0.0
         for note in notes:
             value = note.pitch + shift
+            distance = 0
             if value < low:
                 outside_count += 1
-                outside_distance += low - value
+                distance = low - value
             elif value > high:
                 outside_count += 1
-                outside_distance += value - high
+                distance = value - high
+            outside_distance += distance
+            if distance:
+                weight = guitar_weight_by_serial.get(note.serial, 1.0)
+                weighted_outside += weight
+                weighted_distance += distance * weight
             center_distance += abs(value - ((low + high) / 2.0))
 
-        # Never change a song's key merely to center notes that already fit.
-        # First minimize outliers, then their distance, then the shift itself.
-        score = (outside_count, outside_distance, abs(shift), center_distance)
+        # Never increase the raw outlier count just to protect one voice. Guitar
+        # priority is a tie-breaker only, so the policy remains conservative.
+        if instrument == "guitar":
+            score = (
+                float(outside_count),
+                float(outside_distance),
+                weighted_outside,
+                weighted_distance,
+                float(abs(shift)),
+                center_distance,
+            )
+        else:
+            score = (
+                float(outside_count),
+                float(outside_distance),
+                float(abs(shift)),
+                center_distance,
+            )
         if best_score is None or score < best_score:
             best_score = score
             best_shift = shift
@@ -533,6 +575,91 @@ def _auto_transpose_notes(
         for note in notes
     ]
     return shifted, best_shift
+
+
+def _bass_octave_candidates(pitch: int, low: int, high: int) -> list[int]:
+    """Return every octave-equivalent pitch available in the Bass safe range."""
+    candidates = [value for value in range(low, high + 1) if value % 12 == pitch % 12]
+    if candidates:
+        return candidates
+    # Fixed Bass ranges are wider than one octave, so this is defensive only.
+    return [min(max(pitch, low), high)]
+
+
+def _fit_bass_contour_notes(
+    notes: list[SourceNote],
+    low: int,
+    high: int,
+) -> tuple[list[SourceNote], int]:
+    """Octave-fit a monophonic Bass line while preserving its contour.
+
+    Bass normal profiles reduce simultaneous chords to the lowest note first.
+    When a remaining pitch is outside E1-B2/E1-B3, several octave-equivalent
+    notes can be legal. A small dynamic program chooses the sequence that avoids
+    register ping-pong, direction reversals, and unnecessarily high Bass notes.
+    Exact in-range pitches remain strongly preferred.
+    """
+    if not notes:
+        return notes, 0
+
+    ordered = sorted(notes, key=lambda note: (note.start, note.serial))
+    candidate_rows = [_bass_octave_candidates(note.pitch, low, high) for note in ordered]
+    dp: list[dict[int, tuple[float, int | None]]] = []
+
+    for index, (note, candidates) in enumerate(zip(ordered, candidate_rows)):
+        row: dict[int, tuple[float, int | None]] = {}
+        source_in_range = low <= note.pitch <= high
+        for candidate in candidates:
+            changed = candidate != note.pitch
+            local_cost = abs(candidate - note.pitch) * 2.0
+            if source_in_range and changed:
+                local_cost += 400.0
+            # Bass sounds more natural when equally-good octave choices stay low.
+            local_cost += (candidate - low) * 0.05
+
+            if index == 0:
+                row[candidate] = (local_cost, None)
+                continue
+
+            source_interval = note.pitch - ordered[index - 1].pitch
+            best: tuple[float, int | None] | None = None
+            for previous_candidate, (previous_cost, _) in dp[index - 1].items():
+                mapped_interval = candidate - previous_candidate
+                transition = abs(mapped_interval - source_interval) * 6.0
+                if source_interval and mapped_interval and source_interval * mapped_interval < 0:
+                    transition += 120.0
+                transition += max(0, abs(mapped_interval) - 7) * 12.0
+                total = previous_cost + local_cost + transition
+                if best is None or total < best[0]:
+                    best = (total, previous_candidate)
+            if best is not None:
+                row[candidate] = best
+        dp.append(row)
+
+    final_pitch = min(dp[-1], key=lambda pitch: dp[-1][pitch][0])
+    selected = [final_pitch]
+    for index in range(len(ordered) - 1, 0, -1):
+        previous = dp[index][selected[-1]][1]
+        if previous is None:
+            raise RuntimeError("Bass contour reconstruction failed.")
+        selected.append(previous)
+    selected.reverse()
+
+    changed_count = 0
+    fitted: list[SourceNote] = []
+    for note, pitch in zip(ordered, selected):
+        if pitch != note.pitch:
+            changed_count += 1
+        fitted.append(
+            SourceNote(
+                start=note.start,
+                end=note.end,
+                pitch=pitch,
+                velocity=note.velocity,
+                serial=note.serial,
+            )
+        )
+    return fitted, changed_count
 
 
 def _configured_range(options: PlanOptions) -> tuple[int, int]:
@@ -588,6 +715,8 @@ class _MappedGroup:
     folded_count: int
     skipped_count: int
     semitone_displacement: int
+    priority_fold_penalty: float
+    priority_displacement: float
 
 
 def _map_group(
@@ -596,6 +725,7 @@ def _map_group(
     global_low: int,
     global_high: int,
     mapping_method: MappingMethod,
+    instrument: InstrumentCode = "keyboard",
 ) -> _MappedGroup | None:
     state_low, state_high = state_range(state)
     low = max(state_low, global_low)
@@ -607,6 +737,20 @@ def _map_group(
     folded = 0
     skipped = 0
     displacement = 0
+    priority_fold_penalty = 0.0
+    priority_displacement = 0.0
+
+    guitar_weight_by_serial: dict[int, float] = {}
+    if instrument == "guitar" and group:
+        highest = max(note.pitch for note in group)
+        lowest = min(note.pitch for note in group)
+        for note in group:
+            if note.pitch == highest:
+                guitar_weight_by_serial[note.serial] = 3.0
+            elif note.pitch == lowest and highest != lowest:
+                guitar_weight_by_serial[note.serial] = 1.25
+            else:
+                guitar_weight_by_serial[note.serial] = 1.0
 
     for note in group:
         if mapping_method == "skip":
@@ -625,9 +769,13 @@ def _map_group(
             effective = fold_pitch_to_range(normalized, low, high)
 
         pitches.append(effective)
+        weight = guitar_weight_by_serial.get(note.serial, 1.0)
         if effective != note.pitch:
             folded += 1
-        displacement += abs(effective - note.pitch)
+            priority_fold_penalty += weight
+        note_displacement = abs(effective - note.pitch)
+        displacement += note_displacement
+        priority_displacement += note_displacement * weight
 
     if all(pitch is None for pitch in pitches) and mapping_method != "skip":
         return None
@@ -638,6 +786,8 @@ def _map_group(
         folded_count=folded,
         skipped_count=skipped,
         semitone_displacement=displacement,
+        priority_fold_penalty=priority_fold_penalty,
+        priority_displacement=priority_displacement,
     )
 
 
@@ -647,11 +797,18 @@ def _mapping_cost(mapped: _MappedGroup, options: PlanOptions) -> float:
     fold_weight = 8000.0 if options.mode == "full" else 2500.0
     displacement_weight = 12.0 if options.mode == "full" else 6.0
     skip_weight = 5000.0 if options.mode == "ensemble" else 20_000.0
-    return (
+    cost = (
         mapped.folded_count * fold_weight
         + mapped.skipped_count * skip_weight
         + mapped.semitone_displacement * displacement_weight
     )
+    if options.instrument == "guitar":
+        # Same number of folds still has a musical preference: protect the upper
+        # voice/chord identity before inner accompaniment. The base fold count
+        # remains dominant, so this cannot casually trade one extra remap for it.
+        cost += mapped.priority_fold_penalty * 20.0
+        cost += mapped.priority_displacement * 0.25
+    return cost
 
 
 def _transition_cost(
@@ -708,7 +865,12 @@ def _choose_group_states(
         choices: dict[KeyboardState, _MappedGroup] = {}
         for state in states:
             mapped = _map_group(
-                group, state, global_low, global_high, options.mapping_method
+                group,
+                state,
+                global_low,
+                global_high,
+                options.mapping_method,
+                options.instrument,
             )
             if mapped is not None:
                 choices[state] = mapped
@@ -1056,11 +1218,16 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
 
     transposed_semitones = 0
     pre_skipped_count = 0
+    bass_contour_folds = 0
     if options.mapping_method == "transpose":
         global_low, global_high = _global_range(options)
         source_notes, transposed_semitones = _auto_transpose_notes(
-            source_notes, global_low, global_high
+            source_notes, global_low, global_high, options.instrument
         )
+        if options.instrument == "bass":
+            source_notes, bass_contour_folds = _fit_bass_contour_notes(
+                source_notes, global_low, global_high
+            )
     elif options.mapping_method == "skip":
         global_low, global_high = _global_range(options)
         in_range_notes = [
@@ -1075,7 +1242,9 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
     groups = _group_notes_by_start(source_notes)
     mapped_groups = _choose_group_states(groups, options)
 
-    folded_count = sum(mapped.folded_count for mapped in mapped_groups)
+    folded_count = bass_contour_folds + sum(
+        mapped.folded_count for mapped in mapped_groups
+    )
     skipped_count = pre_skipped_count + sum(
         mapped.skipped_count for mapped in mapped_groups
     )

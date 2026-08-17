@@ -2,7 +2,7 @@
 
 A lightweight Windows MIDI player for **Blue Protocol: Star Resonance** Keyboard/Piano, Electric Guitar, and Electric Bass.
 
-BPSR MIDI Lite converts normal MIDI notes into the game's keyboard controls, automatically fits notes to the selected unlock Category, uses stable whole-song fitting for Guitar/Bass before local octave adjustment, switches Ctrl/Shift octave modes when needed, and keeps playback inside the safe no-page range so normal profiles never press `<` or `>`.
+BPSR MIDI Lite converts normal MIDI notes into the game's keyboard controls, automatically fits notes to the selected unlock Category with instrument-aware musical priorities, switches Ctrl/Shift octave modes when needed, and keeps playback inside the safe no-page range so normal profiles never press `<` or `>`. Piano prioritizes pitch fidelity, Guitar protects the upper melody/chord voice, and Bass preserves the low-line contour.
 
 ## Download
 
@@ -80,7 +80,17 @@ The complete Guitar range can be reached with Default/Low/High octave switching,
 | 1 | Starts with E1–B2 | E1–B2 |
 | 2 | High range unlocked | E1–B3 |
 
-Bass has no Low Octave mode; the player switches between Default and High only.
+Bass has no Low Octave mode. Category 1 uses the E1–B2 Default layout. Category 2 uses the single E1–B3 High Octave layout: the app switches High once at the start and stays there, avoiding mid-song Bass mode switching.
+
+## Instrument-aware fitting
+
+Normal profiles use one planner but different hidden musical priorities for each BPSR instrument:
+
+- **Keyboard / Piano** — keeps the established fidelity-first behavior because the overlapping C2–B6 Default/Low/High layout already works well.
+- **Electric Guitar** — still minimizes total remapping first, then protects the upper melody/chord voice when equally-good transpose or octave choices exist. This suits the asymmetric E2–D6 Guitar layout without sacrificing extra notes just for the melody.
+- **Electric Bass** — keeps the lowest note from crowded chords and uses contour-aware octave selection so descending/ascending lines do not bounce between registers unnecessarily. Category 2 stays on the E1–B3 High layout for the whole performance.
+
+These policies are automatic; there is no extra setting to configure.
 
 ## Raw MIDI — no remap
 
