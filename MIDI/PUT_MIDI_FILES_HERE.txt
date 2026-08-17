@@ -1,5 +1,0 @@
-You normally do not need to manage this folder yourself.
-
-Open BPSR MIDI Lite and click "Add MIDI…" to add .mid or .midi songs automatically.
-
-If you prefer, you can still copy MIDI files or subfolders here manually. The app scans subfolders too.
