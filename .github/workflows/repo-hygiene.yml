@@ -13,7 +13,7 @@ jobs:
   hygiene:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Block generated distribution binaries in source
         shell: bash
@@ -23,6 +23,17 @@ jobs:
           if [[ -n "$forbidden" ]]; then
             echo "::error::Generated/binary distribution files must not be committed to the source tree. Publish build outputs as GitHub Release assets instead."
             printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Keep release history consolidated
+        shell: bash
+        run: |
+          set -euo pipefail
+          stale="$(git ls-files 'RELEASE_NOTES_v*.md' || true)"
+          if [[ -n "$stale" ]]; then
+            echo "::error::Keep release history in CHANGELOG.md and GitHub Releases instead of standalone RELEASE_NOTES files."
+            printf '%s\n' "$stale"
             exit 1
           fi
 

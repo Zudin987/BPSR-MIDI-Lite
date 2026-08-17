@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set VERSION=1.1.1
+set VERSION=2.4.0
 
 echo ========================================
 echo BPSR MIDI Lite v%VERSION% Windows builder
@@ -46,11 +46,8 @@ mkdir portable\BPSR-MIDI-Lite
 copy /y dist\BPSR-MIDI-Lite.exe release\BPSR-MIDI-Lite.exe >nul
 copy /y dist\BPSR-MIDI-Lite.exe portable\BPSR-MIDI-Lite\BPSR-MIDI-Lite.exe >nul
 copy /y README.md portable\BPSR-MIDI-Lite\README.md >nul
-copy /y END_USER_GUIDE.md portable\BPSR-MIDI-Lite\END_USER_GUIDE.md >nul
 copy /y LICENSE portable\BPSR-MIDI-Lite\LICENSE >nul
 copy /y THIRD_PARTY_NOTICES.md portable\BPSR-MIDI-Lite\THIRD_PARTY_NOTICES.md >nul
-mkdir portable\BPSR-MIDI-Lite\MIDI
-copy /y MIDI\PUT_MIDI_FILES_HERE.txt portable\BPSR-MIDI-Lite\MIDI\PUT_MIDI_FILES_HERE.txt >nul
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Compress-Archive -Path 'portable\BPSR-MIDI-Lite' -DestinationPath 'release\BPSR-MIDI-Lite-v%VERSION%-Windows-x64.zip' -Force; $h1=(Get-FileHash 'release\BPSR-MIDI-Lite.exe' -Algorithm SHA256).Hash.ToLower(); $h2=(Get-FileHash 'release\BPSR-MIDI-Lite-v%VERSION%-Windows-x64.zip' -Algorithm SHA256).Hash.ToLower(); Set-Content 'release\SHA256SUMS.txt' ($h1 + '  BPSR-MIDI-Lite.exe'); Add-Content 'release\SHA256SUMS.txt' ($h2 + '  BPSR-MIDI-Lite-v%VERSION%-Windows-x64.zip')"
