@@ -1,0 +1,257 @@
+name: Apply v2.3 redesign
+
+on:
+  push:
+    branches:
+      - agent/category-profiles-raw-v2.3
+    paths:
+      - .github/workflows/apply-v2.3-redesign.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/category-profiles-raw-v2.3
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Apply controller, engine, tests, and docs changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f"missing patch target: {label}")
+              return text.replace(old, new, 1)
+
+          # --- Engine: Category 4 is progression only; playback remains C2-B6/no pages.
+          path = Path("midi_engine.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        "tier4": UnlockProfile(
+              instrument="keyboard", code="tier4", label="Experimental full range — A0–C8",
+              low=21, high=108,
+              full_states=_full_chromatic_states(),
+              stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
+          ),'''
+          new = '''        "tier4": UnlockProfile(
+              instrument="keyboard", code="tier4", label="Category 4 safe playback — C2–B6",
+              low=36, high=95,
+              # Category 4 unlocks outer piano notes in-game, but the product
+              # deliberately keeps playback on the middle page to avoid < / >.
+              full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+              stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+          ),'''
+          text = replace_once(text, old, new, "keyboard tier4 safe range")
+          path.write_text(text, encoding="utf-8")
+
+          # --- Controller: profiles are fixed/automatic; song speed is the only musical control.
+          path = Path("app.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace('APP_VERSION = "1.1.1"', 'APP_VERSION = "2.3.0"')
+
+          old_unlocks = '''UNLOCK_LABELS_BY_INSTRUMENT: dict[str, dict[str, str]] = {
+              "keyboard": {
+                  "Tier 1 — C3–B4": "tier1",
+                  "Tier 2 — C3–B6": "tier2",
+                  "Tier 3 — C2–B6 (no < / >)": "tier3",
+                  "Experimental full range — A0–C8": "tier4",
+              },
+              "guitar": {
+                  "Tier 1 — C3–B4": "tier1",
+                  "Tier 2 — E2–B4": "tier2",
+                  "Tier 3 — E2–D6 (no < / >)": "tier3",
+                  "Experimental full range — A0–C8": "tier4",
+              },
+              "bass": {
+                  "Tier 1 — E1–B2": "tier1",
+                  "Tier 2 — E1–B3": "tier2",
+              },
+          }'''
+          new_unlocks = '''UNLOCK_LABELS_BY_INSTRUMENT: dict[str, dict[str, str]] = {
+              "keyboard": {
+                  "Category 1 safe — C3–B4": "tier1",
+                  "Category 2 safe — C3–B6": "tier2",
+                  "Category 3 safe — C2–B6": "tier3",
+                  "Category 4 safe — C2–B6": "tier4",
+              },
+              "guitar": {
+                  "Category 1 safe — C3–B4": "tier1",
+                  "Category 2 safe — E2–B4": "tier2",
+                  "Category 3 safe — E2–D6": "tier3",
+              },
+              "bass": {
+                  "Category 1 safe — E1–B2": "tier1",
+                  "Category 2 safe — E1–B3": "tier2",
+              },
+          }'''
+          text = replace_once(text, old_unlocks, new_unlocks, "unlock labels")
+          text = text.replace('"keyboard": {\n        "mode": "stable", "unlock_tier": "tier3",', '"keyboard": {\n        "mode": "stable", "unlock_tier": "tier4",', 1)
+          text = text.replace('self._active_profile_code = "tier3"', 'self._active_profile_code = "tier4"', 1)
+          text = text.replace('"keyboard": "tier3", "guitar": "tier3", "bass": "tier2"', '"keyboard": "tier4", "guitar": "tier3", "bass": "tier2"', 1)
+          text = text.replace('profile_label_for("keyboard", "tier3")', 'profile_label_for("keyboard", "tier4")', 1)
+          text = text.replace('self.unlock_var = tk.StringVar(value="Tier 3 — C2–B6 (no < / >)")', 'self.unlock_var = tk.StringVar(value="Category 4 safe — C2–B6")', 1)
+          text = text.replace('self.minimize_var = tk.BooleanVar(value=True)', 'self.minimize_var = tk.BooleanVar(value=False)', 1)
+          text = text.replace('        self.minimize_var.trace_add("write", lambda *_args: self._save_config_if_ready())\n', '')
+
+          old_unlock_code = '''    def _unlock_code(self) -> str:
+              default = "tier2" if self._instrument_code() == "bass" else "tier3"
+              return self._unlock_labels().get(self.unlock_var.get(), default)
+          '''
+          new_unlock_code = '''    def _unlock_code(self) -> str:
+              instrument = self._instrument_code()
+              default = "tier2" if instrument == "bass" else ("tier4" if instrument == "keyboard" else "tier3")
+              return self._unlock_labels().get(self.unlock_var.get(), default)
+          '''
+          text = replace_once(text, old_unlock_code, new_unlock_code, "unlock fallback")
+
+          text = text.replace('        self.chord_combo.configure(values=list(self._chord_labels()))\n', '', 1)
+          text = text.replace('        self.speed_var.set(int(settings.get("speed", 85)))', '        self.speed_var.set(int(settings.get("speed", 100)))', 1)
+          text = text.replace('        self.length_var.set(int(settings.get("length", 150)))', '        self.length_var.set(int(settings.get("length", 100)))', 1)
+          text = text.replace('        self.minimum_note_var.set(int(settings.get("minimum_note", 120)))', '        self.minimum_note_var.set(int(settings.get("minimum_note", 70)))', 1)
+
+          old_legacy = '''            if old_profile == "tier4":
+                  old_profile = "custom"
+                  self._custom_settings_by_instrument["keyboard"].update(
+                      {"mode": "full", "unlock_tier": "tier4"}
+                  )
+          '''
+          if old_legacy in text:
+              text = text.replace(old_legacy, '', 1)
+
+          text = text.replace('        self.minimize_var.set(bool(data.get("minimize", True)))', '        self.minimize_var.set(False)', 1)
+          text = text.replace('            "minimize": self.minimize_var.get(),\n', '', 1)
+          text = text.replace('        if self.minimize_var.get():\n            self.after(250, self.iconify)\n', '')
+
+          old_reset = '''    def _reset_defaults(self) -> None:
+              instrument = self._instrument_code()
+              if self._profile_code() == "custom":
+                  self._custom_settings_by_instrument[instrument] = dict(
+                      CUSTOM_DEFAULTS_BY_INSTRUMENT[instrument]
+                  )
+                  self._suspend_auto_analysis = True
+                  try:
+                      self._apply_settings(self._custom_settings_by_instrument[instrument])
+                      self._refresh_custom_mode_choices()
+                  finally:
+                      self._suspend_auto_analysis = False
+                  self._schedule_analysis()
+              else:
+                  default_code = default_profile_code(instrument)  # type: ignore[arg-type]
+                  self.profile_var.set(profile_label_for(instrument, default_code))  # type: ignore[arg-type]
+                  self._profile_changed()
+              self.start_delay_var.set(3.0)
+              self.minimize_var.set(True)
+              self.input_backend_var.set(INPUT_BACKEND_LABELS_REVERSE["scan"])
+              self._save_config()
+          '''
+          new_reset = '''    def _reset_defaults(self) -> None:
+              instrument = self._instrument_code()
+              default_code = default_profile_code(instrument)  # type: ignore[arg-type]
+              self.profile_var.set(profile_label_for(instrument, default_code))  # type: ignore[arg-type]
+              self._profile_changed()
+              self.speed_var.set(100)
+              self.start_delay_var.set(3.0)
+              self.minimize_var.set(False)
+              self.input_backend_var.set(INPUT_BACKEND_LABELS_REVERSE["scan"])
+              self._save_config()
+          '''
+          text = replace_once(text, old_reset, new_reset, "reset defaults")
+
+          text = text.replace('parser.add_argument("--speed", type=int, default=85)', 'parser.add_argument("--speed", type=int, default=100)')
+          text = text.replace('parser.add_argument("--length", type=int, default=150)', 'parser.add_argument("--length", type=int, default=100)')
+          text = text.replace('default="tier3",\n        help="tier1=C3-B4, tier2=C3-B6, tier3=C2-B6, tier4=Custom full A0-C8",', 'default="tier4",\n        help="Keyboard: tier1=C3-B4, tier2=C3-B6, tier3/tier4=C2-B6 safe no-page playback",')
+          path.write_text(text, encoding="utf-8")
+
+          # --- Version metadata.
+          path = Path("modern_launcher.py")
+          text = path.read_text(encoding="utf-8").replace('app.APP_VERSION = "2.2.0"', 'app.APP_VERSION = "2.3.0"')
+          path.write_text(text, encoding="utf-8")
+
+          path = Path("version_info.txt")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace('(2, 2, 0, 0)', '(2, 3, 0, 0)').replace("u'2.2.0'", "u'2.3.0'")
+          path.write_text(text, encoding="utf-8")
+
+          # --- Tests: new product model, category ranges, raw no-remap behavior.
+          Path("tests/test_profiles.py").write_text('''from profiles import (\n    FIXED_PROFILES,\n    allowed_modes_for_unlock,\n    default_profile_code,\n    get_fixed_profile,\n    profile_labels_for,\n)\n\n\ndef test_instrument_profile_categories_and_raw_mode() -> None:\n    assert set(FIXED_PROFILES) == {"keyboard", "guitar", "bass"}\n    assert set(FIXED_PROFILES["keyboard"]) == {"tier1", "tier2", "tier3", "tier4", "raw"}\n    assert set(FIXED_PROFILES["guitar"]) == {"tier1", "tier2", "tier3", "raw"}\n    assert set(FIXED_PROFILES["bass"]) == {"tier1", "tier2", "raw"}\n\n    for instrument in ("keyboard", "guitar", "bass"):\n        values = set(profile_labels_for(instrument).values())\n        assert "raw" in values\n        assert "custom" not in values\n\n\ndef test_category_labels_mirror_game_progression() -> None:\n    assert get_fixed_profile("keyboard", "tier1").label.startswith("Category 1")\n    assert get_fixed_profile("keyboard", "tier4").label.startswith("Category 4")\n    assert get_fixed_profile("guitar", "tier3").label.startswith("Category 3")\n    assert get_fixed_profile("bass", "tier2").label.startswith("Category 2")\n\n\ndef test_raw_profiles_do_not_remap_or_limit_chords() -> None:\n    for instrument in ("keyboard", "guitar", "bass"):\n        raw = get_fixed_profile(instrument, "raw")\n        assert raw.mode == "stable"\n        assert raw.mapping == "skip"\n        assert raw.chord_limit == 0\n\n\ndef test_no_user_profile_exposes_page_switch_playback_mode() -> None:\n    for instrument_profiles in FIXED_PROFILES.values():\n        for profile in instrument_profiles.values():\n            assert profile.mode == "stable"\n    for instrument in ("keyboard", "guitar", "bass"):\n        for tier in ("tier1", "tier2", "tier3", "tier4"):\n            assert "full" not in allowed_modes_for_unlock(instrument, tier)\n\n\ndef test_defaults_are_highest_normal_categories() -> None:\n    assert default_profile_code("keyboard") == "tier4"\n    assert default_profile_code("guitar") == "tier3"\n    assert default_profile_code("bass") == "tier2"\n\n\ndef test_bass_normal_profiles_keep_only_lowest_chord_note() -> None:\n    assert get_fixed_profile("bass", "tier1").chord_limit == 1\n    assert get_fixed_profile("bass", "tier2").chord_limit == 1\n    assert get_fixed_profile("bass", "raw").chord_limit == 0\n\n\ndef test_profiles_preserve_song_tempo_and_only_floor_short_notes() -> None:\n    for instrument_profiles in FIXED_PROFILES.values():\n        for profile in instrument_profiles.values():\n            assert profile.speed == 100\n            assert profile.note_length == 100\n            assert profile.minimum_note == 70\n''', encoding="utf-8")
+
+          path = Path("tests/test_engine.py")
+          text = path.read_text(encoding="utf-8")
+          old_t4 = '''def test_unlock_tier4_can_preserve_c8_with_right_page(tmp_path: Path) -> None:
+              midi_path = tmp_path / "tier4.mid"
+              make_test_midi(midi_path, [60, 108], gap_ticks=960, duration_ticks=120)
+              plan = build_plan(
+                  midi_path,
+                  PlanOptions(
+                      mode="full",
+                      unlock_tier="tier4",
+                      speed_percent=100,
+                      note_length_percent=100,
+                  ),
+              )
+
+              assert plan.effective_min_pitch == 21
+              assert plan.effective_max_pitch == 108
+              assert plan.planned_max_pitch == 108
+              assert plan.page_switches > 0
+              assert any(event.kind == "page" and event.page == 2 for event in plan.events)
+          '''
+          new_t4 = '''def test_unlock_tier4_stays_c2_b6_and_never_uses_page_keys(tmp_path: Path) -> None:
+              midi_path = tmp_path / "tier4.mid"
+              make_test_midi(midi_path, [21, 36, 60, 95, 108], gap_ticks=480, duration_ticks=120)
+              plan = build_plan(
+                  midi_path,
+                  PlanOptions(
+                      mode="full",
+                      unlock_tier="tier4",
+                      speed_percent=100,
+                      note_length_percent=100,
+                  ),
+              )
+
+              assert plan.effective_min_pitch == 36
+              assert plan.effective_max_pitch == 95
+              assert 36 <= plan.planned_min_pitch <= plan.planned_max_pitch <= 95
+              assert plan.page_switches == 0
+              assert all(event.kind != "page" for event in plan.events)
+          '''
+          text = replace_once(text, old_t4, new_t4, "tier4 engine test")
+          text = text.replace('    assert plan.configured_min_pitch == 21\n    assert plan.configured_max_pitch == 108\n', '    assert plan.configured_min_pitch == 36\n    assert plan.configured_max_pitch == 95\n', 1)
+          text += '''\n\ndef test_raw_keyboard_profile_skips_outside_safe_range_without_remapping(tmp_path: Path) -> None:\n    from profiles import get_fixed_profile\n\n    midi_path = tmp_path / "raw_keyboard.mid"\n    make_test_midi(midi_path, [21, 36, 60, 95, 108], gap_ticks=480, duration_ticks=120)\n    profile = get_fixed_profile("keyboard", "raw")\n    plan = build_plan(\n        midi_path,\n        PlanOptions(\n            instrument="keyboard",\n            mode=profile.mode,\n            unlock_tier=profile.unlock_tier,\n            mapping_method=profile.mapping,\n            max_notes_per_chord=profile.chord_limit,\n            speed_percent=100,\n            note_length_percent=100,\n        ),\n    )\n\n    assert plan.folded_notes == 0\n    assert plan.skipped_notes == 2\n    assert plan.planned_min_pitch == 36\n    assert plan.planned_max_pitch == 95\n    assert plan.page_switches == 0\n\n\ndef test_all_selectable_profiles_generate_no_page_events(tmp_path: Path) -> None:\n    from profiles import FIXED_PROFILES\n\n    midi_path = tmp_path / "all_profiles.mid"\n    make_test_midi(midi_path, [21, 28, 36, 48, 60, 71, 83, 95, 108], gap_ticks=480)\n    for instrument, profiles in FIXED_PROFILES.items():\n        for profile in profiles.values():\n            plan = build_plan(\n                midi_path,\n                PlanOptions(\n                    instrument=instrument,\n                    mode=profile.mode,\n                    unlock_tier=profile.unlock_tier,\n                    mapping_method=profile.mapping,\n                    max_notes_per_chord=profile.chord_limit,\n                    speed_percent=100,\n                ),\n            )\n            assert plan.page_switches == 0, (instrument, profile.code)\n            assert all(event.kind != "page" for event in plan.events), (instrument, profile.code)\n'''
+          path.write_text(text, encoding="utf-8")
+
+          # --- User docs.
+          path = Path("CHANGELOG.md")
+          text = path.read_text(encoding="utf-8")
+          entry = '''## v2.3.0\n\n- Replaced First/Second/Fully unlocked + Advanced setup with the game's explicit **Category** progression for each instrument.\n- Added **Raw MIDI — no remap** as the final choice for Keyboard, Guitar, and Bass. Raw mode keeps original pitches/full chords and skips physically out-of-range notes instead of remapping them.\n- Piano Category 4 is intentionally capped to **C2–B6** during playback even though C7–C8 are unlocked in-game, so selectable profiles never need `<` / `>` page changes.\n- Guitar safe playback is capped to **E2–D6** and Bass to **E1–B3**.\n- Removed the user-facing Advanced song-fitting controls (playback style, unlocked mode, mapping algorithm, chord limit, page delay, held-note controls, sustain toggle, and percussion toggle). Their safe behavior is automatic per category.\n- Removed **Minimize after Play** and the automatic minimize behavior. The app stays open while users Alt-Tab back to BPSR.\n- Kept **Song speed** as the normal user-facing playback adjustment.\n- Added a fail-safe that blocks Play if a selectable profile ever unexpectedly generates a `<` / `>` page event.\n- Added regression coverage for every selectable profile being page-free and for Raw MIDI skipping instead of remapping.\n\n'''
+          text = text.replace('# Changelog\n\n', '# Changelog\n\n' + entry, 1)
+          path.write_text(text, encoding="utf-8")
+
+          Path("README.md").write_text('''# 🎹 BPSR MIDI Lite\n\nA small Windows app that turns normal MIDI files into playable input for **Blue Protocol: Star Resonance** Keyboard, Electric Guitar, and Electric Bass.\n\nCreated by **MrEz**. Windows 10/11, 64-bit. Run with Administrator permission for reliable game input.\n\n## Normal workflow\n\n1. Choose **Keyboard**, **Guitar**, or **Bass**.\n2. Choose the **Category** that matches your in-game unlock progress.\n3. Add/select a MIDI.\n4. Leave **Song speed** at 100% for the original tempo, or adjust it.\n5. Open the matching instrument in BPSR and press **Play in BPSR**.\n6. Alt-Tab/click back into BPSR during the countdown. The app stays open.\n\nPress **F10** at any time to stop and release held keys.\n\n## Categories and safe ranges\n\n### Keyboard / Piano\n\n- Category 1: starting C3–B4.\n- Category 2: C5–B6 unlocked; app can safely use cumulative C3–B6.\n- Category 3: A0–B2 unlocked; app deliberately uses C2–B6.\n- Category 4: C7–C8 unlocked; app still deliberately uses C2–B6.\n\nThe C2–B6 cap is intentional: the app uses Default/Low/High octave on the middle page and **never needs `<` or `>`**. Notes outside the selected safe range are fitted automatically.\n\n### Electric Guitar\n\n- Category 1: starting C3–B4.\n- Category 2: E2–B2 unlocked; safe cumulative range E2–B4.\n- Category 3: C5–D6 unlocked; complete safe range E2–D6.\n\nGuitar uses Default/Low/High octave switching and never needs `<` or `>`.\n\n### Electric Bass\n\n- Category 1: E1–B2.\n- Category 2: safe playable range E1–B3 using Default/High Octave.\n\nBass has no Low Octave mode.\n\n## Raw MIDI — no remap\n\nEvery instrument has **Raw MIDI — no remap** as the last choice.\n\nRaw mode:\n\n- does not octave-fold or transpose pitches\n- does not simplify large chords\n- still uses the small BPSR-safe key-hold/retrigger timing correction\n- still ignores the MIDI drum channel for pitched instruments\n- skips notes that are physically outside the instrument's safe no-page range\n- never uses `<` or `>`\n\nSkipping out-of-range notes is necessary: without remapping or page switching there is no physical in-game key that can play those pitches.\n\n## Octave switching\n\nCtrl/Shift octave mode is treated as a toggle. Pressing the active octave key again returns to Default. Low and High can switch directly between each other; the app does not insert a forced Default step.\n\n## What users can change\n\nThe normal musical control is **Song speed**. Technical fitting choices are automatic per Category. **More settings** only contains countdown, song-library helpers, and Troubleshooting/input tools.\n\n## Technical behavior\n\nThe planner preserves original MIDI tempo and authored note lengths by default. Very short notes get a small input-safe hold, repeated physical keys get a brief release window, malformed dangling notes are bounded, and selectable profiles are required to generate zero page-key events.\n\n## License\n\nGNU Affero General Public License v3.0. Independent MIDI-only implementation inspired by `Sanheiii/ok-star-resonance`.\n''', encoding="utf-8")
+
+          Path("END_USER_GUIDE.md").write_text('''# BPSR MIDI Lite — Beginner Guide\n\n## Use it\n\n1. Choose your instrument.\n2. Choose the Category that matches what you unlocked in BPSR.\n3. Add/select a MIDI.\n4. Adjust Song speed only if you want to. 100% is the original MIDI tempo.\n5. Press **Play in BPSR** and return to the game during the countdown.\n\nThe app stays open. Press **F10** to stop at any time.\n\n## Category choices\n\n**Keyboard:** Category 1, 2, 3, 4, then Raw MIDI. Normal playback never goes outside C2–B6, even at Category 4, so the app does not need `<` or `>`.\n\n**Guitar:** Category 1, 2, 3, then Raw MIDI. Maximum safe range is E2–D6.\n\n**Bass:** Category 1, 2, then Raw MIDI. Maximum safe range is E1–B3 and Bass has no Low Octave mode.\n\nNormal Categories automatically fit notes into the range you can use. Lower Categories need more remapping because fewer notes are available.\n\n## Raw MIDI\n\nRaw MIDI does not remap pitches and does not simplify chords. If the MIDI asks for a pitch that cannot physically be played in the safe no-page range, that note is skipped. The Song check tells you when this happens.\n\n## Octave controls\n\nThe app starts from the instrument's normal/default octave. It presses Ctrl or Shift only when needed. Pressing the same active octave again returns to Default, and it can switch directly from High to Low or Low to High.\n\n## More settings\n\nMore settings contains only:\n\n- countdown\n- song-folder/reset helpers\n- Troubleshooting/input tools\n\nThere is no Advanced song-fitting panel and no Minimize-after-Play option.\n''', encoding="utf-8")
+          PY
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Run full tests
+        run: python -m pytest -q
+
+      - name: Commit redesign
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add midi_engine.py app.py modern_launcher.py version_info.txt tests/test_profiles.py tests/test_engine.py README.md END_USER_GUIDE.md CHANGELOG.md
+          git commit -m "Align profiles with BPSR categories and raw mode"
+          git push origin HEAD:agent/category-profiles-raw-v2.3
