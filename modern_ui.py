@@ -1,19 +1,18 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import ttk
 from typing import Any, Callable
 
 
 """Beginner-first single-page UI for BPSR MIDI Lite.
 
-The interface intentionally exposes only the decisions a normal player needs:
-instrument, BPSR category, MIDI song, song speed, countdown, and Play. Technical
-song fitting remains automatic. Recovery/input tools stay on the same page in a
-collapsed troubleshooting section.
+The interface exposes the musical choices a normal player needs: instrument,
+BPSR category, MIDI song, song speed, countdown, and Play. Keyboard connection
+is kept as a visible recovery option because different Windows/game setups can
+accept different input methods. Technical MIDI fitting remains automatic.
 """
 
 
@@ -26,70 +25,6 @@ def _apply_simple_styles(app: Any) -> None:
     style.configure("Stop.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 8))
     style.configure("Soft.TButton", padding=(10, 6))
     style.configure("Ready.TLabel", font=("Segoe UI", 11, "bold"))
-
-
-def _unique_target(folder: Path, source: Path) -> Path:
-    target = folder / source.name
-    if not target.exists():
-        return target
-    try:
-        if target.resolve() == source.resolve():
-            return target
-    except OSError:
-        pass
-
-    stem = source.stem
-    suffix = source.suffix
-    number = 2
-    while True:
-        candidate = folder / f"{stem} ({number}){suffix}"
-        if not candidate.exists():
-            return candidate
-        number += 1
-
-
-def _add_midi_files(self: Any) -> None:
-    files = filedialog.askopenfilenames(
-        parent=self,
-        title="Add MIDI songs",
-        filetypes=[("MIDI files", "*.mid *.midi"), ("All files", "*.*")],
-    )
-    if not files:
-        return
-
-    folder = Path(self.midi_folder_var.get())
-    try:
-        folder.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        messagebox.showerror(self._modern_module.APP_NAME, f"Could not use the song library:\n{exc}")
-        return
-
-    added: list[Path] = []
-    for raw in files:
-        source = Path(raw)
-        if source.suffix.casefold() not in self._modern_module.MIDI_EXTENSIONS:
-            continue
-        try:
-            target = _unique_target(folder, source)
-            if source.resolve() != target.resolve():
-                shutil.copy2(source, target)
-            added.append(target)
-        except OSError as exc:
-            messagebox.showerror(
-                self._modern_module.APP_NAME,
-                f"Could not add {source.name}:\n{exc}",
-            )
-            return
-
-    if not added:
-        self.status_var.set("No MIDI files were added.")
-        return
-
-    preferred = added[-1].relative_to(folder).as_posix()
-    self._reload_midi_library(analyze=False, preferred_display=preferred)
-    self._midi_selected()
-    count = len(added)
-    self.status_var.set(f"Added {count} song{'s' if count != 1 else ''}. Checking the selected song…")
 
 
 def _refresh_scroll_region(self: Any) -> None:
@@ -124,83 +59,69 @@ def _scroll_mousewheel(self: Any, event: Any) -> None:
         self._scroll_canvas.yview_scroll(1, "units")
 
 
-def _toggle_troubleshooting(self: Any) -> None:
-    if self._troubleshooting_visible:
-        self._troubleshooting_frame.pack_forget()
-        self._troubleshooting_visible = False
-        self._troubleshooting_button.configure(text="Troubleshooting ▾")
-    else:
-        self._troubleshooting_frame.pack(fill="x", pady=(10, 0))
-        self._troubleshooting_visible = True
-        self._troubleshooting_button.configure(text="Troubleshooting ▴")
-    self.after_idle(lambda: _refresh_scroll_region(self))
+def _poll_song_library(self: Any) -> None:
+    """Refresh the song picker when files are added/removed in the opened folder."""
+    try:
+        if not self.player.is_playing:
+            folder = Path(self.midi_folder_var.get())
+            files = self._modern_module.scan_midi_folder(folder)
+            names = [path.relative_to(folder).as_posix() for path in files]
+            if names != list(self._midi_lookup):
+                self._reload_midi_library(
+                    analyze=True,
+                    preferred_display=self.midi_display_var.get(),
+                )
+    except (OSError, tk.TclError):
+        pass
+
+    try:
+        self.after(1500, lambda: _poll_song_library(self))
+    except tk.TclError:
+        pass
 
 
 def _build_help_and_recovery(self: Any, outer: Any) -> None:
     support = ttk.LabelFrame(outer, text="Help & recovery", padding=14)
     support.pack(fill="x", pady=(0, 12))
+    support.columnconfigure(0, weight=1)
+    support.columnconfigure(1, weight=1)
 
-    ttk.Label(
-        support,
-        text="Most users never need these. Restore resets the app to the recommended category/speed/input defaults.",
-        style="Hint.TLabel",
-        wraplength=580,
-        justify="left",
-    ).pack(anchor="w", pady=(0, 10))
+    ttk.Label(support, text="Restore settings", style="Section.TLabel").grid(
+        row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 5)
+    )
+    ttk.Label(support, text="Keyboard connection", style="Section.TLabel").grid(
+        row=0, column=1, sticky="w", pady=(0, 5)
+    )
 
-    row = ttk.Frame(support)
-    row.pack(fill="x")
     ttk.Button(
-        row,
+        support,
         text="Restore recommended settings",
         command=self._reset_defaults,
-    ).pack(side="left")
+    ).grid(row=1, column=0, sticky="w", padx=(0, 12))
 
-    self._troubleshooting_button = ttk.Button(
-        row,
-        text="Troubleshooting ▾",
-        command=self._toggle_troubleshooting,
-    )
-    self._troubleshooting_button.pack(side="left", padx=(8, 0))
-
-    self._troubleshooting_visible = False
-    self._troubleshooting_frame = ttk.LabelFrame(
-        support,
-        text="Keyboard input troubleshooting",
-        padding=12,
-    )
-    trouble = self._troubleshooting_frame
-
-    ttk.Label(
-        trouble,
-        text="Only use this if BPSR does not react to playback. Try the keyboard test before changing the input method.",
-        style="Hint.TLabel",
-        wraplength=560,
-        justify="left",
-    ).pack(anchor="w", pady=(0, 10))
-
-    ttk.Label(trouble, text="Keyboard connection", style="Section.TLabel").pack(anchor="w")
     self.input_backend_combo = ttk.Combobox(
-        trouble,
+        support,
         textvariable=self.input_backend_var,
         values=list(self._modern_module.INPUT_BACKEND_LABELS),
         state="readonly",
     )
-    self.input_backend_combo.pack(fill="x", pady=(5, 10))
+    self.input_backend_combo.grid(row=1, column=1, sticky="ew")
     self.input_backend_combo.bind("<<ComboboxSelected>>", lambda _event: self._save_config())
 
-    buttons = ttk.Frame(trouble)
-    buttons.pack(fill="x")
-    self.test_button = ttk.Button(buttons, text="Test keyboard input", command=self._test_input)
-    self.test_button.pack(side="left")
-    ttk.Button(buttons, text="Copy support info", command=self._copy_diagnostics).pack(side="left", padx=(8, 0))
+    ttk.Label(
+        support,
+        text="Win32 scan code is recommended. Keep another method only if it works better on your PC.",
+        style="Hint.TLabel",
+        wraplength=290,
+        justify="left",
+    ).grid(row=2, column=1, sticky="w", pady=(6, 0))
 
 
 def _modern_build_ui(self: Any) -> None:
     self._apply_system_theme(force=True)
     _apply_simple_styles(self)
 
-    self.geometry("760x720")
+    self.geometry("780x700")
     self.minsize(560, 500)
 
     shell = ttk.Frame(self)
@@ -235,47 +156,49 @@ def _modern_build_ui(self: Any) -> None:
     ttk.Label(header, text="BPSR MIDI Lite", style="Hero.TLabel").pack(anchor="w")
     ttk.Label(
         header,
-        text="Choose instrument → category → song → Play. Everything else is automatic.",
+        text="Choose instrument → category → song → Play. Song fitting is automatic.",
         style="Hint.TLabel",
-        wraplength=580,
+        wraplength=620,
         justify="left",
     ).pack(anchor="w", pady=(3, 0))
 
     setup = ttk.LabelFrame(outer, text="1  Instrument", padding=14)
     setup.pack(fill="x", pady=(0, 12))
-    setup.columnconfigure(0, weight=1)
+    setup.columnconfigure(0, weight=1, uniform="setup")
+    setup.columnconfigure(1, weight=1, uniform="setup")
 
     ttk.Label(setup, text="What are you playing?", style="Section.TLabel").grid(
-        row=0, column=0, sticky="w", pady=(0, 5)
+        row=0, column=0, sticky="w", padx=(0, 8), pady=(0, 5)
     )
+    ttk.Label(setup, text="Which category have you unlocked?", style="Section.TLabel").grid(
+        row=0, column=1, sticky="w", padx=(8, 0), pady=(0, 5)
+    )
+
     self.instrument_combo = ttk.Combobox(
         setup,
         textvariable=self.instrument_var,
         values=list(self._modern_module.INSTRUMENT_LABELS),
         state="readonly",
     )
-    self.instrument_combo.grid(row=1, column=0, sticky="ew")
+    self.instrument_combo.grid(row=1, column=0, sticky="ew", padx=(0, 8))
     self.instrument_combo.bind("<<ComboboxSelected>>", lambda _event: self._instrument_changed())
 
-    ttk.Label(setup, text="Which category have you unlocked?", style="Section.TLabel").grid(
-        row=2, column=0, sticky="w", pady=(12, 5)
-    )
     self.profile_combo = ttk.Combobox(
         setup,
         textvariable=self.profile_var,
         values=list(self._modern_module.profile_labels_for("keyboard")),
         state="readonly",
     )
-    self.profile_combo.grid(row=3, column=0, sticky="ew")
+    self.profile_combo.grid(row=1, column=1, sticky="ew", padx=(8, 0))
     self.profile_combo.bind("<<ComboboxSelected>>", lambda _event: self._profile_changed())
 
     ttk.Label(
         setup,
         textvariable=self.profile_summary_var,
         style="Hint.TLabel",
-        wraplength=580,
+        wraplength=620,
         justify="left",
-    ).grid(row=4, column=0, sticky="w", pady=(10, 0))
+    ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
     songs = ttk.LabelFrame(outer, text="2  Song", padding=14)
     songs.pack(fill="x", pady=(0, 12))
@@ -289,11 +212,14 @@ def _modern_build_ui(self: Any) -> None:
     )
     self.midi_combo.grid(row=0, column=0, sticky="ew")
     self.midi_combo.bind("<<ComboboxSelected>>", lambda _event: self._midi_selected())
-    ttk.Button(songs, text="Add MIDI…", command=self._add_midi_files).grid(row=0, column=1, padx=(8, 0))
+    ttk.Button(songs, text="Open folder", command=self._open_midi_folder).grid(
+        row=0, column=1, padx=(8, 0)
+    )
 
     speed_row = ttk.Frame(songs)
     speed_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
-    ttk.Label(speed_row, text="Song speed", style="Section.TLabel").pack(side="left")
+    speed_row.columnconfigure(3, weight=1)
+    ttk.Label(speed_row, text="Song speed", style="Section.TLabel").grid(row=0, column=0, sticky="w")
     ttk.Spinbox(
         speed_row,
         from_=25,
@@ -301,16 +227,27 @@ def _modern_build_ui(self: Any) -> None:
         increment=5,
         textvariable=self.speed_var,
         width=6,
-    ).pack(side="left", padx=(8, 4))
-    ttk.Label(speed_row, text="%", style="Hint.TLabel").pack(side="left")
-    ttk.Label(speed_row, text="100% = original MIDI speed", style="Hint.TLabel").pack(side="left", padx=(12, 0))
-    ttk.Button(speed_row, text="100%", command=lambda: self.speed_var.set(100)).pack(side="right")
+    ).grid(row=0, column=1, sticky="w", padx=(8, 4))
+    ttk.Label(speed_row, text="%", style="Hint.TLabel").grid(row=0, column=2, sticky="w")
+    ttk.Button(
+        speed_row,
+        text="Restore song speed to default 100%",
+        command=lambda: self.speed_var.set(100),
+    ).grid(row=0, column=3, sticky="e", padx=(12, 0))
+    ttk.Label(
+        speed_row,
+        text="100% = original MIDI speed",
+        style="Hint.TLabel",
+    ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(5, 0))
 
     ttk.Label(
         songs,
-        text="Normal categories fit notes automatically. Raw MIDI keeps pitches unchanged and out-of-range notes are skipped.",
+        text=(
+            "Open the song folder and copy .mid/.midi files there; the list refreshes automatically. "
+            "Normal categories fit notes automatically. Raw MIDI keeps pitches unchanged and skips out-of-range notes."
+        ),
         style="Hint.TLabel",
-        wraplength=580,
+        wraplength=620,
         justify="left",
     ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
 
@@ -326,14 +263,14 @@ def _modern_build_ui(self: Any) -> None:
         self.analysis_frame,
         textvariable=self.analysis_var,
         style="Hint.TLabel",
-        wraplength=580,
+        wraplength=620,
         justify="left",
     ).pack(anchor="w", pady=(6, 0))
 
     play = ttk.LabelFrame(outer, text="4  Play", padding=14)
     play.pack(fill="x", pady=(0, 12))
 
-    ttk.Label(play, textvariable=self.notice_var, wraplength=580, justify="left").pack(anchor="w", pady=(0, 12))
+    ttk.Label(play, textvariable=self.notice_var, wraplength=620, justify="left").pack(anchor="w", pady=(0, 12))
 
     countdown = ttk.Frame(play)
     countdown.pack(fill="x", pady=(0, 10))
@@ -372,7 +309,7 @@ def _modern_build_ui(self: Any) -> None:
 
     self.progress = ttk.Progressbar(play, maximum=1.0, mode="determinate")
     self.progress.pack(fill="x", pady=(14, 8))
-    ttk.Label(play, textvariable=self.status_var, wraplength=580, justify="left").pack(anchor="w")
+    ttk.Label(play, textvariable=self.status_var, wraplength=620, justify="left").pack(anchor="w")
 
     _build_help_and_recovery(self, outer)
 
@@ -380,9 +317,11 @@ def _modern_build_ui(self: Any) -> None:
         outer,
         text="The app stays open during playback. F10 always stops playback and releases held keys.",
         style="Hint.TLabel",
-        wraplength=580,
+        wraplength=620,
         justify="left",
     ).pack(anchor="w")
+
+    self.after(1500, lambda: _poll_song_library(self))
 
 
 def _modern_apply_system_theme(self: Any, force: bool = False) -> None:
@@ -492,7 +431,7 @@ def _friendly_analyze(self: Any) -> None:
         self.start_button.configure(state="disabled")
         if not self.file_var.get():
             self.suitability_var.set("Add a MIDI song to begin")
-            self.analysis_var.set("The app will check and fit the song automatically.")
+            self.analysis_var.set("Open the song folder and copy in a .mid or .midi file.")
         return
 
     plan = self.current_plan
@@ -548,12 +487,12 @@ def _friendly_reload(self: Any, analyze: bool = True, preferred_display: str | N
     if not self._midi_lookup:
         self.start_button.configure(state="disabled")
         self.suitability_var.set("No songs yet")
-        self.analysis_var.set("Click Add MIDI… and choose a .mid or .midi file.")
+        self.analysis_var.set("Open the song folder and copy in a .mid or .midi file. The list refreshes automatically.")
         self.status_var.set("Your song library is empty.")
 
 
 def install_modern_ui(app_module: Any) -> None:
-    """Install the final single-page UI while preserving the proven MIDI engine."""
+    """Install the single-page UI while preserving the proven MIDI engine."""
     app_class = app_module.App
 
     app_class._modern_module = app_module
@@ -568,8 +507,6 @@ def install_modern_ui(app_module: Any) -> None:
     app_class._apply_system_theme = _modern_apply_system_theme
     app_class._build_ui = _modern_build_ui
     app_class._apply_profile_ui = _modern_apply_profile_ui
-    app_class._add_midi_files = _add_midi_files
-    app_class._toggle_troubleshooting = _toggle_troubleshooting
     app_class._profile_changed = _modern_profile_changed
     app_class._instrument_changed = _modern_instrument_changed
     app_class._save_config = _modern_save_config
