@@ -38,7 +38,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "1.1.1"
+APP_VERSION = "2.3.0"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -50,20 +50,19 @@ MODE_LABELS = {
 MODE_LABELS_REVERSE = {value: key for key, value in MODE_LABELS.items()}
 UNLOCK_LABELS_BY_INSTRUMENT: dict[str, dict[str, str]] = {
     "keyboard": {
-        "Tier 1 — C3–B4": "tier1",
-        "Tier 2 — C3–B6": "tier2",
-        "Tier 3 — C2–B6 (no < / >)": "tier3",
-        "Experimental full range — A0–C8": "tier4",
+        "Category 1 safe — C3–B4": "tier1",
+        "Category 2 safe — C3–B6": "tier2",
+        "Category 3 safe — C2–B6": "tier3",
+        "Category 4 safe — C2–B6": "tier4",
     },
     "guitar": {
-        "Tier 1 — C3–B4": "tier1",
-        "Tier 2 — E2–B4": "tier2",
-        "Tier 3 — E2–D6 (no < / >)": "tier3",
-        "Experimental full range — A0–C8": "tier4",
+        "Category 1 safe — C3–B4": "tier1",
+        "Category 2 safe — E2–B4": "tier2",
+        "Category 3 safe — E2–D6": "tier3",
     },
     "bass": {
-        "Tier 1 — E1–B2": "tier1",
-        "Tier 2 — E1–B3": "tier2",
+        "Category 1 safe — E1–B2": "tier1",
+        "Category 2 safe — E1–B3": "tier2",
     },
 }
 MAPPING_LABELS = {
@@ -100,7 +99,7 @@ INPUT_BACKEND_LABELS_REVERSE = {value: key for key, value in INPUT_BACKEND_LABEL
 
 CUSTOM_DEFAULTS_BY_INSTRUMENT: dict[str, dict[str, object]] = {
     "keyboard": {
-        "mode": "stable", "unlock_tier": "tier3", "mapping": "octave",
+        "mode": "stable", "unlock_tier": "tier4", "mapping": "octave",
         "chord_limit": 0, "speed": 100, "length": 100, "minimum_note": 70,
         "page_delay": 220, "modifier_lead": 55, "pedal": False,
         "ignore_percussion": True,
@@ -191,9 +190,9 @@ class App(tk.Tk):
         self._analysis_job: str | None = None
         self._suspend_auto_analysis = True
         self._active_instrument_code = "keyboard"
-        self._active_profile_code = "tier3"
+        self._active_profile_code = "tier4"
         self._profile_by_instrument: dict[str, str] = {
-            "keyboard": "tier3", "guitar": "tier3", "bass": "tier2"
+            "keyboard": "tier4", "guitar": "tier3", "bass": "tier2"
         }
         self._custom_settings_by_instrument: dict[str, dict[str, object]] = {
             code: dict(settings)
@@ -206,9 +205,9 @@ class App(tk.Tk):
         self._midi_lookup: dict[str, Path] = {}
 
         self.instrument_var = tk.StringVar(value=INSTRUMENT_LABELS_REVERSE["keyboard"])
-        self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier3"))
+        self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier4"))
         self.mode_var = tk.StringVar(value=MODE_LABELS_REVERSE["stable"])
-        self.unlock_var = tk.StringVar(value="Tier 3 — C2–B6 (no < / >)")
+        self.unlock_var = tk.StringVar(value="Category 4 safe — C2–B6")
         self.speed_var = tk.IntVar(value=100)
         self.length_var = tk.IntVar(value=100)
         self.minimum_note_var = tk.IntVar(value=70)
@@ -219,7 +218,7 @@ class App(tk.Tk):
         self.chord_var = tk.StringVar(value="All notes")
         self.pedal_var = tk.BooleanVar(value=False)
         self.percussion_var = tk.BooleanVar(value=True)
-        self.minimize_var = tk.BooleanVar(value=True)
+        self.minimize_var = tk.BooleanVar(value=False)
         self.input_backend_var = tk.StringVar(value=INPUT_BACKEND_LABELS_REVERSE["scan"])
 
         self.status_var = tk.StringVar(value="Add a MIDI to the library, then press Reload.")
@@ -572,7 +571,6 @@ class App(tk.Tk):
         for variable in variables:
             variable.trace_add("write", self._custom_variable_changed)
         self.start_delay_var.trace_add("write", lambda *_args: self._save_config_if_ready())
-        self.minimize_var.trace_add("write", lambda *_args: self._save_config_if_ready())
 
     def _instrument_code(self) -> str:
         return INSTRUMENT_LABELS.get(self.instrument_var.get(), "keyboard")
@@ -593,7 +591,8 @@ class App(tk.Tk):
         return UNLOCK_LABELS_BY_INSTRUMENT[self._instrument_code()]
 
     def _unlock_code(self) -> str:
-        default = "tier2" if self._instrument_code() == "bass" else "tier3"
+        instrument = self._instrument_code()
+        default = "tier2" if instrument == "bass" else ("tier4" if instrument == "keyboard" else "tier3")
         return self._unlock_labels().get(self.unlock_var.get(), default)
 
     def _unlock_label_for(self, code: str) -> str:
@@ -637,10 +636,9 @@ class App(tk.Tk):
         self.chord_var.set(
             chord_reverse.get(int(settings.get("chord_limit", 0)), chord_reverse[0])
         )
-        self.chord_combo.configure(values=list(self._chord_labels()))
-        self.speed_var.set(int(settings.get("speed", 85)))
-        self.length_var.set(int(settings.get("length", 150)))
-        self.minimum_note_var.set(int(settings.get("minimum_note", 120)))
+        self.speed_var.set(int(settings.get("speed", 100)))
+        self.length_var.set(int(settings.get("length", 100)))
+        self.minimum_note_var.set(int(settings.get("minimum_note", 70)))
         self.page_delay_var.set(int(settings.get("page_delay", 220)))
         self.modifier_lead_var.set(int(settings.get("modifier_lead", 55)))
         self.pedal_var.set(bool(settings.get("pedal", False)))
@@ -712,7 +710,6 @@ class App(tk.Tk):
         self._profile_by_instrument[instrument] = profile_code
 
         self.unlock_combo.configure(values=list(self._unlock_labels()))
-        self.chord_combo.configure(values=list(self._chord_labels()))
 
         if profile_code == "custom":
             if instrument == "bass":
@@ -856,11 +853,6 @@ class App(tk.Tk):
                     self._profile_by_instrument[instrument] = candidate
         elif config_existed:
             old_profile = str(data.get("profile", "tier3"))
-            if old_profile == "tier4":
-                old_profile = "custom"
-                self._custom_settings_by_instrument["keyboard"].update(
-                    {"mode": "full", "unlock_tier": "tier4"}
-                )
             if old_profile in profile_labels_for("keyboard").values():
                 self._profile_by_instrument["keyboard"] = old_profile
 
@@ -886,7 +878,7 @@ class App(tk.Tk):
             self._apply_settings(get_fixed_profile(instrument, profile_code).settings())  # type: ignore[arg-type]
 
         self.start_delay_var.set(float(data.get("start_delay", 3.0)))
-        self.minimize_var.set(bool(data.get("minimize", True)))
+        self.minimize_var.set(False)
         input_backend = str(data.get("input_backend", "scan"))
         self.input_backend_var.set(
             INPUT_BACKEND_LABELS_REVERSE.get(input_backend, INPUT_BACKEND_LABELS_REVERSE["scan"])
@@ -911,7 +903,6 @@ class App(tk.Tk):
             "custom_settings_by_instrument": self._custom_settings_by_instrument,
             "selected_midi": self.midi_display_var.get(),
             "start_delay": self.start_delay_var.get(),
-            "minimize": self.minimize_var.get(),
             "input_backend": self._input_backend_code(),
             **current,
         }
@@ -1128,8 +1119,6 @@ class App(tk.Tk):
         self.test_button.configure(state="disabled")
         self.start_button.configure(state="disabled")
         self.status_var.set("Input test starts in 3 seconds. Focus Notepad or the selected game instrument.")
-        if self.minimize_var.get():
-            self.after(250, self.iconify)
 
         def worker() -> None:
             error: str | None = None
@@ -1176,8 +1165,6 @@ class App(tk.Tk):
         self.test_button.configure(state="disabled")
         self.progress["value"] = 0
         self._save_config()
-        if self.minimize_var.get():
-            self.after(250, self.iconify)
 
     def _stop(self) -> None:
         self.player.stop()
@@ -1245,23 +1232,12 @@ class App(tk.Tk):
 
     def _reset_defaults(self) -> None:
         instrument = self._instrument_code()
-        if self._profile_code() == "custom":
-            self._custom_settings_by_instrument[instrument] = dict(
-                CUSTOM_DEFAULTS_BY_INSTRUMENT[instrument]
-            )
-            self._suspend_auto_analysis = True
-            try:
-                self._apply_settings(self._custom_settings_by_instrument[instrument])
-                self._refresh_custom_mode_choices()
-            finally:
-                self._suspend_auto_analysis = False
-            self._schedule_analysis()
-        else:
-            default_code = default_profile_code(instrument)  # type: ignore[arg-type]
-            self.profile_var.set(profile_label_for(instrument, default_code))  # type: ignore[arg-type]
-            self._profile_changed()
+        default_code = default_profile_code(instrument)  # type: ignore[arg-type]
+        self.profile_var.set(profile_label_for(instrument, default_code))  # type: ignore[arg-type]
+        self._profile_changed()
+        self.speed_var.set(100)
         self.start_delay_var.set(3.0)
-        self.minimize_var.set(True)
+        self.minimize_var.set(False)
         self.input_backend_var.set(INPUT_BACKEND_LABELS_REVERSE["scan"])
         self._save_config()
 
@@ -1308,15 +1284,15 @@ def main() -> int:
     parser.add_argument("--dry-run", metavar="MIDI", help="Analyze a MIDI without sending keys.")
     parser.add_argument("--instrument", choices=("keyboard", "guitar", "bass"), default="keyboard")
     parser.add_argument("--mode", choices=("stable", "full", "ensemble"), default="stable")
-    parser.add_argument("--speed", type=int, default=85)
-    parser.add_argument("--length", type=int, default=150)
+    parser.add_argument("--speed", type=int, default=100)
+    parser.add_argument("--length", type=int, default=100)
     parser.add_argument("--page-delay", type=int, default=220)
     parser.add_argument("--modifier-lead", type=int, default=55)
     parser.add_argument(
         "--unlock-tier",
         choices=("tier1", "tier2", "tier3", "tier4"),
-        default="tier3",
-        help="tier1=C3-B4, tier2=C3-B6, tier3=C2-B6, tier4=Custom full A0-C8",
+        default="tier4",
+        help="Keyboard tier3/tier4 use safe C2-B6 no-page playback",
     )
     parser.add_argument(
         "--mapping",

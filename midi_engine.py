@@ -102,10 +102,12 @@ INSTRUMENT_UNLOCK_PROFILES: dict[InstrumentCode, dict[UnlockTier, UnlockProfile]
             stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
         ),
         "tier4": UnlockProfile(
-            instrument="keyboard", code="tier4", label="Experimental full range — A0–C8",
-            low=21, high=108,
-            full_states=_full_chromatic_states(),
-            stable_states=(KeyboardState(1, 0), KeyboardState(1, -1), KeyboardState(1, 1)),
+            instrument="keyboard", code="tier4", label="Category 4 safe playback — C2–B6",
+            low=36, high=95,
+            # Category 4 unlocks outer piano notes in-game, but playback stays
+            # on the middle page so this selectable profile never uses < / >.
+            full_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
+            stable_states=(KeyboardState(1, -1), KeyboardState(1, 0), KeyboardState(1, 1)),
         ),
     },
     "guitar": {
