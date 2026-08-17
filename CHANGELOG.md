@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.1
+
+- Removed **Test keyboard input** and **Copy support info**, including the unused diagnostics/test-input implementation.
+- Made **Keyboard connection** permanently visible under **Help & recovery** and kept all four input backends available.
+- Kept **Help & recovery** to two user choices only: restore recommended settings and keyboard connection.
+- Replaced **Add MIDI…** with **Open folder** and added automatic MIDI-library refresh when files are copied or removed.
+- Renamed the speed reset action to **Restore song speed to default 100%**.
+- Placed **What are you playing?** and **Which category have you unlocked?** side-by-side in the Instrument section.
+- Kept the scrollable v2.4 layout, Song Check remap counts, safe instrument mappings, MIDI engine, and playback timing unchanged.
+
 ## v2.4.0
 
 - Rebuilt the interface as one vertically scrollable page so all controls remain reachable on smaller displays and short windows.
