@@ -4,9 +4,8 @@ import app
 from modern_ui import install_modern_ui
 
 
-# v2 is a presentation/flow redesign. MIDI planning, note mapping, page timing
-# and Windows input behavior continue to use the established engine modules.
-app.APP_VERSION = "2.1.0"
+# v2 keeps the established MIDI engine while simplifying how users reach it.
+app.APP_VERSION = "2.2.0"
 
 install_modern_ui(app)
 
