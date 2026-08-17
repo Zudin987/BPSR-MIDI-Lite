@@ -1,0 +1,42 @@
+name: Finalize v2.4 source version
+
+on:
+  push:
+    branches:
+      - agent/final-ux-cleanup-v2.4
+    paths:
+      - .github/workflows/finalize-v24-source.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/final-ux-cleanup-v2.4
+
+      - name: Align source version
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("app.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'APP_VERSION = "2.3.0"'
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one old APP_VERSION, found {text.count(old)}")
+          path.write_text(text.replace(old, 'APP_VERSION = "2.4.0"', 1), encoding="utf-8")
+          PY
+
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/finalize-v24-source.yml
+          git add app.py
+          git commit -m "Align controller version with v2.4.0"
+          git push origin HEAD:agent/final-ux-cleanup-v2.4
