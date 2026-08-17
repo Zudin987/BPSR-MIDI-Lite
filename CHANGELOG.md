@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.0
+
+- Restored normal MIDI tempo to **100%** for every beginner profile instead of slowing all songs to 85%.
+- Restored authored note lengths to **100%** instead of stretching every note to 135–150%.
+- Added a focused **70 ms minimum key hold** so very short MIDI taps are still visible to BPSR without rewriting normal notes.
+- Reduced repeated-key release separation to **16 ms** and only applies early release when the same pitch or physical game key must retrigger.
+- Fixed legitimate held notes being cut short just because an unrelated note started. Polyphony and legato now survive conversion.
+- Capped malformed dangling notes at 500 ms instead of potentially holding a key until the end of the file.
+- Kept page-switch timing, octave/modifier lead, sustain behavior, range mapping, chord handling, and the high-resolution playback scheduler unchanged.
+- Added regression tests for short-note recognition, polyphonic note holds, malformed dangling notes, and beginner-profile timing defaults.
+
 ## v2.0.0
 
 - Rebuilt the main interface around four beginner actions: **Instrument → Unlocked range → Song → Play**.

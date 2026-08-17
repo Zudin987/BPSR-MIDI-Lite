@@ -242,11 +242,10 @@ class MidiPlan:
 class PlanOptions:
     instrument: InstrumentCode = "keyboard"
     mode: PlaybackMode = "stable"
-    speed_percent: int = 85
-    note_length_percent: int = 150
-    minimum_note_ms: int = 120
-    normal_release_gap_ms: int = 18
-    repeated_release_gap_ms: int = 35
+    speed_percent: int = 100
+    note_length_percent: int = 100
+    minimum_note_ms: int = 70
+    repeated_release_gap_ms: int = 16
     octave_switch_lead_ms: int = 55
     page_switch_delay_ms: int = 220
     unlocked_min_pitch: int = GAME_MIN_PITCH
@@ -269,8 +268,6 @@ class PlanOptions:
             raise ValueError("Note length must be between 50% and 300%.")
         if not 20 <= self.minimum_note_ms <= 1000:
             raise ValueError("Minimum note length must be between 20 and 1000 ms.")
-        if not 0 <= self.normal_release_gap_ms <= 250:
-            raise ValueError("Normal release gap must be between 0 and 250 ms.")
         if not 1 <= self.repeated_release_gap_ms <= 300:
             raise ValueError("Repeated-note release gap must be between 1 and 300 ms.")
         if not 10 <= self.octave_switch_lead_ms <= 500:
@@ -408,7 +405,7 @@ def _extract_notes_and_pedal(
             notes.append(
                 SourceNote(
                     start=start,
-                    end=max(start + 0.120, final_time),
+                    end=max(start + 0.120, min(final_time, start + 0.500)),
                     pitch=pitch,
                     velocity=velocity,
                     serial=note_serial,
@@ -930,9 +927,20 @@ def _merge_simultaneous_duplicates(notes: list[PlannedNote]) -> tuple[list[Plann
 
 
 def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[PlannedNote]:
+    """Apply only the articulation correction BPSR actually needs.
+
+    Valid MIDI note durations are musical information, so unrelated note
+    onsets must never shorten them. The normal path preserves the authored
+    duration and only raises genuinely short presses to ``minimum_note_ms``.
+    Advanced users can still intentionally scale durations with
+    ``note_length_percent``.
+
+    The one exception is a retrigger conflict: the same pitch or physical
+    game key needs a brief released state before its next Note On. In that
+    case the earlier note is released just before the retrigger.
+    """
     length_ratio = options.note_length_percent / 100.0
     minimum_duration = options.minimum_note_ms / 1000.0
-    normal_gap = options.normal_release_gap_ms / 1000.0
     repeated_gap = options.repeated_release_gap_ms / 1000.0
 
     stretched: list[PlannedNote] = []
@@ -954,7 +962,6 @@ def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[
             )
         )
 
-    starts = sorted({note.start for note in stretched})
     starts_by_pitch: dict[int, list[float]] = defaultdict(list)
     starts_by_key: dict[str, list[float]] = defaultdict(list)
     for note in stretched:
@@ -968,19 +975,21 @@ def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[
     corrected: list[PlannedNote] = []
     for note in stretched:
         end = note.end
-
-        next_index = bisect_right(starts, note.start + 1e-9)
-        if next_index < len(starts):
-            next_start = starts[next_index]
-            if end >= next_start:
-                end = max(note.start + 0.015, next_start - normal_gap)
+        next_conflicts: list[float] = []
 
         for values in (starts_by_pitch[note.pitch], starts_by_key[note.key]):
             index = bisect_right(values, note.start + 1e-9)
             if index < len(values):
-                next_same = values[index]
-                if end >= next_same:
-                    end = min(end, max(note.start + 0.010, next_same - repeated_gap))
+                next_conflicts.append(values[index])
+
+        if next_conflicts:
+            next_conflict = min(next_conflicts)
+            latest_reliable_end = next_conflict - repeated_gap
+            if end > latest_reliable_end:
+                # When notes are impossibly close, prefer a small real press
+                # over a mathematically perfect gap that the game may miss.
+                end = max(note.start + 0.020, latest_reliable_end)
+                end = min(end, next_conflict - 0.001)
 
         corrected.append(
             PlannedNote(
@@ -999,7 +1008,6 @@ def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[
 
     corrected.sort(key=lambda note: (note.start, note.serial))
     return corrected
-
 
 def _offset_for_source_time(markers: list[tuple[float, float]], source_time: float) -> float:
     times = [marker[0] for marker in markers]

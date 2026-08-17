@@ -48,3 +48,11 @@ def test_defaults_are_highest_safe_fixed_profiles() -> None:
 def test_bass_profiles_keep_only_lowest_chord_note() -> None:
     assert get_fixed_profile("bass", "tier1").chord_limit == 1
     assert get_fixed_profile("bass", "tier2").chord_limit == 1
+
+
+def test_fixed_profiles_preserve_song_tempo_and_only_floor_short_notes() -> None:
+    for instrument_profiles in FIXED_PROFILES.values():
+        for profile in instrument_profiles.values():
+            assert profile.speed == 100
+            assert profile.note_length == 100
+            assert profile.minimum_note == 70
