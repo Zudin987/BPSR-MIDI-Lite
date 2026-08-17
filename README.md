@@ -8,6 +8,10 @@ Created by **MrEz**.
 
 > **Windows 10/11, 64-bit.** Accept the Administrator prompt when the app opens. BPSR input is more reliable with Administrator permission.
 
+## Distribution
+
+Prebuilt Windows binaries, when published, are attached only to GitHub Releases. This source repository and README intentionally do not contain direct executable or archive download links.
+
 ## What it does
 
 BPSR MIDI Lite reads a `.mid` or `.midi` song and automatically adapts it to the selected BPSR instrument.

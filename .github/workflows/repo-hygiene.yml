@@ -1,0 +1,39 @@
+name: Repository hygiene
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Block generated distribution binaries in source
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '\.(exe|msi|dll|apk|aab|zip|7z|rar|jar|pyc|pyo)$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Generated/binary distribution files must not be committed to the source tree. Publish build outputs as GitHub Release assets instead."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block direct binary links in README
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in README README.md README.markdown README.rst; do
+            [[ -f "$file" ]] || continue
+            if grep -Ein 'releases/download|https?://[^ )"]+\.(exe|msi|dll|apk|aab|zip|7z|rar|jar)([?#][^ )"]*)?([ )"]|$)' "$file"; then
+              echo "::error file=$file::Do not put direct executable/archive download links in the README. Keep binaries in GitHub Releases."
+              exit 1
+            fi
+          done
