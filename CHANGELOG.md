@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.5.0
+
+- Added instrument-aware hidden fitting policies based on the confirmed in-game Piano, Guitar, and Bass layouts.
+- Kept Keyboard/Piano's established fidelity-first mapping unchanged.
+- Guitar now uses melody-aware tie-breaking: total remap count still wins first, then the upper melody/chord voice is protected when equally-good fitting choices exist.
+- Bass now uses contour-aware octave selection after its lowest-note chord reduction, reducing unnatural register ping-pong and direction reversals.
+- Confirmed Bass Category 2 uses one E1–B3 High Octave layout; playback switches High once and stays there instead of bouncing between Default/High.
+- Added regression tests for Guitar upper-voice preservation, unchanged Keyboard behavior, single-switch Bass Category 2 playback, and descending Bass contour preservation.
+- Kept safe no-page ranges, Raw MIDI behavior, key injection, BPSR timing, and the UI unchanged.
+
 ## v2.4.2
 
 - Fixed Guitar/Bass higher Categories using a less stable per-note octave-folding strategy than their lower Categories.

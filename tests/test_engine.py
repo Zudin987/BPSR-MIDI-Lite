@@ -500,3 +500,91 @@ def test_bass_unlocks_reduce_or_hold_local_pitch_distortion(tmp_path: Path) -> N
     tier2 = _plan_fixed_profile(midi_path, "bass", "tier2")
     assert tier2.folded_notes <= tier1.folded_notes
     assert tier1.page_switches == tier2.page_switches == 0
+
+
+
+def _make_simultaneous_chord_midi(path: Path, pitches: list[int]) -> None:
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    for index, pitch in enumerate(pitches):
+        track.append(mido.Message("note_on", note=pitch, velocity=80, time=120 if index == 0 else 0))
+    for index, pitch in enumerate(pitches):
+        track.append(mido.Message("note_off", note=pitch, velocity=0, time=120 if index == 0 else 0))
+    midi.tracks.append(track)
+    midi.save(path)
+
+
+def test_guitar_transpose_tie_protects_upper_voice(tmp_path: Path) -> None:
+    midi_path = tmp_path / "guitar_voice.mid"
+    _make_simultaneous_chord_midi(midi_path, [48, 72])  # C3 + C5 around Cat 1 edge
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            instrument="guitar",
+            mode="stable",
+            unlock_tier="tier1",
+            mapping_method="transpose",
+            max_notes_per_chord=0,
+        ),
+    )
+
+    # Shift down one semitone so the upper voice remains at B4 instead of
+    # octave-folding C5 to C4. The lower note takes the local octave adjustment.
+    assert plan.transposed_semitones == -1
+    assert plan.planned_max_pitch == 71
+    assert plan.page_switches == 0
+
+
+def test_keyboard_transpose_tie_keeps_established_neutral_policy(tmp_path: Path) -> None:
+    midi_path = tmp_path / "keyboard_unchanged.mid"
+    _make_simultaneous_chord_midi(midi_path, [48, 72])
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            instrument="keyboard",
+            mode="stable",
+            unlock_tier="tier1",
+            mapping_method="transpose",
+            max_notes_per_chord=0,
+        ),
+    )
+
+    assert plan.transposed_semitones == 0
+    assert plan.page_switches == 0
+
+
+def test_bass_category2_switches_high_once_and_stays_there(tmp_path: Path) -> None:
+    midi_path = tmp_path / "bass_high_layout.mid"
+    make_test_midi(midi_path, [28, 36, 47, 48, 52, 59], gap_ticks=240, duration_ticks=120)
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            instrument="bass",
+            mode="stable",
+            unlock_tier="tier2",
+            mapping_method="transpose",
+            max_notes_per_chord=1,
+        ),
+    )
+
+    state_events = [event for event in plan.events if event.kind == "state"]
+    assert plan.page_switches == 0
+    assert plan.octave_switches == 1
+    assert len(state_events) == 1
+    assert state_events[0].state == 1
+
+
+def test_bass_contour_optimizer_preserves_descending_direction() -> None:
+    from midi_engine import SourceNote, _fit_bass_contour_notes
+
+    source = [
+        SourceNote(start=index * 0.1, end=index * 0.1 + 0.08, pitch=pitch, velocity=80, serial=index)
+        for index, pitch in enumerate([72, 71, 69, 67, 65, 64, 62, 60])
+    ]
+    fitted, changed = _fit_bass_contour_notes(source, 28, 59)
+    pitches = [note.pitch for note in fitted]
+
+    assert changed == len(source)
+    assert pitches == [48, 47, 45, 43, 41, 40, 38, 36]
+    assert all(later <= earlier for earlier, later in zip(pitches, pitches[1:]))

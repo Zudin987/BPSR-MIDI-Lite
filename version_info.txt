@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 4, 2, 0),
-    prodvers=(2, 4, 2, 0),
+    filevers=(2, 5, 0, 0),
+    prodvers=(2, 5, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'MrEz'),
           StringStruct(u'FileDescription', u'BPSR MIDI Lite'),
-          StringStruct(u'FileVersion', u'2.4.2'),
+          StringStruct(u'FileVersion', u'2.5.0'),
           StringStruct(u'InternalName', u'BPSR-MIDI-Lite'),
           StringStruct(u'LegalCopyright', u'Copyright MrEz; GNU AGPL-3.0'),
           StringStruct(u'OriginalFilename', u'BPSR-MIDI-Lite.exe'),
           StringStruct(u'ProductName', u'BPSR MIDI Lite'),
-          StringStruct(u'ProductVersion', u'2.4.2')
+          StringStruct(u'ProductVersion', u'2.5.0')
         ]
       )
     ]),

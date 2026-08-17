@@ -88,12 +88,12 @@ FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
         ),
         "tier2": PlaybackProfile(
             instrument="guitar", code="tier2", label="Category 2 — E2–B2 unlocked",
-            summary="Uses E2–B4 with stable whole-song fitting first, then only local octave adjustment when still needed.",
+            summary="Uses E2–B4 with melody-aware fitting that protects the upper voice before local octave adjustment.",
             mode="stable", unlock_tier="tier2", mapping="transpose", chord_limit=3,
         ),
         "tier3": PlaybackProfile(
             instrument="guitar", code="tier3", label="Category 3 — C5–D6 unlocked",
-            summary="Uses the complete E2–D6 no-page range with stable whole-song fitting and automatic Ctrl/Shift switching.",
+            summary="Uses E2–D6 with melody-aware chord fitting and automatic Ctrl/Shift switching.",
             mode="stable", unlock_tier="tier3", mapping="transpose", chord_limit=0,
         ),
         "raw": PlaybackProfile(
@@ -110,7 +110,7 @@ FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
         ),
         "tier2": PlaybackProfile(
             instrument="bass", code="tier2", label="Category 2 — High range unlocked",
-            summary="Uses E1–B3 with stable whole-song fitting and switches High Octave automatically when needed.",
+            summary="Uses the single E1–B3 High Octave layout with contour-aware Bass fitting; switches High once and stays there.",
             mode="stable", unlock_tier="tier2", mapping="transpose", chord_limit=1,
         ),
         "raw": PlaybackProfile(
