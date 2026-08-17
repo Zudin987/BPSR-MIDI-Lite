@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.2.0
+
+- Removed the separate Settings window. **More settings** now expands and collapses inside the main app window.
+- Added an always-visible **Song speed** control for every unlock tier, with **100% = original MIDI speed** and a one-click reset to 100%.
+- Song speed is now independent from First unlock, Second unlock, Fully unlocked, and Advanced setup; changing instrument/profile no longer silently resets the chosen speed.
+- Added a dedicated `song_speed_percent` preference so old profile-managed 85% configuration cannot unexpectedly return after upgrading.
+- Kept advanced note fitting hidden unless **Advanced setup…** is selected, while countdown, minimization, library tools, and troubleshooting remain available from the same-window settings area.
+- Kept Troubleshooting collapsible inside the same window instead of opening another dialog.
+- Added regression coverage for preserving song speed across profile changes.
+
 ## v2.1.0
 
 - Restored normal MIDI tempo to **100%** for every beginner profile instead of slowing all songs to 85%.
@@ -40,7 +50,7 @@
 
 ## v1.1.1
 
-- Restored the mandatory Windows Administrator manifest after real BPSR testing showed that standard-permission input was not reliable.
+- Restored the mandatory Administrator manifest after real BPSR testing showed that standard-permission input was not reliable.
 - Removed the in-app Administrator restart button and optional elevation helper.
 - Kept the song suitability rating and **Copy diagnostics** feature from v1.1.0.
 - Updated setup, troubleshooting, release, and validation documentation.
