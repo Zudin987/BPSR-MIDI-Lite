@@ -7,14 +7,12 @@ import queue
 import re
 import subprocess
 import sys
-import threading
 import time
 import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import messagebox, ttk
 
-from diagnostics import build_diagnostic_text
 from midi_engine import PlanOptions, build_plan, get_unlock_profile, midi_note_name
 from player import MidiPlayer
 from profiles import (
@@ -29,8 +27,6 @@ from profiles import (
 from suitability import evaluate_song_suitability
 from theme import apply_theme, system_prefers_dark_mode
 from win_input import (
-    BACKEND_NAMES,
-    WindowsKeySender,
     f10_is_pressed,
     input_abi_diagnostics,
     is_running_as_admin,
@@ -38,7 +34,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -183,10 +179,8 @@ class App(tk.Tk):
         self.current_plan = None
         self.current_suitability = None
         self._last_error: str | None = None
-        self._last_input_test = "Not run"
         self.ui_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self._last_f10 = False
-        self._input_test_running = False
         self._analysis_job: str | None = None
         self._suspend_auto_analysis = True
         self._active_instrument_code = "keyboard"
@@ -221,7 +215,7 @@ class App(tk.Tk):
         self.minimize_var = tk.BooleanVar(value=False)
         self.input_backend_var = tk.StringVar(value=INPUT_BACKEND_LABELS_REVERSE["scan"])
 
-        self.status_var = tk.StringVar(value="Add a MIDI to the library, then press Reload.")
+        self.status_var = tk.StringVar(value="Open the song folder and add a MIDI file.")
         self.analysis_var = tk.StringVar(value="Song preview updates automatically.")
         self.suitability_var = tk.StringVar(value="Suitability: waiting for a song")
         self.profile_summary_var = tk.StringVar()
@@ -417,17 +411,6 @@ class App(tk.Tk):
         self.input_backend_combo.bind(
             "<<ComboboxSelected>>", lambda _event: self._save_config()
         )
-        ttk.Button(
-            run_frame,
-            text="Copy diagnostics",
-            command=self._copy_diagnostics,
-        ).grid(row=1, column=5, padx=(10, 0), pady=(9, 0))
-        self.test_button = ttk.Button(
-            run_frame,
-            text="Test input (3s)",
-            command=self._test_input,
-        )
-        self.test_button.grid(row=1, column=6, padx=(8, 0), pady=(9, 0))
         ttk.Button(run_frame, text="Reset", command=self._reset_defaults).grid(
             row=1, column=7, padx=(8, 0), pady=(9, 0)
         )
@@ -1072,32 +1055,6 @@ class App(tk.Tk):
         self.status_var.set("Ready. Press Start, then focus the game during the countdown.")
         self._save_config()
 
-    def _copy_diagnostics(self) -> None:
-        text = build_diagnostic_text(
-            app_name=APP_NAME,
-            app_version=APP_VERSION,
-            instrument=self.instrument_var.get(),
-            profile=self.profile_var.get(),
-            input_backend=BACKEND_NAMES.get(
-                self._input_backend_code(), self.input_backend_var.get()
-            ),
-            midi_name=self.midi_display_var.get(),
-            administrator=is_running_as_admin(),
-            plan=self.current_plan,
-            suitability=self.current_suitability,
-            last_input_test=self._last_input_test,
-            last_error=self._last_error,
-        )
-        try:
-            self.clipboard_clear()
-            self.clipboard_append(text)
-            self.update_idletasks()
-        except tk.TclError as exc:
-            self._last_error = f"Clipboard: {exc}"
-            messagebox.showerror(APP_NAME, f"Could not copy diagnostics:\n{exc}")
-            return
-        self.status_var.set("Diagnostic information copied to the clipboard.")
-
     def _input_error_message(self, error: object) -> str:
         message = str(error)
         if not is_running_as_admin():
@@ -1106,37 +1063,6 @@ class App(tk.Tk):
                 "Close the app and reopen it as Administrator."
             )
         return message
-
-    def _test_input(self) -> None:
-        if os.name != "nt":
-            messagebox.showerror(APP_NAME, "Keyboard injection is supported only on Windows.")
-            return
-        if self.player.is_playing or self._input_test_running:
-            messagebox.showinfo(APP_NAME, "Stop playback before running the input test.")
-            return
-
-        self._input_test_running = True
-        self.test_button.configure(state="disabled")
-        self.start_button.configure(state="disabled")
-        self.status_var.set("Input test starts in 3 seconds. Focus Notepad or the selected game instrument.")
-
-        def worker() -> None:
-            error: str | None = None
-            sender: WindowsKeySender | None = None
-            try:
-                for remaining in (3, 2, 1):
-                    self.ui_queue.put(("test_status", f"Input test in {remaining}… focus the target window"))
-                    time.sleep(1.0)
-                sender = WindowsKeySender(self._input_backend_code())
-                for key in ("a", "s", "d", "f"):
-                    sender.tap(key, hold_seconds=0.080, gap_seconds=0.120)
-                sender.release_all()
-            except Exception as exc:  # noqa: BLE001
-                error = str(exc)
-            details = sender.description if error is None and sender is not None else ""
-            self.ui_queue.put(("test_finished", (error, details)))
-
-        threading.Thread(target=worker, daemon=True).start()
 
     def _start(self) -> None:
         if os.name != "nt":
@@ -1162,7 +1088,6 @@ class App(tk.Tk):
 
         self.start_button.configure(state="disabled")
         self.stop_button.configure(state="normal")
-        self.test_button.configure(state="disabled")
         self.progress["value"] = 0
         self._save_config()
 
@@ -1184,29 +1109,9 @@ class App(tk.Tk):
                     text, progress = payload  # type: ignore[misc]
                     self.status_var.set(str(text))
                     self.progress["value"] = float(progress)
-                elif kind == "test_status":
-                    self.status_var.set(str(payload))
-                elif kind == "test_finished":
-                    self._input_test_running = False
-                    self.start_button.configure(state="normal")
-                    self.test_button.configure(state="normal")
-                    self.deiconify()
-                    self.lift()
-                    error, details = payload  # type: ignore[misc]
-                    if error:
-                        self._last_input_test = f"Error: {error}"
-                        self._last_error = f"Input test: {error}"
-                        self.status_var.set(f"Input test error: {error}")
-                        messagebox.showerror(APP_NAME, self._input_error_message(error))
-                    else:
-                        backend = BACKEND_NAMES.get(self._input_backend_code(), "selected method")
-                        self._last_input_test = f"Success using {backend}"
-                        self._last_error = None
-                        self.status_var.set(f"Input test sent A S D F using {backend}. {details}")
                 elif kind == "finished":
                     self.start_button.configure(state="normal")
                     self.stop_button.configure(state="disabled")
-                    self.test_button.configure(state="normal")
                     self.deiconify()
                     self.lift()
                     if payload:
