@@ -444,3 +444,59 @@ def test_every_selectable_profile_is_page_free(tmp_path: Path) -> None:
             )
             assert plan.page_switches == 0, (instrument, profile.code)
             assert all(event.kind != "page" for event in plan.events), (instrument, profile.code)
+
+
+def _plan_fixed_profile(path: Path, instrument: str, code: str):
+    from profiles import get_fixed_profile
+
+    profile = get_fixed_profile(instrument, code)
+    return build_plan(
+        path,
+        PlanOptions(
+            instrument=instrument,
+            mode=profile.mode,
+            unlock_tier=profile.unlock_tier,
+            mapping_method=profile.mapping,
+            max_notes_per_chord=profile.chord_limit,
+            speed_percent=100,
+            note_length_percent=100,
+        ),
+    )
+
+
+def test_remapped_count_includes_whole_song_transpose(tmp_path: Path) -> None:
+    midi_path = tmp_path / "global_shift.mid"
+    make_test_midi(midi_path, [72, 76, 79], gap_ticks=240, duration_ticks=120)
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            mapping_method="transpose",
+            unlocked_min_pitch=48,
+            unlocked_max_pitch=71,
+            speed_percent=100,
+        ),
+    )
+    assert plan.transposed_semitones != 0
+    assert plan.folded_notes == 0
+    assert plan.remapped_notes == 3
+
+
+def test_guitar_unlocks_reduce_or_hold_local_pitch_distortion(tmp_path: Path) -> None:
+    midi_path = tmp_path / "guitar_progression.mid"
+    make_test_midi(midi_path, [40, 43, 47, 52, 55, 59, 64, 67, 71, 76, 79, 83], gap_ticks=240)
+    tier1 = _plan_fixed_profile(midi_path, "guitar", "tier1")
+    tier2 = _plan_fixed_profile(midi_path, "guitar", "tier2")
+    tier3 = _plan_fixed_profile(midi_path, "guitar", "tier3")
+    assert tier2.folded_notes <= tier1.folded_notes
+    assert tier3.folded_notes <= tier2.folded_notes
+    assert tier1.page_switches == tier2.page_switches == tier3.page_switches == 0
+
+
+def test_bass_unlocks_reduce_or_hold_local_pitch_distortion(tmp_path: Path) -> None:
+    midi_path = tmp_path / "bass_progression.mid"
+    make_test_midi(midi_path, [28, 31, 35, 40, 43, 47, 52, 55, 59, 64], gap_ticks=240)
+    tier1 = _plan_fixed_profile(midi_path, "bass", "tier1")
+    tier2 = _plan_fixed_profile(midi_path, "bass", "tier2")
+    assert tier2.folded_notes <= tier1.folded_notes
+    assert tier1.page_switches == tier2.page_switches == 0

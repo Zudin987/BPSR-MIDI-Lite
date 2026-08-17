@@ -220,6 +220,7 @@ class MidiPlan:
     page_switches: int
     octave_switches: int
     folded_notes: int
+    remapped_notes: int
     skipped_notes: int
     merged_notes: int
     filtered_notes: int
@@ -1045,6 +1046,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
     source_min = min(note.pitch for note in source_notes)
     source_max = max(note.pitch for note in source_notes)
     source_note_count = len(source_notes)
+    original_pitch_by_serial = {note.serial: note.pitch for note in source_notes}
     source_groups = _group_notes_by_start(source_notes)
     max_source_chord = max((len(group) for group in source_groups), default=0)
 
@@ -1081,6 +1083,11 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         _build_notes_and_transitions(groups, mapped_groups, options)
     )
     planned_notes, merged_count = _merge_simultaneous_duplicates(planned_notes)
+    remapped_count = sum(
+        1
+        for note in planned_notes
+        if original_pitch_by_serial.get(note.serial) != note.pitch
+    )
     max_planned_chord = max(
         (len(group) for group in _group_notes_by_start(planned_notes)),
         default=0,
@@ -1148,6 +1155,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         page_switches=page_switches,
         octave_switches=octave_switches,
         folded_notes=folded_count,
+        remapped_notes=remapped_count,
         skipped_notes=skipped_count,
         merged_notes=merged_count,
         filtered_notes=filtered_count,

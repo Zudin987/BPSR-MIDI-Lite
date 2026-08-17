@@ -46,8 +46,9 @@ def test_help_and_recovery_has_only_restore_and_keyboard_connection_controls() -
 
 def test_song_check_reports_remapping_counts() -> None:
     source = _source()
-    assert "plan.folded_notes" in source
     assert "Remapped:" in source
+    assert "plan.remapped_notes" in source
+    assert "Whole-song shift:" in source
     assert "Skipped:" in source
     assert "Filtered/simplified:" in source
 
