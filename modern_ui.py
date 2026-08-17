@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from typing import Any
+from typing import Any, Callable
 
 
-"""Beginner-first UI for BPSR MIDI Lite.
+"""Beginner-first, single-window UI for BPSR MIDI Lite.
 
-The MIDI planner, input sender, profile rules, timing compensation and player are
-intentionally left in their existing modules. This file only changes how users
-reach those capabilities: the common path is Instrument -> Range -> Song -> Play.
-Advanced controls remain available from Settings without competing with the main
-flow.
+The normal path stays Instrument -> Range -> Song -> Play. Song speed is a
+normal song control available for every unlock tier. Less-common controls use
+progressive disclosure inside the same window instead of opening a second
+Settings window.
 """
 
 
@@ -26,16 +26,6 @@ def _apply_simple_styles(app: Any) -> None:
     style.configure("Stop.TButton", font=("Segoe UI", 10, "bold"), padding=(14, 8))
     style.configure("Soft.TButton", padding=(10, 6))
     style.configure("Ready.TLabel", font=("Segoe UI", 11, "bold"))
-
-
-def _field(parent: Any, label: str, variable: tk.Variable, values: list[str], command: Any) -> ttk.Combobox:
-    box = ttk.Frame(parent)
-    box.pack(fill="x", pady=(0, 12))
-    ttk.Label(box, text=label, style="Section.TLabel").pack(anchor="w", pady=(0, 5))
-    combo = ttk.Combobox(box, textvariable=variable, values=values, state="readonly")
-    combo.pack(fill="x")
-    combo.bind("<<ComboboxSelected>>", command)
-    return combo
 
 
 def _unique_target(folder: Path, source: Path) -> Path:
@@ -106,91 +96,99 @@ def _toggle_troubleshooting(self: Any) -> None:
     if self._troubleshooting_visible:
         self._troubleshooting_frame.pack_forget()
         self._troubleshooting_visible = False
-        self._troubleshooting_button.configure(text="Troubleshooting")
+        self._troubleshooting_button.configure(text="Troubleshooting ▾")
     else:
-        self._troubleshooting_frame.pack(fill="x", pady=(14, 0))
+        self._troubleshooting_frame.pack(fill="x", pady=(10, 0))
         self._troubleshooting_visible = True
-        self._troubleshooting_button.configure(text="Hide troubleshooting")
+        self._troubleshooting_button.configure(text="Troubleshooting ▴")
+        if self.winfo_height() < 930:
+            self.geometry("800x930")
+
+
+def _set_settings_visible(self: Any, visible: bool) -> None:
+    self._settings_visible = bool(visible)
+    if visible:
+        self._settings_frame.pack(fill="x", pady=(0, 12), before=self.analysis_frame)
+        self._settings_button.configure(text="Hide settings")
+        if self.winfo_height() < 900:
+            self.geometry("800x900")
+    else:
+        self._settings_frame.pack_forget()
+        self._settings_button.configure(text="More settings")
+        if self._troubleshooting_visible:
+            self._troubleshooting_frame.pack_forget()
+            self._troubleshooting_visible = False
+            self._troubleshooting_button.configure(text="Troubleshooting ▾")
+        self.geometry("760x690")
+
+
+def _toggle_settings(self: Any) -> None:
+    _set_settings_visible(self, not self._settings_visible)
 
 
 def _show_settings(self: Any) -> None:
-    if self._profile_code() == "custom":
-        self.custom_settings_frame.pack(fill="x", pady=(14, 0))
-    else:
-        self.custom_settings_frame.pack_forget()
-    self._settings_window.deiconify()
-    self._settings_window.lift()
-    self._settings_window.focus_force()
+    _set_settings_visible(self, True)
 
 
 def _hide_settings(self: Any) -> None:
-    self._settings_window.withdraw()
+    _set_settings_visible(self, False)
 
 
-def _build_settings_window(self: Any) -> None:
-    win = tk.Toplevel(self)
-    self._settings_window = win
-    win.title("Settings — BPSR MIDI Lite")
-    win.geometry("610x710")
-    win.minsize(560, 560)
-    win.transient(self)
-    win.protocol("WM_DELETE_WINDOW", lambda: self._hide_settings())
-
-    outer = ttk.Frame(win, padding=18)
-    outer.pack(fill="both", expand=True)
-
-    header = ttk.Frame(outer)
-    header.pack(fill="x", pady=(0, 16))
-    ttk.Label(header, text="Settings", style="Title.TLabel").pack(side="left")
-    ttk.Button(header, text="Done", command=self._hide_settings).pack(side="right")
+def _build_inline_settings(self: Any, outer: Any) -> None:
+    self._settings_visible = False
+    self._settings_frame = ttk.LabelFrame(outer, text="Settings", padding=12)
+    settings = self._settings_frame
 
     ttk.Label(
-        outer,
-        text="You normally do not need to change anything here. The recommended choices are already selected.",
+        settings,
+        text="Recommended values are already selected. Change these only when you have a reason to.",
         style="Hint.TLabel",
-        wraplength=550,
+        wraplength=700,
         justify="left",
-    ).pack(anchor="w", pady=(0, 14))
+    ).pack(anchor="w", pady=(0, 10))
 
-    playback = ttk.LabelFrame(outer, text="Before the song starts", padding=12)
-    playback.pack(fill="x")
-    row = ttk.Frame(playback)
-    row.pack(fill="x")
-    ttk.Label(row, text="Countdown").pack(side="left")
+    general = ttk.Frame(settings)
+    general.pack(fill="x")
+    ttk.Label(general, text="Countdown").pack(side="left")
     ttk.Spinbox(
-        row,
+        general,
         from_=0,
         to=30,
         increment=0.5,
         textvariable=self.start_delay_var,
         width=7,
-    ).pack(side="left", padx=(10, 5))
-    ttk.Label(row, text="seconds", style="Hint.TLabel").pack(side="left")
+    ).pack(side="left", padx=(8, 4))
+    ttk.Label(general, text="seconds", style="Hint.TLabel").pack(side="left")
     ttk.Checkbutton(
-        playback,
-        text="Minimize this app after I press Play",
+        general,
+        text="Minimize after Play",
         variable=self.minimize_var,
         command=self._save_config,
-    ).pack(anchor="w", pady=(10, 0))
+    ).pack(side="left", padx=(22, 0))
+
+    library = ttk.Frame(settings)
+    library.pack(fill="x", pady=(10, 0))
+    ttk.Button(library, text="Open songs folder", command=self._open_midi_folder).pack(side="left")
+    ttk.Button(library, text="Restore recommended settings", command=self._reset_defaults).pack(side="left", padx=(8, 0))
 
     self.custom_settings_frame = ttk.LabelFrame(
-        outer,
+        settings,
         text="Advanced song fitting",
         padding=12,
     )
     self._build_custom_settings(self.custom_settings_frame)
 
     self._troubleshooting_button = ttk.Button(
-        outer,
-        text="Troubleshooting",
+        settings,
+        text="Troubleshooting ▾",
         command=self._toggle_troubleshooting,
     )
-    self._troubleshooting_button.pack(anchor="w", pady=(16, 0))
+    self._troubleshooting_button.pack(anchor="w", pady=(12, 0))
 
     self._troubleshooting_visible = False
     self._troubleshooting_frame = ttk.LabelFrame(
-        outer,
-        text="Only change this if input is not working",
+        settings,
+        text="Only change this if keyboard input is not working",
         padding=12,
     )
     trouble = self._troubleshooting_frame
@@ -211,25 +209,18 @@ def _build_settings_window(self: Any) -> None:
     self.test_button.pack(side="left")
     ttk.Button(buttons, text="Copy support info", command=self._copy_diagnostics).pack(side="left", padx=(8, 0))
 
-    library = ttk.LabelFrame(outer, text="Song library", padding=12)
-    library.pack(fill="x", pady=(16, 0))
-    ttk.Button(library, text="Open songs folder", command=self._open_midi_folder).pack(side="left")
-    ttk.Button(library, text="Restore recommended settings", command=self._reset_defaults).pack(side="left", padx=(8, 0))
-
-    win.withdraw()
-
 
 def _modern_build_custom_settings(self: Any, settings: Any) -> None:
     ttk.Label(
         settings,
         text=(
-            "These controls are only for unusual MIDI files or the experimental full instrument range. "
-            "If you are unsure, use a normal unlocked-range option on the main screen."
+            "Only for unusual MIDI files or the experimental full instrument range. "
+            "Song speed is intentionally outside this section because every unlock tier can use it."
         ),
         style="Hint.TLabel",
-        wraplength=520,
+        wraplength=700,
         justify="left",
-    ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 12))
+    ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 10))
 
     settings.columnconfigure(1, weight=1)
     settings.columnconfigure(3, weight=1)
@@ -265,7 +256,7 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
     )
     self.page_delay_spin.grid(row=2, column=3, sticky="w", padx=(8, 0), pady=4)
 
-    ttk.Label(settings, text="Fit notes that are outside the range").grid(row=3, column=0, sticky="w", pady=4)
+    ttk.Label(settings, text="Fit notes outside the range").grid(row=3, column=0, sticky="w", pady=4)
     self.mapping_combo = ttk.Combobox(
         settings,
         textvariable=self.mapping_var,
@@ -295,13 +286,12 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
     ).grid(row=4, column=3, sticky="w", padx=(8, 0), pady=4)
 
     timing = ttk.Frame(settings)
-    timing.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(10, 0))
-    for column in range(3):
-        timing.columnconfigure(column, weight=1)
+    timing.grid(row=5, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+    timing.columnconfigure(0, weight=1)
+    timing.columnconfigure(1, weight=1)
 
     for column, (label, variable, low, high, suffix) in enumerate(
         (
-            ("Song speed", self.speed_var, 25, 200, "%"),
             ("Held-note length", self.length_var, 50, 300, "%"),
             ("Shortest note", self.minimum_note_var, 20, 1000, "ms"),
         )
@@ -315,7 +305,7 @@ def _modern_build_custom_settings(self: Any, settings: Any) -> None:
         ttk.Label(value_row, text=suffix, style="Hint.TLabel").pack(side="left", padx=(4, 0))
 
     options = ttk.Frame(settings)
-    options.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(12, 0))
+    options.grid(row=6, column=0, columnspan=4, sticky="ew", pady=(10, 0))
     ttk.Checkbutton(
         options,
         text="Ignore drum/percussion track",
@@ -348,7 +338,8 @@ def _modern_build_ui(self: Any) -> None:
         text="Choose a song. Choose your instrument. Press Play.",
         style="Hint.TLabel",
     ).pack(anchor="w", pady=(3, 0))
-    ttk.Button(header, text="Settings", command=self._show_settings).pack(side="right", anchor="n")
+    self._settings_button = ttk.Button(header, text="More settings", command=self._toggle_settings)
+    self._settings_button.pack(side="right", anchor="n")
 
     setup = ttk.LabelFrame(outer, text="1  Instrument", padding=14)
     setup.pack(fill="x", pady=(0, 12))
@@ -402,11 +393,32 @@ def _modern_build_ui(self: Any) -> None:
     ttk.Button(songs, text="Add MIDI…", command=self._add_midi_files).grid(row=0, column=1, padx=(8, 0))
     ttk.Button(songs, text="Open folder", command=self._open_midi_folder).grid(row=0, column=2, padx=(8, 0))
 
+    speed_row = ttk.Frame(songs)
+    speed_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+    ttk.Label(speed_row, text="Song speed", style="Section.TLabel").pack(side="left")
+    ttk.Spinbox(
+        speed_row,
+        from_=25,
+        to=200,
+        increment=5,
+        textvariable=self.speed_var,
+        width=6,
+    ).pack(side="left", padx=(8, 4))
+    ttk.Label(speed_row, text="%", style="Hint.TLabel").pack(side="left")
+    ttk.Label(
+        speed_row,
+        text="100% = original MIDI speed",
+        style="Hint.TLabel",
+    ).pack(side="left", padx=(12, 0))
+    ttk.Button(speed_row, text="Reset to 100%", command=lambda: self.speed_var.set(100)).pack(side="right")
+
     ttk.Label(
         songs,
         text="Add a .mid or .midi file once. It stays in your song list automatically.",
         style="Hint.TLabel",
-    ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+    ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+    self._build_inline_settings(outer)
 
     self.analysis_frame = ttk.LabelFrame(outer, text="3  Song check", padding=14)
     self.analysis_frame.pack(fill="x", pady=(0, 12))
@@ -471,8 +483,6 @@ def _modern_build_ui(self: Any) -> None:
         style="Hint.TLabel",
     ).pack(anchor="w", pady=(12, 0))
 
-    self._build_settings_window()
-
 
 def _modern_apply_profile_ui(self: Any, schedule: bool = True) -> None:
     app_module = self._modern_module
@@ -489,7 +499,7 @@ def _modern_apply_profile_ui(self: Any, schedule: bool = True) -> None:
         self.profile_summary_var.set(
             "Advanced setup. Recommended only when you need the experimental full range or unusual MIDI fitting."
         )
-        self.custom_settings_frame.pack(fill="x", pady=(14, 0))
+        self.custom_settings_frame.pack(fill="x", pady=(12, 0))
         self._refresh_custom_mode_choices()
     else:
         profile = app_module.get_fixed_profile(instrument, profile_code)
@@ -521,6 +531,64 @@ def _modern_apply_profile_ui(self: Any, schedule: bool = True) -> None:
     self.notice_var.set(notice)
     if schedule:
         self._schedule_analysis()
+
+
+def _preserve_song_speed(self: Any, action: Callable[[], None]) -> None:
+    try:
+        speed = max(25, min(200, int(self.speed_var.get())))
+    except (TypeError, ValueError, tk.TclError):
+        speed = 100
+
+    action()
+
+    if int(self.speed_var.get()) != speed:
+        self._suspend_auto_analysis = True
+        try:
+            self.speed_var.set(speed)
+        finally:
+            self._suspend_auto_analysis = False
+        self._schedule_analysis()
+        self._save_config()
+
+
+def _modern_profile_changed(self: Any) -> None:
+    _preserve_song_speed(self, self._modern_original_profile_changed)
+
+
+def _modern_instrument_changed(self: Any) -> None:
+    _preserve_song_speed(self, self._modern_original_instrument_changed)
+
+
+def _modern_save_config(self: Any) -> None:
+    self._modern_original_save_config()
+    if self._suspend_auto_analysis:
+        return
+    try:
+        path = self._config_path()
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(data, dict):
+            data = {}
+        data["song_speed_percent"] = max(25, min(200, int(self.speed_var.get())))
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, tk.TclError):
+        pass
+
+
+def _modern_load_config(self: Any) -> None:
+    self._modern_original_load_config()
+    try:
+        path = self._config_path()
+        if not path.exists() and self._legacy_config_path().exists():
+            path = self._legacy_config_path()
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(data, dict):
+            return
+        # New key intentionally does not inherit the old profile-managed speed
+        # value, so users upgrading from the old 85% defaults start cleanly at 100%.
+        speed = int(data.get("song_speed_percent", 100))
+        self.speed_var.set(max(25, min(200, speed)))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError, tk.TclError):
+        self.speed_var.set(100)
 
 
 def _friendly_analyze(self: Any) -> None:
@@ -571,20 +639,29 @@ def _friendly_reload(self: Any, analyze: bool = True, preferred_display: str | N
 
 
 def install_modern_ui(app_module: Any) -> None:
-    """Install the radical-simplification UI without changing MIDI behavior."""
+    """Install the single-window beginner UI without changing MIDI behavior."""
     app_class = app_module.App
 
     app_class._modern_module = app_module
     app_class._modern_original_analyze = app_class._analyze
     app_class._modern_original_reload = app_class._reload_midi_library
+    app_class._modern_original_profile_changed = app_class._profile_changed
+    app_class._modern_original_instrument_changed = app_class._instrument_changed
+    app_class._modern_original_save_config = app_class._save_config
+    app_class._modern_original_load_config = app_class._load_config
 
     app_class._build_ui = _modern_build_ui
     app_class._build_custom_settings = _modern_build_custom_settings
     app_class._apply_profile_ui = _modern_apply_profile_ui
     app_class._add_midi_files = _add_midi_files
+    app_class._toggle_settings = _toggle_settings
     app_class._show_settings = _show_settings
     app_class._hide_settings = _hide_settings
     app_class._toggle_troubleshooting = _toggle_troubleshooting
-    app_class._build_settings_window = _build_settings_window
+    app_class._build_inline_settings = _build_inline_settings
+    app_class._profile_changed = _modern_profile_changed
+    app_class._instrument_changed = _modern_instrument_changed
+    app_class._save_config = _modern_save_config
+    app_class._load_config = _modern_load_config
     app_class._analyze = _friendly_analyze
     app_class._reload_midi_library = _friendly_reload
