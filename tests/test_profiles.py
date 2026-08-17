@@ -52,3 +52,11 @@ def test_all_profiles_keep_v21_articulation_defaults() -> None:
             assert profile.speed == 100
             assert profile.note_length == 100
             assert profile.minimum_note == 70
+
+
+def test_guitar_and_bass_higher_categories_use_stable_whole_song_fit() -> None:
+    assert get_fixed_profile("guitar", "tier1").mapping == "transpose"
+    assert get_fixed_profile("guitar", "tier2").mapping == "transpose"
+    assert get_fixed_profile("guitar", "tier3").mapping == "transpose"
+    assert get_fixed_profile("bass", "tier1").mapping == "transpose"
+    assert get_fixed_profile("bass", "tier2").mapping == "transpose"

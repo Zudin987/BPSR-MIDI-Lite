@@ -460,7 +460,7 @@ def _friendly_analyze(self: Any) -> None:
     minutes, seconds = divmod(max(0, round(plan.duration)), 60)
     duration = f"{minutes}:{seconds:02d}" if minutes else f"{seconds}s"
 
-    remapped = 0 if self._profile_code() == "raw" else plan.folded_notes
+    remapped = plan.remapped_notes
     metrics = f"Remapped: {remapped:,} • Skipped: {plan.skipped_notes:,} • Filtered/simplified: {plan.filtered_notes:,}"
 
     if self._profile_code() == "raw":
@@ -468,6 +468,12 @@ def _friendly_analyze(self: Any) -> None:
             explanation = "Raw MIDI keeps every in-range pitch unchanged; out-of-range notes are skipped."
         else:
             explanation = "Raw MIDI: this song already fits the instrument range, so every pitch stays unchanged."
+    elif plan.transposed_semitones:
+        direction = "+" if plan.transposed_semitones > 0 else ""
+        explanation = (
+            f"Whole-song shift: {direction}{plan.transposed_semitones} semitones to fit this category. "
+            "This keeps the song intervals together; any remaining local fitting is minimized."
+        )
     elif remapped:
         explanation = "Remapped notes were moved into the range available for your selected category."
     else:

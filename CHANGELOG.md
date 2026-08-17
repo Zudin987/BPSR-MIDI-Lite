@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.4.2
+
+- Fixed Guitar/Bass higher Categories using a less stable per-note octave-folding strategy than their lower Categories.
+- Guitar Categories 1–3 and Bass Categories 1–2 now use the same stable whole-song fitting strategy before any unavoidable local octave adjustment.
+- Kept Keyboard profile behavior unchanged because its current Category progression is already stable in testing.
+- Added a true **Remapped** count that includes whole-song transposition as well as local pitch fitting.
+- Song Check now explains whole-song semitone shifts separately so a coherent transposition is not confused with unstable per-note folding.
+- Kept suitability focused on local distortion/removal rather than penalizing a coherent whole-song key shift as if it were crowding.
+- Added Guitar/Bass progression regressions ensuring larger unlock ranges do not increase local pitch-fold distortion on representative melodies.
+
 ## v2.4.1
 
 - Removed **Test keyboard input** and **Copy support info**, including the unused diagnostics/test-input implementation.

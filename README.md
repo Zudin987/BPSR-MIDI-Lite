@@ -2,7 +2,7 @@
 
 A lightweight Windows MIDI player for **Blue Protocol: Star Resonance** Keyboard/Piano, Electric Guitar, and Electric Bass.
 
-BPSR MIDI Lite converts normal MIDI notes into the game's keyboard controls, automatically fits notes to the selected unlock Category, switches Ctrl/Shift octave modes when needed, and keeps playback inside the safe no-page range so normal profiles never press `<` or `>`.
+BPSR MIDI Lite converts normal MIDI notes into the game's keyboard controls, automatically fits notes to the selected unlock Category, uses stable whole-song fitting for Guitar/Bass before local octave adjustment, switches Ctrl/Shift octave modes when needed, and keeps playback inside the safe no-page range so normal profiles never press `<` or `>`.
 
 ## Download
 
@@ -102,7 +102,7 @@ A physically unavailable pitch must be skipped in Raw mode because the app canno
 
 Song Check gives a simple readiness result and useful conversion numbers:
 
-- **Remapped** — notes moved into the selected Category's playable range
+- **Remapped** — played notes whose final pitch differs from the source MIDI, including a coherent whole-song shift when one is used
 - **Skipped** — notes that cannot be played under the selected profile, especially in Raw mode
 - **Filtered/simplified** — notes removed by instrument/chord/percussion rules
 

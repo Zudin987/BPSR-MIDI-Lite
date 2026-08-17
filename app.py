@@ -34,7 +34,7 @@ from win_input import (
 
 
 APP_NAME = "BPSR MIDI Lite"
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.2"
 APP_AUTHOR = "MrEz"
 CONFIG_FILE = "bpsr_midi_lite.json"
 
@@ -1030,8 +1030,8 @@ class App(tk.Tk):
             )
 
         changes = []
-        if plan.folded_notes:
-            changes.append(f"{plan.folded_notes:,} remapped")
+        if plan.remapped_notes:
+            changes.append(f"{plan.remapped_notes:,} remapped")
         if plan.skipped_notes:
             changes.append(f"{plan.skipped_notes:,} skipped")
         if plan.filtered_notes:
@@ -1177,7 +1177,8 @@ def dry_run(path: str, options: PlanOptions) -> int:
     )
     print(f"Page-key presses: {plan.page_switches}")
     print(f"Octave switches: {plan.octave_switches}")
-    print(f"Remapped/folded notes: {plan.folded_notes}")
+    print(f"Remapped notes: {plan.remapped_notes}")
+    print(f"Local octave-folded notes: {plan.folded_notes}")
     print(f"Skipped notes: {plan.skipped_notes}")
     print(f"Song transpose: {plan.transposed_semitones:+d} semitones")
     print(f"Added delay: {plan.added_delay:.3f}s")
