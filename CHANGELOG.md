@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.4.0
+
+- Rebuilt the interface as one vertically scrollable page so all controls remain reachable on smaller displays and short windows.
+- Removed **More settings** entirely; there is no secondary settings layer or popup.
+- Removed all **Open folder / Open songs folder** buttons from the user interface.
+- Moved **Countdown** directly into the Play section.
+- Moved **Restore recommended settings** and collapsible **Troubleshooting** directly onto the main page under **Help & recovery**.
+- Restored useful conversion detail in **Song check** with explicit **Remapped**, **Skipped**, and **Filtered/simplified** note counts.
+- Kept the beginner flow focused on Instrument → Category → Song → Song check → Play while leaving technical fitting automatic.
+- Added scroll-aware dark/light theme handling and mouse-wheel scrolling without forcing the app window to grow when Troubleshooting is expanded.
+- Consolidated user documentation into a rewritten README and removed stale duplicate release-note/user-guide/screenshot files from the source tree.
+- Simplified portable ZIP contents; the app creates its MIDI library itself when needed.
+
 ## v2.3.0
 
 - Replaced Advanced setup with explicit BPSR Category choices plus **Raw MIDI — no remap**.
