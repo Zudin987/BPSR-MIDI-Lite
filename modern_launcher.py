@@ -4,8 +4,8 @@ import app
 from modern_ui import install_modern_ui
 
 
-# v2 keeps the established MIDI engine while simplifying how users reach it.
-app.APP_VERSION = "2.3.0"
+# Keep the established MIDI engine while installing the simplified UI.
+app.APP_VERSION = "2.4.0"
 
 install_modern_ui(app)
 
