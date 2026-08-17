@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v2.0.0. Leave blank to build only."
+        description: "Optional version to publish, for example v2.4.0. Leave blank to build only."
         required: false
         type: string
 
@@ -50,11 +50,8 @@ jobs:
           New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite | Out-Null
           Copy-Item dist/BPSR-MIDI-Lite.exe portable/BPSR-MIDI-Lite/BPSR-MIDI-Lite.exe
           Copy-Item README.md portable/BPSR-MIDI-Lite/README.md
-          Copy-Item END_USER_GUIDE.md portable/BPSR-MIDI-Lite/END_USER_GUIDE.md
           Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE
           Copy-Item THIRD_PARTY_NOTICES.md portable/BPSR-MIDI-Lite/THIRD_PARTY_NOTICES.md
-          New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite/MIDI | Out-Null
-          Copy-Item MIDI/PUT_MIDI_FILES_HERE.txt portable/BPSR-MIDI-Lite/MIDI/PUT_MIDI_FILES_HERE.txt
 
           Compress-Archive -Path portable/BPSR-MIDI-Lite -DestinationPath release/BPSR-MIDI-Lite-Windows-x64.zip -Force
 
