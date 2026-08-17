@@ -806,8 +806,8 @@ def _mapping_cost(mapped: _MappedGroup, options: PlanOptions) -> float:
         # Same number of folds still has a musical preference: protect the upper
         # voice/chord identity before inner accompaniment. The base fold count
         # remains dominant, so this cannot casually trade one extra remap for it.
-        cost += mapped.priority_fold_penalty * 300.0
-        cost += mapped.priority_displacement * 1.5
+        cost += mapped.priority_fold_penalty * 20.0
+        cost += mapped.priority_displacement * 0.25
     return cost
 
 
