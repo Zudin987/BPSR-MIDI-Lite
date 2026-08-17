@@ -12,27 +12,43 @@ No Python installation is required for the release build.
 
 ## Quick start
 
-1. Choose **Keyboard**, **Guitar**, or **Bass**.
-2. Choose the BPSR **Category** you have unlocked.
-3. Click **Add MIDI…** and select one or more `.mid` / `.midi` files.
-4. Leave **Song speed** at `100%` for the original MIDI tempo, or adjust it.
-5. Check **Song check** to see whether the song is ready and how many notes were remapped.
-6. Set the **Countdown** if needed.
-7. Press **Play in BPSR** and switch back to the game before the countdown ends.
+1. Choose **Keyboard**, **Guitar**, or **Bass**, then choose the BPSR **Category** you have unlocked beside it.
+2. Click **Open folder** and copy your `.mid` / `.midi` files into the song folder. The song list refreshes automatically.
+3. Leave **Song speed** at `100%` for the original MIDI tempo, or adjust it.
+4. Check **Song check** to see whether the song is ready and how many notes were remapped.
+5. Set the **Countdown** if needed.
+6. Press **Play in BPSR** and switch back to the game before the countdown ends.
 
 The app stays open during playback. **F10** always stops playback and releases held keys.
 
 ## Interface
 
-The app is intentionally one scrollable page so every control remains reachable on smaller displays or short windows.
+The app is one scrollable page so every control remains reachable on smaller displays or short windows.
 
-- **Instrument** — choose the game instrument and your unlocked Category.
-- **Song** — add/select a MIDI and optionally change playback speed.
+- **Instrument** — instrument and unlocked Category are shown side-by-side.
+- **Song** — select a MIDI, open the song folder, and change song speed if needed.
 - **Song check** — shows readiness, playable-note count, remapped notes, skipped notes, and filtered/simplified notes.
 - **Play** — countdown, Play, Stop, progress, and current status.
-- **Help & recovery** — restore recommended settings or expand Troubleshooting when keyboard injection is not working.
+- **Help & recovery** — only two controls: restore recommended settings and choose the keyboard connection method.
 
-There is no Advanced fitting screen. Mapping, chord handling, short-note compensation, octave timing, and other technical behavior are automatic per Category.
+There is no Advanced fitting screen. Mapping, chord handling, short-note compensation, octave timing, and other MIDI behavior are automatic per Category.
+
+## Keyboard connection
+
+The default is **Win32 scan code (recommended)**. All four input methods remain available because different Windows/game setups can behave differently:
+
+- **Win32 scan code (recommended)** — direct Windows `SendInput` using keyboard scan codes.
+- **Pynput compatibility** — uses the bundled pynput keyboard controller.
+- **Win32 virtual key** — direct Windows `SendInput` using virtual-key values.
+- **Legacy keybd_event** — older Windows keyboard injection fallback.
+
+If the recommended method works, leave it unchanged.
+
+## Managing songs
+
+**Open folder** opens the MIDI library used by the app. Copy or remove `.mid` / `.midi` files there normally with File Explorer. The app checks the folder automatically and refreshes the song list when it changes, so there is no separate Add MIDI or Reload workflow.
+
+**Restore song speed to default 100%** returns only the song speed to the original MIDI tempo.
 
 ## Safe Category ranges
 
@@ -101,15 +117,9 @@ Ctrl and Shift are treated as toggles, matching BPSR behavior:
 - Low can switch directly to High
 - no forced intermediate Default step is inserted
 
-## Troubleshooting
+## Restore recommended settings
 
-Expand **Troubleshooting** only when BPSR does not react to playback.
-
-1. Run **Test keyboard input**.
-2. Confirm the app is running with Administrator permission.
-3. If needed, try another **Keyboard connection** method.
-4. Use **Copy support info** when reporting a problem.
-5. **Restore recommended settings** returns the app to the normal profile, 100% song speed, 3-second countdown, and recommended input backend.
+Restore returns the current instrument to its recommended Category, song speed to `100%`, countdown to `3` seconds, and keyboard connection to **Win32 scan code**.
 
 ## Development
 
