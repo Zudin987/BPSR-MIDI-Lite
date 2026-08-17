@@ -96,6 +96,78 @@ def test_note_length_is_extended_but_repeat_can_retrigger(tmp_path: Path) -> Non
     assert note_offs[0].time < note_ons[1].time
 
 
+
+def test_short_note_gets_small_bpsr_hold_without_changing_tempo(tmp_path: Path) -> None:
+    midi_path = tmp_path / "short_hold.mid"
+    make_test_midi(midi_path, [60], gap_ticks=0, duration_ticks=10)
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            speed_percent=100,
+            note_length_percent=100,
+            minimum_note_ms=70,
+        ),
+    )
+
+    note_on = next(event for event in plan.events if event.kind == "note_on")
+    note_off = next(event for event in plan.events if event.kind == "note_off")
+    assert note_off.time - note_on.time >= 0.070 - 1e-9
+
+
+def test_unrelated_note_onset_does_not_cut_authored_hold(tmp_path: Path) -> None:
+    midi_path = tmp_path / "polyphony.mid"
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    track.append(mido.Message("note_on", note=60, velocity=80, time=0))
+    track.append(mido.Message("note_on", note=64, velocity=80, time=48))
+    track.append(mido.Message("note_off", note=64, velocity=0, time=48))
+    track.append(mido.Message("note_off", note=60, velocity=0, time=144))
+    midi.tracks.append(track)
+    midi.save(midi_path)
+
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            speed_percent=100,
+            note_length_percent=100,
+            minimum_note_ms=70,
+        ),
+    )
+
+    c_on = next(event for event in plan.events if event.kind == "note_on" and event.serial == 0)
+    c_off = next(event for event in plan.events if event.kind == "note_off" and event.serial == 0)
+    e_on = next(event for event in plan.events if event.kind == "note_on" and event.serial == 1)
+    assert e_on.time < c_off.time
+    assert c_off.time - c_on.time >= 0.249
+
+
+def test_dangling_note_is_capped_instead_of_held_to_song_end(tmp_path: Path) -> None:
+    midi_path = tmp_path / "dangling.mid"
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    track.append(mido.Message("note_on", note=60, velocity=80, time=0))
+    track.append(mido.MetaMessage("text", text="later event", time=4800))
+    midi.tracks.append(track)
+    midi.save(midi_path)
+
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            speed_percent=100,
+            note_length_percent=100,
+            minimum_note_ms=70,
+        ),
+    )
+
+    note_on = next(event for event in plan.events if event.kind == "note_on")
+    note_off = next(event for event in plan.events if event.kind == "note_off")
+    assert 0.119 <= note_off.time - note_on.time <= 0.501
+
 def test_full_range_prefers_middle_page_ctrl_when_exact_mapping_ties(tmp_path: Path) -> None:
     midi_path = tmp_path / "middle_tie.mid"
     make_test_midi(midi_path, [60, 36, 38, 40, 60], gap_ticks=240, duration_ticks=120)

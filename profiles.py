@@ -25,9 +25,9 @@ class PlaybackProfile:
     unlock_tier: str
     mapping: str
     chord_limit: int
-    speed: int = 85
-    note_length: int = 150
-    minimum_note: int = 120
+    speed: int = 100
+    note_length: int = 100
+    minimum_note: int = 70
     page_delay: int = 220
     modifier_lead: int = 55
     use_pedal: bool = False
@@ -50,14 +50,13 @@ class PlaybackProfile:
 
 
 # Beginner-facing names are intentionally independent from the technical note
-# ranges. The actual planner settings below are unchanged.
+# ranges. Fixed profiles use conservative BPSR-safe articulation defaults.
 FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
     "keyboard": {
         "tier1": PlaybackProfile(
             instrument="keyboard", code="tier1", label="First unlock",
             summary="Choose this if you only have the first Keyboard range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
-            minimum_note=130,
         ),
         "tier2": PlaybackProfile(
             instrument="keyboard", code="tier2", label="Second unlock",
@@ -75,7 +74,6 @@ FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
             instrument="guitar", code="tier1", label="First unlock",
             summary="Choose this if you only have the first Guitar range. Larger songs are fitted automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=2,
-            minimum_note=130,
         ),
         "tier2": PlaybackProfile(
             instrument="guitar", code="tier2", label="Second unlock",
@@ -93,13 +91,11 @@ FIXED_PROFILES: dict[InstrumentCode, dict[str, PlaybackProfile]] = {
             instrument="bass", code="tier1", label="First unlock",
             summary="Choose this for the first Bass range. Large chords are simplified into a clean bass line automatically.",
             mode="stable", unlock_tier="tier1", mapping="transpose", chord_limit=1,
-            note_length=135, minimum_note=130,
         ),
         "tier2": PlaybackProfile(
             instrument="bass", code="tier2", label="Fully unlocked (Recommended)",
             summary="Best Bass choice when the regular Bass range is fully unlocked. The extra range is handled automatically.",
             mode="stable", unlock_tier="tier2", mapping="octave", chord_limit=1,
-            note_length=135, minimum_note=130,
         ),
     },
 }

@@ -101,19 +101,19 @@ INPUT_BACKEND_LABELS_REVERSE = {value: key for key, value in INPUT_BACKEND_LABEL
 CUSTOM_DEFAULTS_BY_INSTRUMENT: dict[str, dict[str, object]] = {
     "keyboard": {
         "mode": "stable", "unlock_tier": "tier3", "mapping": "octave",
-        "chord_limit": 0, "speed": 85, "length": 150, "minimum_note": 120,
+        "chord_limit": 0, "speed": 100, "length": 100, "minimum_note": 70,
         "page_delay": 220, "modifier_lead": 55, "pedal": False,
         "ignore_percussion": True,
     },
     "guitar": {
         "mode": "stable", "unlock_tier": "tier3", "mapping": "octave",
-        "chord_limit": 0, "speed": 85, "length": 150, "minimum_note": 120,
+        "chord_limit": 0, "speed": 100, "length": 100, "minimum_note": 70,
         "page_delay": 220, "modifier_lead": 55, "pedal": False,
         "ignore_percussion": True,
     },
     "bass": {
         "mode": "stable", "unlock_tier": "tier2", "mapping": "octave",
-        "chord_limit": 1, "speed": 85, "length": 135, "minimum_note": 130,
+        "chord_limit": 1, "speed": 100, "length": 100, "minimum_note": 70,
         "page_delay": 220, "modifier_lead": 55, "pedal": False,
         "ignore_percussion": True,
     },
@@ -209,9 +209,9 @@ class App(tk.Tk):
         self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier3"))
         self.mode_var = tk.StringVar(value=MODE_LABELS_REVERSE["stable"])
         self.unlock_var = tk.StringVar(value="Tier 3 — C2–B6 (no < / >)")
-        self.speed_var = tk.IntVar(value=85)
-        self.length_var = tk.IntVar(value=150)
-        self.minimum_note_var = tk.IntVar(value=120)
+        self.speed_var = tk.IntVar(value=100)
+        self.length_var = tk.IntVar(value=100)
+        self.minimum_note_var = tk.IntVar(value=70)
         self.page_delay_var = tk.IntVar(value=220)
         self.modifier_lead_var = tk.IntVar(value=55)
         self.start_delay_var = tk.DoubleVar(value=3.0)

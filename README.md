@@ -62,7 +62,9 @@ Open **Settings** if you want to change the countdown, minimization behavior, Ad
 
 ## Technical core
 
-The v2 interface is a redesign of the user flow, not a replacement of the MIDI engine. The existing planner/player architecture remains responsible for:
+The planner keeps the MIDI's original tempo and authored note lengths by default. Only unusually short notes are extended to a small 70 ms input-safe hold, and repeated use of the same game key gets a brief release window so BPSR can retrigger it cleanly. This avoids slowing or stretching an entire song just to compensate for keyboard-input behavior.
+
+The existing planner/player architecture remains responsible for:
 
 - MIDI timing
 - instrument-specific playable ranges
