@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import struct
+from json import loads
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import mido
 import pytest
@@ -10,6 +12,9 @@ from midi_engine import PlanOptions, build_plan
 from online_sequencer import (
     CachedSequence,
     OnlineSequencerError,
+    SearchResult,
+    fetch_sequence_to_cache,
+    lookup_sequence_metadata,
     parse_sequence_reference,
     save_cached_sequence,
     search_sequences,
@@ -96,6 +101,84 @@ def test_title_text_is_rejected_without_browser_handoff() -> None:
     with pytest.raises(OnlineSequencerError, match="does not provide an app-accessible title-search API") as error:
         search_sequences("Taylor Swift")
     assert "no browser was opened" in str(error.value)
+
+
+def test_public_metadata_lookup_returns_real_title_and_author(monkeypatch) -> None:
+    requested: dict[str, object] = {}
+
+    def fake_request(url: str, *, timeout: float, max_bytes: int) -> bytes:
+        requested.update(url=url, timeout=timeout, max_bytes=max_bytes)
+        return (
+            b'{"status":"success","data":{"title":"  Real  Song - Online Sequencer",'
+            b'"author":"Alice"}}'
+        )
+
+    monkeypatch.setattr("online_sequencer._request_metadata_bytes", fake_request)
+
+    result = lookup_sequence_metadata(5529399)
+
+    assert result is not None
+    assert result.title == "Real Song"
+    assert result.author == "Alice"
+    query = parse_qs(urlparse(str(requested["url"])).query)
+    assert query == {
+        "url": ["https://onlinesequencer.net/5529399"],
+        "filter": ["title,author"],
+    }
+    assert requested["timeout"] == 8.0
+
+
+def test_real_metadata_flows_to_cached_and_saved_midi_name(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("online_sequencer._request_bytes", lambda *_args, **_kwargs: _sequence_fixture())
+    monkeypatch.setattr(
+        "online_sequencer.lookup_sequence_metadata",
+        lambda sequence_id: SearchResult(sequence_id, "Actual Song: Finale?", "Alice"),
+    )
+
+    cached = fetch_sequence_to_cache(5529399, title="Sequence #5529399", root=tmp_path / "cache")
+    saved = save_cached_sequence(cached, tmp_path / "library")
+
+    assert cached.title == "Actual Song: Finale?"
+    assert cached.author == "Alice"
+    assert saved.name == "Actual Song_ Finale_ [OS 5529399].mid"
+
+
+def test_generic_existing_cache_is_upgraded_without_downloading_notes_again(monkeypatch, tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    monkeypatch.setattr("online_sequencer._request_bytes", lambda *_args, **_kwargs: _sequence_fixture())
+    monkeypatch.setattr("online_sequencer.lookup_sequence_metadata", lambda _sequence_id: None)
+    initial = fetch_sequence_to_cache(321, title="Sequence #321", root=cache_root)
+    assert initial.title == "Sequence #321"
+
+    monkeypatch.setattr(
+        "online_sequencer.lookup_sequence_metadata",
+        lambda sequence_id: SearchResult(sequence_id, "Recovered Title", "Bob"),
+    )
+    monkeypatch.setattr(
+        "online_sequencer._request_bytes",
+        lambda *_args, **_kwargs: pytest.fail("cached notes must not be downloaded again"),
+    )
+    upgraded = fetch_sequence_to_cache(321, title="Sequence #321", root=cache_root)
+
+    assert upgraded.title == "Recovered Title"
+    assert upgraded.author == "Bob"
+    metadata = loads((cache_root / "os_321.json").read_text(encoding="utf-8"))
+    assert metadata["title"] == "Recovered Title"
+    assert metadata["author"] == "Bob"
+
+
+def test_title_lookup_failure_never_blocks_sequence_playback(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("online_sequencer._request_bytes", lambda *_args, **_kwargs: _sequence_fixture())
+
+    def unavailable(_sequence_id: int) -> None:
+        raise OnlineSequencerError("title service unavailable")
+
+    monkeypatch.setattr("online_sequencer.lookup_sequence_metadata", unavailable)
+
+    cached = fetch_sequence_to_cache(444, title="Sequence #444", root=tmp_path)
+
+    assert cached.title == "Sequence #444"
+    assert cached.path.exists()
 
 
 def test_proto_conversion_creates_standard_midi_and_preserves_tempo(tmp_path: Path) -> None:

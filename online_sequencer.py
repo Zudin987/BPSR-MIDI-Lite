@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, build_opener
 
 import mido
@@ -20,9 +20,11 @@ BASE_URL = "https://onlinesequencer.net"
 BROWSE_URL = BASE_URL + "/sequences"
 PROTO_URL = BASE_URL + "/app/api/get_proto.php?id={sequence_id}"
 SEQUENCE_URL = BASE_URL + "/{sequence_id}"
-DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.4 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
+METADATA_API_URL = "https://api.microlink.io"
+DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.5 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
 
 MAX_PROTO_BYTES = 16 * 1024 * 1024
+MAX_METADATA_BYTES = 64 * 1024
 MAX_SEQUENCE_NOTES = 75_000
 CACHE_MAX_AGE_SECONDS = 3 * 24 * 60 * 60
 CACHE_MAX_BYTES = 96 * 1024 * 1024
@@ -165,6 +167,101 @@ def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
         raise OnlineSequencerError(f"Online Sequencer returned HTTP {error.code}.") from error
     except (URLError, TimeoutError, OSError) as exc:
         raise OnlineSequencerError("Could not reach Online Sequencer. Check your internet connection and try again.") from exc
+
+
+def _request_metadata_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": DATA_USER_AGENT,
+            "Accept": "application/json",
+            "Accept-Encoding": "identity",
+        },
+    )
+    try:
+        with build_opener().open(request, timeout=timeout) as response:  # noqa: S310 - fixed HTTPS host
+            length = response.headers.get("Content-Length")
+            if length:
+                try:
+                    if int(length) > max_bytes:
+                        raise OnlineSequencerError("The online title service returned too much data.")
+                except ValueError:
+                    pass
+            data = response.read(max_bytes + 1)
+    except HTTPError as error:
+        raise OnlineSequencerError(f"The online title service returned HTTP {error.code}.") from error
+    except (URLError, TimeoutError, OSError) as exc:
+        raise OnlineSequencerError("The online title service is unavailable.") from exc
+    if len(data) > max_bytes:
+        raise OnlineSequencerError("The online title service returned too much data.")
+    return data
+
+
+def _clean_metadata_text(value: object, max_length: int) -> str:
+    if not isinstance(value, str):
+        return ""
+    cleaned = "".join(character for character in value if ord(character) >= 32 and ord(character) != 127)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:max_length].rstrip()
+
+
+def lookup_sequence_metadata(sequence_id: int) -> SearchResult | None:
+    """Return public title/author metadata without opening a local browser.
+
+    Online Sequencer publishes Open Graph/oEmbed metadata, but protects the
+    corresponding HTML/JSON routes with its browser challenge. Microlink's
+    public metadata API is used only for this optional display-name lookup;
+    sequence playback continues to use Online Sequencer's public protobuf.
+    """
+    sequence_id = int(sequence_id)
+    if sequence_id <= 0:
+        raise OnlineSequencerError("Invalid Online Sequencer sequence ID.")
+    query = urlencode(
+        {
+            "url": sequence_url(sequence_id),
+            "filter": "title,author",
+        }
+    )
+    raw = _request_metadata_bytes(
+        f"{METADATA_API_URL}?{query}",
+        timeout=8.0,
+        max_bytes=MAX_METADATA_BYTES,
+    )
+    try:
+        payload = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise OnlineSequencerError("The online title service returned invalid data.") from exc
+    if not isinstance(payload, dict) or payload.get("status") != "success":
+        return None
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return None
+    title = _clean_metadata_text(data.get("title"), 160)
+    author = _clean_metadata_text(data.get("author"), 80)
+    suffix = " - Online Sequencer"
+    if title.casefold().endswith(suffix.casefold()):
+        title = title[: -len(suffix)].rstrip()
+    if not title or title.casefold() == "online sequencer":
+        return None
+    return SearchResult(sequence_id, title, author)
+
+
+def _is_generic_title(title: str, sequence_id: int) -> bool:
+    return not title.strip() or title.strip().casefold() == f"sequence #{sequence_id}".casefold()
+
+
+def _resolve_sequence_metadata(sequence_id: int, title: str, author: str) -> tuple[str, str]:
+    resolved_title = _clean_metadata_text(title, 160) or f"Sequence #{sequence_id}"
+    resolved_author = _clean_metadata_text(author, 80)
+    if not _is_generic_title(resolved_title, sequence_id):
+        return resolved_title, resolved_author
+    try:
+        metadata = lookup_sequence_metadata(sequence_id)
+    except OnlineSequencerError:
+        return resolved_title, resolved_author
+    if metadata is None:
+        return resolved_title, resolved_author
+    return metadata.title, metadata.author or resolved_author
 
 
 def search_sequences(query: str) -> list[SearchResult]:
@@ -460,6 +557,27 @@ def _load_cached_metadata(meta_path: Path, midi_path: Path) -> CachedSequence | 
         return None
 
 
+def _write_cached_metadata(meta_path: Path, cached: CachedSequence) -> None:
+    try:
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "sequence_id": cached.sequence_id,
+                    "title": cached.title,
+                    "author": cached.author,
+                    "note_count": cached.note_count,
+                    "percussion_notes": cached.percussion_notes,
+                    "duration_seconds": cached.duration_seconds,
+                    "cached_at": time.time(),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def fetch_sequence_to_cache(
     sequence_id: int,
     *,
@@ -479,16 +597,24 @@ def fetch_sequence_to_cache(
     if not force:
         cached = _load_cached_metadata(meta_path, midi_path)
         if cached is not None:
-            if title and cached.title.startswith("Sequence #"):
+            candidate_title = title if not _is_generic_title(title, sequence_id) else cached.title
+            candidate_author = author or cached.author
+            resolved_title, resolved_author = _resolve_sequence_metadata(
+                sequence_id,
+                candidate_title,
+                candidate_author,
+            )
+            if resolved_title != cached.title or resolved_author != cached.author:
                 cached = CachedSequence(
                     cached.sequence_id,
                     cached.path,
-                    title,
-                    author or cached.author,
+                    resolved_title,
+                    resolved_author,
                     cached.note_count,
                     cached.percussion_notes,
                     cached.duration_seconds,
                 )
+                _write_cached_metadata(meta_path, cached)
             return cached
 
     proto = _request_bytes(
@@ -498,34 +624,17 @@ def fetch_sequence_to_cache(
     )
     note_count, percussion_notes, duration = sequence_proto_to_midi(proto, midi_path)
 
-    resolved_title = title or f"Sequence #{sequence_id}"
+    resolved_title, resolved_author = _resolve_sequence_metadata(sequence_id, title, author)
     cached = CachedSequence(
         sequence_id=sequence_id,
         path=midi_path,
         title=resolved_title,
-        author=author,
+        author=resolved_author,
         note_count=note_count,
         percussion_notes=percussion_notes,
         duration_seconds=duration,
     )
-    try:
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "sequence_id": sequence_id,
-                    "title": resolved_title,
-                    "author": author,
-                    "note_count": note_count,
-                    "percussion_notes": percussion_notes,
-                    "duration_seconds": duration,
-                    "cached_at": time.time(),
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass
+    _write_cached_metadata(meta_path, cached)
     return cached
 
 

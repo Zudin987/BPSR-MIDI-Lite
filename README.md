@@ -40,6 +40,8 @@ Online Sequencer puts its HTML/title-search page behind a browser challenge and 
 
 To load a song, paste its full Online Sequencer link or numeric sequence ID and click **Load link / ID**. Pressing Enter does the same thing.
 
+While the song is prepared, the app looks up its public title and author through Microlink's metadata API. The real title is then used in the result row, bookmark, and **Save to Local** filename; the Online Sequencer ID remains in the filename as `[OS ID]`. This lookup is cached and never opens a visible browser. If metadata is unavailable or its free-service limit is reached, the app simply keeps `Sequence #ID` and still downloads, checks, and plays the notes normally.
+
 If you need to find an ID, click **Find online MIDI ID**. This one explicit browser action opens Online Sequencer's public sequence list. Choose a song there, copy its link or numeric ID, then return to BPSR MIDI Lite. Typing a title such as `Taylor` still does not open anything automatically.
 
 The selected song is checked using the **same BPSR planner used for Local MIDI files**. The result list shows:
@@ -64,9 +66,9 @@ A bookmark is not an offline download. If its temporary cache has expired, the a
 
 ### Online service note
 
-Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The app uses the public binary sequence-data endpoint only after you paste a link/ID. It opens Online Sequencer only when you click **Find online MIDI ID**, and it does not ask for or store Online Sequencer login credentials.
+Online Sequencer and Microlink are third-party services. BPSR MIDI Lite is not affiliated with or endorsed by either service. After you paste a link/ID, the app sends that public Online Sequencer URL to Microlink only to retrieve its public title/author, then gets the notes from Online Sequencer's public binary sequence-data endpoint. It opens Online Sequencer only when you click **Find online MIDI ID**, and it does not ask for or store Online Sequencer login credentials.
 
-If Online Sequencer changes its public sequence-data format or blocks that endpoint, the online feature may need an update; **Local MIDI playback remains unaffected**.
+If title lookup fails, the app retains the numeric sequence name. If Online Sequencer changes its public sequence-data format or blocks that endpoint, the online feature may need an update; **Local MIDI playback remains unaffected**.
 
 ## Song check
 

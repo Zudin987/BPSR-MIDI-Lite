@@ -456,13 +456,17 @@ def _fetch_finished(app: Any, cached: osq.CachedSequence) -> None:
     app._online_fetching.discard(sequence_id)
     app._online_cached[sequence_id] = cached
     result = _result_for(app, sequence_id)
-    if result.title.startswith("Sequence #") and cached.title:
+    bookmark_was_renamed = False
+    if result.title.startswith("Sequence #") and cached.title != result.title:
         replacement = osq.SearchResult(sequence_id, cached.title, cached.author, cached.note_count)
         if sequence_id in app._online_results:
             app._online_results[sequence_id] = replacement
         if sequence_id in app._online_bookmarks:
             app._online_bookmarks[sequence_id] = replacement
+            bookmark_was_renamed = True
         _update_row_title(app, sequence_id, replacement)
+    if bookmark_was_renamed:
+        app._save_config()
     _analyze_cached(app, cached)
     _activate_cached_if_selected(app, cached)
 
