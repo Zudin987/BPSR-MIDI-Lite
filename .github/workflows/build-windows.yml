@@ -20,6 +20,20 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v6
 
+      - name: Apply one-run v3.0.1 regression patch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'fix/v3.0.1-online-403-dark-ui' }}
+        shell: pwsh
+        run: |
+          git fetch origin fix/v3.0.1-online-403-dark-ui
+          git checkout -B fix/v3.0.1-online-403-dark-ui origin/fix/v3.0.1-online-403-dark-ui
+          python tools/apply_v301_regression_fix.py
+          Remove-Item tools/apply_v301_regression_fix.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Online Sequencer 403 and dark UI regressions"
+          git push origin HEAD:fix/v3.0.1-online-403-dark-ui
+
       - name: Install Python 3.12
         uses: actions/setup-python@v6
         with:
