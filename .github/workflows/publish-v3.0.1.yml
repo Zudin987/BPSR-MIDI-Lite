@@ -1,5 +1,6 @@
 name: Publish v3.0.1
 
+# One-shot publisher for the v3.0.1 regression release.
 on:
   push:
     branches:
