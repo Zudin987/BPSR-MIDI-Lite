@@ -4,7 +4,7 @@ A lightweight Windows MIDI player for **Blue Protocol: Star Resonance** Keyboard
 
 BPSR MIDI Lite turns MIDI notes into BPSR keyboard input, automatically fits songs to the Category you have unlocked, uses instrument-aware remapping, and keeps normal playback inside the safe no-page range so it never needs `<` or `>`.
 
-Version 3 adds an optional **Online Sequencer** library: search public songs inside the app, see how well they fit your current BPSR instrument/category, play them from temporary cache, bookmark them, or save a permanent MIDI copy for offline use.
+Version 3 adds an optional **Online Sequencer** library: find a public song in your browser, paste its link or ID into the app, see how well it fits your current BPSR instrument/category, play it from temporary cache, bookmark it, or save a permanent MIDI copy for offline use.
 
 ## Download
 
@@ -18,7 +18,7 @@ The release build is standalone; users do **not** need Python installed. The exe
 2. Choose the BPSR **Category** you have unlocked.
 3. Choose a song source:
    - **Local** — permanent `.mid` / `.midi` files on your PC.
-   - **Online Sequencer** — search public Online Sequencer songs and play them from temporary cache.
+   - **Online Sequencer** — find a public song in your browser, paste its link/ID, and play it from temporary cache.
    - **Bookmarks** — revisit online songs you bookmarked earlier.
 4. Leave **Song speed** at `100%` for the original tempo, or change it.
 5. Read **Song check** to see readiness and how much fitting was needed.
@@ -36,9 +36,17 @@ Local playback is completely independent from Online Sequencer and continues to 
 
 ### Online Sequencer
 
-Search by song title, or paste a direct Online Sequencer sequence URL / numeric sequence ID.
+Online Sequencer now puts its HTML/search pages behind a browser challenge, so BPSR MIDI Lite no longer tries to scrape those pages or imitate a browser.
 
-The app gradually checks the top search results using the **same BPSR planner used for Local MIDI files**. The result list shows:
+To find a song by title:
+
+1. Type the title and click **Find in browser**.
+2. Choose a song on Online Sequencer and copy its address.
+3. Paste that address into BPSR MIDI Lite and click **Check link / ID**.
+
+If you already know the numeric sequence ID or have its link, paste it directly and click **Check link / ID**.
+
+The selected song is checked using the **same BPSR planner used for Local MIDI files**. The result list shows:
 
 - **BPSR fit** — Ready, Busy, Crowded, Too large, or Unavailable
 - **R** — notes remapped to fit your selected instrument/category
@@ -60,11 +68,11 @@ A bookmark is not an offline download. If its temporary cache has expired, the a
 
 ### Online service note
 
-Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The online browser uses public sequence/search data and does not ask for or store Online Sequencer login credentials.
+Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The app opens title search in your normal browser and uses the public binary sequence-data endpoint only after you paste a chosen link/ID. It does not ask for or store Online Sequencer login credentials.
 
-If Online Sequencer changes its public search page or sequence format, the online feature may need an update; **Local MIDI playback remains unaffected**.
+If Online Sequencer changes its public sequence-data format or blocks that endpoint, the online feature may need an update; **Local MIDI playback remains unaffected**.
 
-If Online Sequencer refuses an in-app request, **Open on Online Sequencer** can also open the current search text directly in your normal web browser.
+**Open on Online Sequencer** opens the selected song. With no selected result, it opens the current search text in your normal web browser.
 
 ## Song check
 
@@ -167,7 +175,7 @@ Main modules:
 - `player.py` — playback scheduler and cleanup
 - `win_input.py` — Windows input backends
 - `modern_ui.py` — stable beginner-first scrollable interface
-- `online_sequencer.py` — Online Sequencer public data client, safe parser, temporary cache and MIDI conversion
+- `online_sequencer.py` — Online Sequencer direct-link/public-data client, safe parser, temporary cache and MIDI conversion
 - `online_ui.py` — online search/bookmark background workflow and result UI
 - `online_integration.py` — thin layer that inserts the online library without replacing the stable modern UI
 

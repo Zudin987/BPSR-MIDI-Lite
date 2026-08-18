@@ -1,20 +1,17 @@
 from __future__ import annotations
 
-import html
 import json
 import re
 import shutil
 import struct
 import tempfile
 import time
-from http.cookiejar import CookieJar
 from dataclasses import dataclass
-from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote_plus, urlparse
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.parse import parse_qs, quote_plus, urlparse
+from urllib.request import Request, build_opener
 
 import mido
 
@@ -23,13 +20,8 @@ BASE_URL = "https://onlinesequencer.net"
 SEARCH_URL = BASE_URL + "/sequences?search={query}"
 PROTO_URL = BASE_URL + "/app/api/get_proto.php?id={sequence_id}"
 SEQUENCE_URL = BASE_URL + "/{sequence_id}"
-BROWSER_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
-)
+DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.2 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
 
-MAX_SEARCH_RESULTS = 12
-MAX_SEARCH_BYTES = 2 * 1024 * 1024
 MAX_PROTO_BYTES = 16 * 1024 * 1024
 MAX_SEQUENCE_NOTES = 75_000
 CACHE_MAX_AGE_SECONDS = 3 * 24 * 60 * 60
@@ -40,85 +32,23 @@ CACHE_MAX_BYTES = 96 * 1024 * 1024
 # existing BPSR planner's normal "ignore percussion" behavior keep working.
 DRUM_INSTRUMENT_IDS = {2, 31, 36, 39, 40, 42, 53}
 
-_SEQUENCE_LINK_RE = re.compile(
-    r'href=["\'](?:https?://onlinesequencer\.net)?/(\d+)(?:[?#][^"\']*)?["\'][^>]*>(.*?)</a>',
-    re.IGNORECASE | re.DOTALL,
-)
-_TAG_RE = re.compile(r"<[^>]+>")
-_NOTE_COUNT_RE = re.compile(r"([\d,]+)\s+notes?\b", re.IGNORECASE)
-_AUTHOR_RE = re.compile(r"\bby\s*<a[^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
 _INVALID_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-
-
-class _PreviewSearchParser(HTMLParser):
-    """Read current Online Sequencer ``div.preview`` result cards.
-
-    Current public search cards put the sequence title on the card's ``title``
-    attribute and use an empty ``<a href="/123"></a>`` as the clickable
-    target. HTMLParser is intentionally used instead of one large regex so
-    harmless nested markup changes do not break result extraction.
-    """
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.cards: list[tuple[int, str, int | None]] = []
-        self._card_title = ""
-        self._card_sequence_id: int | None = None
-        self._card_depth = 0
-        self._info_depth: int | None = None
-        self._info_parts: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        values = {name.casefold(): (value or "") for name, value in attrs}
-        tag = tag.casefold()
-
-        if self._card_depth == 0:
-            classes = {item.casefold() for item in values.get("class", "").split()}
-            if tag == "div" and "preview" in classes:
-                self._card_title = " ".join(values.get("title", "").split())
-                self._card_sequence_id = None
-                self._card_depth = 1
-                self._info_depth = None
-                self._info_parts = []
-            return
-
-        if tag == "div":
-            self._card_depth += 1
-            classes = {item.casefold() for item in values.get("class", "").split()}
-            if "info" in classes:
-                self._info_depth = self._card_depth
-        elif tag == "a":
-            match = re.fullmatch(r"/(\d+)/?", values.get("href", "").strip())
-            if match:
-                self._card_sequence_id = int(match.group(1))
-
-    def handle_data(self, data: str) -> None:
-        if self._card_depth and self._info_depth is not None:
-            self._info_parts.append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if self._card_depth == 0 or tag.casefold() != "div":
-            return
-        if self._info_depth == self._card_depth:
-            self._info_depth = None
-        self._card_depth -= 1
-        if self._card_depth != 0:
-            return
-
-        if self._card_sequence_id is not None and self._card_title:
-            info = " ".join("".join(self._info_parts).split())
-            match = _NOTE_COUNT_RE.search(info)
-            note_count = int(match.group(1).replace(",", "")) if match else None
-            self.cards.append((self._card_sequence_id, self._card_title, note_count))
-
-        self._card_title = ""
-        self._card_sequence_id = None
-        self._info_depth = None
-        self._info_parts = []
 
 
 class OnlineSequencerError(RuntimeError):
     """A friendly failure from the optional Online Sequencer integration."""
+
+
+class BrowserSearchRequired(OnlineSequencerError):
+    """Title search must run in a real browser because the site challenges HTML clients."""
+
+    def __init__(self, query: str) -> None:
+        self.query = query
+        self.url = search_url(query)
+        super().__init__(
+            "Online Sequencer title search now requires a web browser. "
+            "Find the song there, then paste its link or sequence ID into BPSR MIDI Lite."
+        )
 
 
 class SequenceTooLargeError(OnlineSequencerError):
@@ -171,16 +101,15 @@ def sequence_url(sequence_id: int) -> str:
     return SEQUENCE_URL.format(sequence_id=int(sequence_id))
 
 
+def search_url(query: str) -> str:
+    value = query.strip()
+    return SEARCH_URL.format(query=quote_plus(value)) if value else BASE_URL + "/sequences"
+
+
 def cache_directory() -> Path:
     root = Path(tempfile.gettempdir()) / "BPSR-MIDI-Lite" / "OnlineSequencer"
     root.mkdir(parents=True, exist_ok=True)
     return root
-
-
-def _clean_text(fragment: str) -> str:
-    text = _TAG_RE.sub(" ", fragment)
-    text = html.unescape(text)
-    return " ".join(text.split()).strip()
 
 
 def parse_sequence_reference(text: str) -> int | None:
@@ -196,105 +125,28 @@ def parse_sequence_reference(text: str) -> int | None:
         return None
     if parsed.netloc.casefold() not in {"onlinesequencer.net", "www.onlinesequencer.net"}:
         return None
-    match = re.fullmatch(r"/(\d+)/?", parsed.path)
-    if not match:
+    path_parts = [part for part in parsed.path.split("/") if part]
+    sequence_id: int | None = None
+    if len(path_parts) == 1 and path_parts[0].isdigit():
+        sequence_id = int(path_parts[0])
+    elif parsed.path.casefold() in {"/app/sequencer.php", "/app/api/get_proto.php"}:
+        candidate = parse_qs(parsed.query).get("id", [""])[0]
+        if candidate.isdigit():
+            sequence_id = int(candidate)
+    if sequence_id is None:
         return None
-    sequence_id = int(match.group(1))
     return sequence_id if sequence_id > 0 else None
 
 
-def parse_search_results(page_html: str, limit: int = MAX_SEARCH_RESULTS) -> list[SearchResult]:
-    """Parse the current public preview cards, with a legacy-anchor fallback."""
-    maximum = max(1, int(limit))
-    parser = _PreviewSearchParser()
-    try:
-        parser.feed(page_html)
-        parser.close()
-    except Exception:  # HTMLParser is best-effort; legacy fallback remains below.
-        parser.cards = []
-
-    results: list[SearchResult] = []
-    seen: set[int] = set()
-    for sequence_id, title, note_count in parser.cards:
-        if sequence_id in seen:
-            continue
-        clean_title = " ".join(html.unescape(title).split())
-        if not clean_title:
-            continue
-        seen.add(sequence_id)
-        results.append(SearchResult(sequence_id, clean_title[:160], "", note_count))
-        if len(results) >= maximum:
-            return results
-
-    # Older versions of the public page used visible sequence-link text. Keep
-    # this small fallback because it costs nothing and makes the client tolerant
-    # of the site switching between those two server-rendered layouts.
-    for match in _SEQUENCE_LINK_RE.finditer(page_html):
-        sequence_id = int(match.group(1))
-        if sequence_id in seen:
-            continue
-        title = _clean_text(match.group(2))
-        if not title or title.casefold() in {"play", "open", "sequence"}:
-            continue
-        nearby = page_html[match.end() : match.end() + 1200]
-        author_match = _AUTHOR_RE.search(nearby)
-        author = _clean_text(author_match.group(1)) if author_match else ""
-        count_match = _NOTE_COUNT_RE.search(_clean_text(nearby))
-        note_count = int(count_match.group(1).replace(",", "")) if count_match else None
-        seen.add(sequence_id)
-        results.append(SearchResult(sequence_id, title[:160], author[:80], note_count))
-        if len(results) >= maximum:
-            break
-
-    return results
-
-
-def _browser_headers(url: str, *, referer: str | None = None) -> dict[str, str]:
-    """Headers close to a normal Windows browser request.
-
-    Online Sequencer may reject obvious non-browser clients with HTTP 403 on
-    some residential connections. We do not bypass authentication or a login;
-    these headers are only for the same public pages a normal browser can open.
-    """
-    is_proto = "/app/api/" in url
-    headers = {
-        "User-Agent": BROWSER_USER_AGENT,
-        "Accept": (
-            "application/octet-stream,*/*;q=0.8"
-            if is_proto
-            else "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "identity",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "Connection": "keep-alive",
-    }
-    if is_proto:
-        headers.update(
-            {
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-            }
-        )
-    else:
-        headers.update(
-            {
-                "Upgrade-Insecure-Requests": "1",
-                "Sec-Fetch-Dest": "document",
-                "Sec-Fetch-Mode": "navigate",
-                "Sec-Fetch-Site": "none" if referer is None else "same-origin",
-                "Sec-Fetch-User": "?1",
-            }
-        )
-    if referer:
-        headers["Referer"] = referer
-    return headers
-
-
-def _read_public_url(opener: object, url: str, *, timeout: float, max_bytes: int, referer: str | None = None) -> bytes:
-    request = Request(url, headers=_browser_headers(url, referer=referer))
+def _read_data_url(opener: object, url: str, *, timeout: float, max_bytes: int) -> bytes:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": DATA_USER_AGENT,
+            "Accept": "application/octet-stream",
+            "Accept-Encoding": "identity",
+        },
+    )
     with opener.open(request, timeout=timeout) as response:  # type: ignore[attr-defined]  # noqa: S310 - fixed HTTPS host
         length = response.headers.get("Content-Length")
         if length:
@@ -304,94 +156,43 @@ def _read_public_url(opener: object, url: str, *, timeout: float, max_bytes: int
             except ValueError:
                 pass
         data = response.read(max_bytes + 1)
+        content_type = str(response.headers.get("Content-Type", "")).casefold()
+        challenged = str(response.headers.get("Cf-Mitigated", "")).casefold() == "challenge"
+        if challenged or ("text/html" in content_type and data.lstrip().startswith(b"<")):
+            raise OnlineSequencerError(
+                "Online Sequencer requires this request to run in a web browser. Local MIDI still works normally."
+            )
     if len(data) > max_bytes:
         raise OnlineSequencerError("Online Sequencer returned a file that is too large.")
     return data
 
 
 def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
-    # A fresh cookie jar keeps concurrent background workers independent. If a
-    # public request is rejected with 403, visit the public homepage once and
-    # retry using the cookies it sets plus a same-origin Referer.
-    opener = build_opener(HTTPCookieProcessor(CookieJar()))
+    opener = build_opener()
     try:
-        return _read_public_url(opener, url, timeout=timeout, max_bytes=max_bytes)
-    except HTTPError as first_error:
-        if first_error.code == 403:
-            try:
-                _read_public_url(
-                    opener,
-                    BASE_URL + "/",
-                    timeout=min(timeout, 6.0),
-                    max_bytes=min(MAX_SEARCH_BYTES, 512 * 1024),
-                )
-            except (HTTPError, URLError, TimeoutError, OSError, OnlineSequencerError):
-                pass
-            try:
-                return _read_public_url(
-                    opener,
-                    url,
-                    timeout=timeout,
-                    max_bytes=max_bytes,
-                    referer=BASE_URL + "/",
-                )
-            except HTTPError as retry_error:
-                first_error = retry_error
-
-        if first_error.code == 404:
-            raise OnlineSequencerError("That Online Sequencer sequence was not found.") from first_error
-        if first_error.code == 403:
+        return _read_data_url(opener, url, timeout=timeout, max_bytes=max_bytes)
+    except HTTPError as error:
+        if error.code == 404:
+            raise OnlineSequencerError("That Online Sequencer sequence was not found.") from error
+        if error.code == 403:
             raise OnlineSequencerError(
-                "Online Sequencer blocked the in-app request (HTTP 403) even after a browser-compatible retry. "
-                "Use Open on Online Sequencer to run this search in your browser, or use Local MIDI."
-            ) from first_error
-        raise OnlineSequencerError(f"Online Sequencer returned HTTP {first_error.code}.") from first_error
+                "Online Sequencer blocked access to this sequence's public data. "
+                "Open the song in your browser, or use Local MIDI."
+            ) from error
+        raise OnlineSequencerError(f"Online Sequencer returned HTTP {error.code}.") from error
     except (URLError, TimeoutError, OSError) as exc:
         raise OnlineSequencerError("Could not reach Online Sequencer. Check your internet connection and try again.") from exc
 
 
-def search_sequences(query: str, limit: int = MAX_SEARCH_RESULTS) -> list[SearchResult]:
+def search_sequences(query: str) -> list[SearchResult]:
+    """Resolve a pasted public sequence reference without scraping HTML pages."""
     value = query.strip()
     direct_id = parse_sequence_reference(value)
     if direct_id is not None:
-        title, author = fetch_sequence_page_metadata(direct_id)
-        return [SearchResult(direct_id, title or f"Sequence #{direct_id}", author)]
+        return [SearchResult(direct_id, f"Sequence #{direct_id}")]
     if len(value) < 3:
         raise OnlineSequencerError("Enter at least 3 characters, or paste an Online Sequencer link / sequence ID.")
-
-    data = _request_bytes(
-        SEARCH_URL.format(query=quote_plus(value)),
-        timeout=8.0,
-        max_bytes=MAX_SEARCH_BYTES,
-    )
-    page = data.decode("utf-8", errors="replace")
-    results = parse_search_results(page, limit=limit)
-    if not results:
-        raise OnlineSequencerError("No public Online Sequencer songs matched that search.")
-    return results
-
-
-def fetch_sequence_page_metadata(sequence_id: int) -> tuple[str, str]:
-    """Best-effort title/author lookup for a directly pasted sequence ID."""
-    try:
-        data = _request_bytes(sequence_url(sequence_id), timeout=6.0, max_bytes=MAX_SEARCH_BYTES)
-    except OnlineSequencerError:
-        return f"Sequence #{sequence_id}", ""
-    page = data.decode("utf-8", errors="replace")
-
-    title = ""
-    title_match = re.search(r"<title[^>]*>(.*?)</title>", page, re.IGNORECASE | re.DOTALL)
-    if title_match:
-        title = _clean_text(title_match.group(1))
-        title = re.sub(r"\s*-\s*Online Sequencer\s*$", "", title, flags=re.IGNORECASE).strip()
-
-    author = ""
-    # Sequence pages commonly render "<title> by <username>" near the heading.
-    author_match = re.search(r"\bby\s*<a[^>]*>(.*?)</a>", page, re.IGNORECASE | re.DOTALL)
-    if author_match:
-        author = _clean_text(author_match.group(1))
-
-    return (title or f"Sequence #{sequence_id}")[:160], author[:80]
+    raise BrowserSearchRequired(value)
 
 
 def _read_varint(data: bytes, index: int) -> tuple[int, int]:
@@ -713,10 +514,6 @@ def fetch_sequence_to_cache(
     )
     note_count, percussion_notes, duration = sequence_proto_to_midi(proto, midi_path)
 
-    if not title:
-        title, looked_up_author = fetch_sequence_page_metadata(sequence_id)
-        if not author:
-            author = looked_up_author
     resolved_title = title or f"Sequence #{sequence_id}"
     cached = CachedSequence(
         sequence_id=sequence_id,
