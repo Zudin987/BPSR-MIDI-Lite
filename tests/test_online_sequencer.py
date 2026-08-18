@@ -4,13 +4,16 @@ import struct
 from pathlib import Path
 
 import mido
+import pytest
 
 from midi_engine import PlanOptions, build_plan
 from online_sequencer import (
+    BrowserSearchRequired,
     CachedSequence,
-    parse_search_results,
     parse_sequence_reference,
     save_cached_sequence,
+    search_sequences,
+    search_url,
     sequence_proto_to_midi,
 )
 
@@ -73,44 +76,28 @@ def test_parse_sequence_reference_accepts_id_and_public_url() -> None:
     assert parse_sequence_reference("123456") == 123456
     assert parse_sequence_reference("https://onlinesequencer.net/123456") == 123456
     assert parse_sequence_reference("https://www.onlinesequencer.net/123456/") == 123456
+    assert parse_sequence_reference("https://onlinesequencer.net/app/sequencer.php?frame=1&id=123456") == 123456
+    assert parse_sequence_reference("https://onlinesequencer.net/app/api/get_proto.php?id=123456") == 123456
     assert parse_sequence_reference("https://example.com/123456") is None
     assert parse_sequence_reference("zelda") is None
 
 
-def test_search_parser_reads_current_preview_cards_and_deduplicates() -> None:
-    # Mirrors the server-rendered preview-card structure verified live before
-    # v3.0.0; titles are attributes and the clickable anchor itself is empty.
-    page = """
-    <div id="page_right"><div class="right_column">
-      <div class="preview" title="Song &amp; One">
-        <div class="image" style="background-image:url(/t/11/111.gif)"></div>
-        <div class="info">1,234 notes</div>
-        <a href="/111"></a>
-      </div>
-      <div class="preview" title="Song Two">
-        <div class="image"></div><div class="info">55 notes</div><a href="/222"></a>
-      </div>
-      <div class="preview" title="Duplicate"><div class="info">9 notes</div><a href="/111"></a></div>
-    </div></div>
-    """
-    results = parse_search_results(page)
-    assert [item.sequence_id for item in results] == [111, 222]
-    assert results[0].title == "Song & One"
-    assert results[0].author == ""
-    assert results[0].note_count == 1234
-    assert results[1].title == "Song Two"
-    assert results[1].note_count == 55
+def test_direct_reference_resolution_never_scrapes_an_html_page(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "online_sequencer.build_opener",
+        lambda: pytest.fail("direct reference resolution must not make an HTML request"),
+    )
+    results = search_sequences("https://onlinesequencer.net/123456")
+    assert len(results) == 1
+    assert results[0].sequence_id == 123456
+    assert results[0].title == "Sequence #123456"
 
 
-def test_search_parser_keeps_legacy_visible_anchor_fallback() -> None:
-    page = """
-    <a href="/333">Legacy Song</a>
-    by <a href="/members/abc">Alice</a>
-    <span>77 notes</span>
-    """
-    results = parse_search_results(page)
-    assert [item.sequence_id for item in results] == [333]
-    assert results[0].title == "Legacy Song"
+def test_title_search_hands_off_to_a_real_browser() -> None:
+    with pytest.raises(BrowserSearchRequired) as error:
+        search_sequences("Taylor Swift")
+    assert error.value.url == "https://onlinesequencer.net/sequences?search=Taylor+Swift"
+    assert search_url("") == "https://onlinesequencer.net/sequences"
 
 
 def test_proto_conversion_creates_standard_midi_and_preserves_tempo(tmp_path: Path) -> None:

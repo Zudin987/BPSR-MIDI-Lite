@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.0.2
+
+- Replaced blocked in-app HTML search scraping with a browser-assisted search flow after Online Sequencer put its search/pages behind a Cloudflare browser challenge.
+- **Find in browser** opens the real Online Sequencer title search; after choosing a song, paste its link or numeric sequence ID and use **Check link / ID**.
+- Direct link/ID loading now uses only Online Sequencer's public binary sequence-data endpoint, with an honest app user agent and no fake browser headers, cookie warm-up, or repeated 403 retry.
+- Kept temporary playback, BPSR fit analysis, bookmarks, Save to Local, cache limits, and Local MIDI isolation unchanged.
+- Expanded accepted links to include public sequence URLs plus Online Sequencer editor/data URLs containing an `id` query parameter.
+- Added regressions for the Cloudflare handoff, single-request sequence-data behavior, browser opening, direct-ID resolution without HTML access, and exact dark-mode notebook/table colors.
+
 ## v3.0.1
 
 - Fixed Online Sequencer searches that could return **HTTP 403** on normal desktop/residential connections by using browser-compatible public-request headers, an isolated cookie session, and one safe retry after a homepage warm-up.

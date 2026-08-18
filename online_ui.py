@@ -8,7 +8,6 @@ import webbrowser
 from pathlib import Path
 from tkinter import ttk
 from typing import Any, Callable
-from urllib.parse import quote_plus
 
 import online_sequencer as osq
 
@@ -24,7 +23,10 @@ def initialize(app: Any) -> None:
     app.online_query_var = tk.StringVar(master=app)
     app.online_status_var = tk.StringVar(
         master=app,
-        value="Search public Online Sequencer songs. Results are checked against your current BPSR instrument/category.",
+        value=(
+            "Find a song in your browser, then paste its Online Sequencer link or sequence ID here. "
+            "BPSR MIDI Lite will check it against your current instrument/category."
+        ),
     )
     app._online_results: dict[int, osq.SearchResult] = {}
     app._online_bookmarks: dict[int, osq.SearchResult] = {}
@@ -119,7 +121,12 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     app.online_search_entry = ttk.Entry(search_row, textvariable=app.online_query_var)
     app.online_search_entry.grid(row=0, column=0, sticky="ew")
     app.online_search_entry.bind("<Return>", lambda _event: search(app))
-    ttk.Button(search_row, text="Search", command=lambda: search(app)).grid(row=0, column=1, padx=(8, 0))
+    ttk.Button(search_row, text="Check link / ID", command=lambda: search(app)).grid(
+        row=0, column=1, padx=(8, 0)
+    )
+    ttk.Button(search_row, text="Find in browser", command=lambda: find_in_browser(app)).grid(
+        row=0, column=2, padx=(8, 0)
+    )
 
     ttk.Label(
         online_tab,
@@ -254,7 +261,14 @@ def _clear_current_song(app: Any) -> None:
 def search(app: Any) -> None:
     query = app.online_query_var.get().strip()
     if not query:
-        app.online_status_var.set("Type a song title, or paste an Online Sequencer link / sequence ID.")
+        app.online_status_var.set("Paste an Online Sequencer song link or numeric sequence ID first.")
+        return
+
+    # Cloudflare now challenges Online Sequencer HTML/search pages. A real
+    # browser is the supported place for title search; direct public sequence
+    # data remains loadable here once the user chooses a link/ID.
+    if osq.parse_sequence_reference(query) is None:
+        find_in_browser(app)
         return
 
     app._online_search_generation += 1
@@ -274,6 +288,22 @@ def search(app: Any) -> None:
         _dispatch(app, lambda results=results: _populate_search(app, generation, results))
 
     _worker(app, work)
+
+
+def find_in_browser(app: Any) -> None:
+    query = app.online_query_var.get().strip()
+    sequence_id = osq.parse_sequence_reference(query)
+    url = osq.sequence_url(sequence_id) if sequence_id is not None else osq.search_url(query)
+    opened = _open_external_url(app, url)
+    if not opened:
+        return
+    if sequence_id is not None:
+        app.online_status_var.set("Opened this sequence on Online Sequencer in your web browser.")
+        return
+    app.online_status_var.set(
+        "Search opened in your browser. Choose a song, copy its address, then paste it here and click Check link / ID."
+    )
+    app.status_var.set("Online Sequencer search opened in your web browser; Local MIDI remains available here.")
 
 
 def _search_failed(app: Any, generation: int, error: Exception) -> None:
@@ -630,7 +660,7 @@ def _save_cached_now(app: Any, cached: osq.CachedSequence) -> None:
     app.status_var.set(f"Saved to Local: {target.name}")
 
 
-def _open_external_url(app: Any, url: str) -> None:
+def _open_external_url(app: Any, url: str) -> bool:
     try:
         opened = bool(webbrowser.open(url, new=2, autoraise=True))
         if not opened and os.name == "nt":
@@ -643,6 +673,7 @@ def _open_external_url(app: Any, url: str) -> None:
         app.status_var.set("Opened Online Sequencer in your web browser.")
     else:
         app.status_var.set("Could not open your web browser.")
+    return opened
 
 
 def open_selected_online(app: Any) -> None:
@@ -651,15 +682,9 @@ def open_selected_online(app: Any) -> None:
         _open_external_url(app, osq.sequence_url(sequence_id))
         return
 
-    # This is intentionally useful even when in-app search is unavailable. If
-    # the user typed a query, open the equivalent public Online Sequencer search
-    # page; with an empty query, open the sequence browser itself.
-    query = app.online_query_var.get().strip()
-    if query:
-        url = osq.SEARCH_URL.format(query=quote_plus(query))
-    else:
-        url = osq.BASE_URL + "/sequences"
-    _open_external_url(app, url)
+    # With no selected result, reuse the browser-assisted flow. A pasted ID/link
+    # opens that sequence; title text opens the real search page.
+    find_in_browser(app)
 
 
 def load_bookmarks_from_config(app: Any, data: dict[str, Any]) -> None:
