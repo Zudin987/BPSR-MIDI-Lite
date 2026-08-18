@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.0.5
+
+- Added automatic real-title and author lookup after a direct Online Sequencer link/ID is loaded, without opening a visible browser.
+- Propagated the resolved title into the Online result row, bookmarks, temporary metadata, and **Save to Local** filename while retaining the sequence ID suffix for traceability.
+- Upgraded existing generic `Sequence #ID` cache entries and bookmarks in place, without downloading or reconverting the notes again.
+- Kept metadata lookup strictly optional: service failures, limits, and malformed responses fall back to `Sequence #ID` while playback, BPSR analysis, and Local MIDI continue normally.
+- Added response-size, text-cleaning, URL-scope, cache-upgrade, bookmark-persistence, filename, and failure-isolation regressions.
+
 ## v3.0.4
 
 - Added one explicit **Find online MIDI ID** button beneath **Load link / ID**; it opens only Online Sequencer's public sequence list.
