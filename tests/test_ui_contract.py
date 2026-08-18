@@ -60,3 +60,29 @@ def test_ui_keeps_raw_mode_and_page_fail_safe() -> None:
     assert "out-of-range notes are skipped" in source
     assert "if plan.page_switches:" in source
     assert "Playback blocked — unexpected page change" in source
+
+
+def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
+    launcher = Path("modern_launcher.py").read_text(encoding="utf-8")
+    integration = Path("online_integration.py").read_text(encoding="utf-8")
+    online = Path("online_ui.py").read_text(encoding="utf-8")
+
+    assert "install_modern_ui(app)" in launcher
+    assert "install_online_integration(app)" in launcher
+    assert 'app.APP_VERSION = "3.0.0"' in launcher
+    assert "_online_original_build_ui" in integration
+    assert "online_ui.build_song_source_ui" in integration
+    assert 'text="Online Sequencer"' in online
+    assert 'text="Bookmarks"' in online
+    assert 'text="Save to Local"' in online
+    assert 'text="Bookmark"' in online
+    assert "Temporary online cache" in online
+
+
+def test_online_library_keeps_local_playback_isolated() -> None:
+    integration = Path("online_integration.py").read_text(encoding="utf-8")
+    online = Path("online_ui.py").read_text(encoding="utf-8")
+
+    assert "if hasattr(self, \"song_source_var\") and not online_ui.is_local_source(self):" in integration
+    assert "app._reload_midi_library" in online
+    assert "Save to Local" in online
