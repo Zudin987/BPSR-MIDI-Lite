@@ -7,13 +7,14 @@ import shutil
 import struct
 import tempfile
 import time
+from http.cookiejar import CookieJar
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 import mido
 
@@ -22,7 +23,10 @@ BASE_URL = "https://onlinesequencer.net"
 SEARCH_URL = BASE_URL + "/sequences?search={query}"
 PROTO_URL = BASE_URL + "/app/api/get_proto.php?id={sequence_id}"
 SEQUENCE_URL = BASE_URL + "/{sequence_id}"
-USER_AGENT = "BPSR-MIDI-Lite/3.0 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+)
 
 MAX_SEARCH_RESULTS = 12
 MAX_SEARCH_BYTES = 2 * 1024 * 1024
@@ -245,35 +249,105 @@ def parse_search_results(page_html: str, limit: int = MAX_SEARCH_RESULTS) -> lis
     return results
 
 
-def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
-    request = Request(
-        url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "*/*",
-            "Accept-Encoding": "identity",
-        },
-    )
-    try:
-        with urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed HTTPS host
-            length = response.headers.get("Content-Length")
-            if length:
-                try:
-                    if int(length) > max_bytes:
-                        raise OnlineSequencerError("Online Sequencer returned a file that is too large.")
-                except ValueError:
-                    pass
-            data = response.read(max_bytes + 1)
-    except HTTPError as exc:
-        if exc.code == 404:
-            raise OnlineSequencerError("That Online Sequencer sequence was not found.") from exc
-        raise OnlineSequencerError(f"Online Sequencer returned HTTP {exc.code}.") from exc
-    except (URLError, TimeoutError, OSError) as exc:
-        raise OnlineSequencerError("Could not reach Online Sequencer. Check your internet connection and try again.") from exc
+def _browser_headers(url: str, *, referer: str | None = None) -> dict[str, str]:
+    """Headers close to a normal Windows browser request.
 
+    Online Sequencer may reject obvious non-browser clients with HTTP 403 on
+    some residential connections. We do not bypass authentication or a login;
+    these headers are only for the same public pages a normal browser can open.
+    """
+    is_proto = "/app/api/" in url
+    headers = {
+        "User-Agent": BROWSER_USER_AGENT,
+        "Accept": (
+            "application/octet-stream,*/*;q=0.8"
+            if is_proto
+            else "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "identity",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Connection": "keep-alive",
+    }
+    if is_proto:
+        headers.update(
+            {
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+            }
+        )
+    else:
+        headers.update(
+            {
+                "Upgrade-Insecure-Requests": "1",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none" if referer is None else "same-origin",
+                "Sec-Fetch-User": "?1",
+            }
+        )
+    if referer:
+        headers["Referer"] = referer
+    return headers
+
+
+def _read_public_url(opener: object, url: str, *, timeout: float, max_bytes: int, referer: str | None = None) -> bytes:
+    request = Request(url, headers=_browser_headers(url, referer=referer))
+    with opener.open(request, timeout=timeout) as response:  # type: ignore[attr-defined]  # noqa: S310 - fixed HTTPS host
+        length = response.headers.get("Content-Length")
+        if length:
+            try:
+                if int(length) > max_bytes:
+                    raise OnlineSequencerError("Online Sequencer returned a file that is too large.")
+            except ValueError:
+                pass
+        data = response.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise OnlineSequencerError("Online Sequencer returned a file that is too large.")
     return data
+
+
+def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
+    # A fresh cookie jar keeps concurrent background workers independent. If a
+    # public request is rejected with 403, visit the public homepage once and
+    # retry using the cookies it sets plus a same-origin Referer.
+    opener = build_opener(HTTPCookieProcessor(CookieJar()))
+    try:
+        return _read_public_url(opener, url, timeout=timeout, max_bytes=max_bytes)
+    except HTTPError as first_error:
+        if first_error.code == 403:
+            try:
+                _read_public_url(
+                    opener,
+                    BASE_URL + "/",
+                    timeout=min(timeout, 6.0),
+                    max_bytes=min(MAX_SEARCH_BYTES, 512 * 1024),
+                )
+            except (HTTPError, URLError, TimeoutError, OSError, OnlineSequencerError):
+                pass
+            try:
+                return _read_public_url(
+                    opener,
+                    url,
+                    timeout=timeout,
+                    max_bytes=max_bytes,
+                    referer=BASE_URL + "/",
+                )
+            except HTTPError as retry_error:
+                first_error = retry_error
+
+        if first_error.code == 404:
+            raise OnlineSequencerError("That Online Sequencer sequence was not found.") from first_error
+        if first_error.code == 403:
+            raise OnlineSequencerError(
+                "Online Sequencer blocked the in-app request (HTTP 403) even after a browser-compatible retry. "
+                "Use Open on Online Sequencer to run this search in your browser, or use Local MIDI."
+            ) from first_error
+        raise OnlineSequencerError(f"Online Sequencer returned HTTP {first_error.code}.") from first_error
+    except (URLError, TimeoutError, OSError) as exc:
+        raise OnlineSequencerError("Could not reach Online Sequencer. Check your internet connection and try again.") from exc
 
 
 def search_sequences(query: str, limit: int = MAX_SEARCH_RESULTS) -> list[SearchResult]:

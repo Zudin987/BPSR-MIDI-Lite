@@ -64,6 +64,8 @@ Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with
 
 If Online Sequencer changes its public search page or sequence format, the online feature may need an update; **Local MIDI playback remains unaffected**.
 
+If Online Sequencer refuses an in-app request, **Open on Online Sequencer** can also open the current search text directly in your normal web browser.
+
 ## Song check
 
 Song Check uses simple readiness labels plus conversion numbers:

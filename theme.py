@@ -200,6 +200,55 @@ def apply_theme(root: Any, style: ttk.Style, dark: bool) -> None:
     style.configure("TSeparator", background=colors.border)
 
     style.configure(
+        "TNotebook",
+        background=colors.background,
+        bordercolor=colors.border,
+        lightcolor=colors.border,
+        darkcolor=colors.border,
+    )
+    style.configure(
+        "TNotebook.Tab",
+        background=colors.surface,
+        foreground=colors.muted,
+        bordercolor=colors.border,
+        padding=(10, 5),
+    )
+    style.map(
+        "TNotebook.Tab",
+        background=[("selected", colors.field), ("active", colors.active)],
+        foreground=[("selected", colors.foreground), ("active", colors.foreground), ("disabled", colors.disabled)],
+    )
+    style.configure(
+        "Treeview",
+        background=colors.field,
+        fieldbackground=colors.field,
+        foreground=colors.foreground,
+        bordercolor=colors.border,
+        lightcolor=colors.border,
+        darkcolor=colors.border,
+        rowheight=24,
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", colors.selection)],
+        foreground=[("selected", "#ffffff")],
+    )
+    style.configure(
+        "Treeview.Heading",
+        background=colors.surface,
+        foreground=colors.foreground,
+        bordercolor=colors.border,
+        lightcolor=colors.border,
+        darkcolor=colors.border,
+        relief="flat",
+    )
+    style.map(
+        "Treeview.Heading",
+        background=[("active", colors.active), ("pressed", colors.selection)],
+        foreground=[("pressed", "#ffffff")],
+    )
+
+    style.configure(
         "Title.TLabel",
         font=("Segoe UI", 19, "bold"),
         background=colors.background,
