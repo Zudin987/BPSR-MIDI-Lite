@@ -29,6 +29,8 @@ def _debug_search_markup(page: str) -> None:
 def test_live_online_sequencer_search_fetch_and_plan(tmp_path: Path) -> None:
     # Temporary pre-release smoke/debug test. It will be removed before merge so
     # normal project CI never depends on third-party service availability.
+    # This commit also retriggers CI after the one-run search-card migration step
+    # was added to the trusted base workflow.
     raw = _request_bytes(
         SEARCH_URL.format(query="zelda"),
         timeout=8.0,
