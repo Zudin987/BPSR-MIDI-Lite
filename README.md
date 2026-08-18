@@ -2,53 +2,80 @@
 
 A lightweight Windows MIDI player for **Blue Protocol: Star Resonance** Keyboard/Piano, Electric Guitar, and Electric Bass.
 
-BPSR MIDI Lite converts normal MIDI notes into the game's keyboard controls, automatically fits notes to the selected unlock Category with instrument-aware musical priorities, switches Ctrl/Shift octave modes when needed, and keeps playback inside the safe no-page range so normal profiles never press `<` or `>`. Piano prioritizes pitch fidelity, Guitar protects the upper melody/chord voice, and Bass preserves the low-line contour.
+BPSR MIDI Lite turns MIDI notes into BPSR keyboard input, automatically fits songs to the Category you have unlocked, uses instrument-aware remapping, and keeps normal playback inside the safe no-page range so it never needs `<` or `>`.
+
+Version 3 adds an optional **Online Sequencer** library: search public songs inside the app, see how well they fit your current BPSR instrument/category, play them from temporary cache, bookmark them, or save a permanent MIDI copy for offline use.
 
 ## Download
 
-Use the latest **GitHub Release** and run `BPSR-MIDI-Lite.exe`. The executable requests Administrator permission because BPSR input is not consistently accepted from a lower-privilege process.
+Use the latest **GitHub Release** and run `BPSR-MIDI-Lite.exe`.
 
-No Python installation is required for the release build.
+The release build is standalone; users do **not** need Python installed. The executable requests Administrator permission because BPSR does not consistently accept injected input from a lower-privilege process.
 
 ## Quick start
 
-1. Choose **Keyboard**, **Guitar**, or **Bass**, then choose the BPSR **Category** you have unlocked beside it.
-2. Click **Open folder** and copy your `.mid` / `.midi` files into the song folder. The song list refreshes automatically.
-3. Leave **Song speed** at `100%` for the original MIDI tempo, or adjust it.
-4. Check **Song check** to see whether the song is ready and how many notes were remapped.
-5. Set the **Countdown** if needed.
-6. Press **Play in BPSR** and switch back to the game before the countdown ends.
+1. Choose **Keyboard**, **Guitar**, or **Bass**.
+2. Choose the BPSR **Category** you have unlocked.
+3. Choose a song source:
+   - **Local** — permanent `.mid` / `.midi` files on your PC.
+   - **Online Sequencer** — search public Online Sequencer songs and play them from temporary cache.
+   - **Bookmarks** — revisit online songs you bookmarked earlier.
+4. Leave **Song speed** at `100%` for the original tempo, or change it.
+5. Read **Song check** to see readiness and how much fitting was needed.
+6. Press **Play in BPSR** and return to the game before the countdown ends.
 
 The app stays open during playback. **F10** always stops playback and releases held keys.
 
-## Interface
+## Song sources
 
-The app is one scrollable page so every control remains reachable on smaller displays or short windows.
+### Local
 
-- **Instrument** — instrument and unlocked Category are shown side-by-side.
-- **Song** — select a MIDI, open the song folder, and change song speed if needed.
-- **Song check** — shows readiness, playable-note count, remapped notes, skipped notes, and filtered/simplified notes.
-- **Play** — countdown, Play, Stop, progress, and current status.
-- **Help & recovery** — only two controls: restore recommended settings and choose the keyboard connection method.
+Local is the normal permanent song library. Click **Open folder** and copy/remove `.mid` or `.midi` files with File Explorer. The list refreshes automatically.
 
-There is no Advanced fitting screen. Mapping, chord handling, short-note compensation, octave timing, and other MIDI behavior are automatic per Category.
+Local playback is completely independent from Online Sequencer and continues to work offline.
 
-## Keyboard connection
+### Online Sequencer
 
-The default is **Win32 scan code (recommended)**. All four input methods remain available because different Windows/game setups can behave differently:
+Search by song title, or paste a direct Online Sequencer sequence URL / numeric sequence ID.
 
-- **Win32 scan code (recommended)** — direct Windows `SendInput` using keyboard scan codes.
-- **Pynput compatibility** — uses the bundled pynput keyboard controller.
-- **Win32 virtual key** — direct Windows `SendInput` using virtual-key values.
-- **Legacy keybd_event** — older Windows keyboard injection fallback.
+The app gradually checks the top search results using the **same BPSR planner used for Local MIDI files**. The result list shows:
 
-If the recommended method works, leave it unchanged.
+- **BPSR fit** — Ready, Busy, Crowded, Too large, or Unavailable
+- **R** — notes remapped to fit your selected instrument/category
+- **S** — skipped notes
+- **F** — filtered/simplified notes
+- **Playable** — final playable-note count
 
-## Managing songs
+Selecting an online song converts the public sequence data into a temporary standard MIDI file, then sends that temporary MIDI through the existing BPSR planner. Nothing has to be permanently downloaded before you press **Play in BPSR**.
 
-**Open folder** opens the MIDI library used by the app. Copy or remove `.mid` / `.midi` files there normally with File Explorer. The app checks the folder automatically and refreshes the song list when it changes, so there is no separate Add MIDI or Reload workflow.
+The temporary cache is bounded and old entries are deleted automatically. It behaves like a playback cache, **not** like your permanent Local library.
 
-**Restore song speed to default 100%** returns only the song speed to the original MIDI tempo.
+Use **Save to Local** when you want a permanent `.mid` copy for offline use.
+
+### Bookmarks
+
+**Bookmark** stores the Online Sequencer sequence ID/title in BPSR MIDI Lite so you can find it again quickly.
+
+A bookmark is not an offline download. If its temporary cache has expired, the app fetches it again when needed. Use **Save to Local** for a permanent offline copy.
+
+### Online service note
+
+Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The online browser uses public sequence/search data and does not ask for or store Online Sequencer login credentials.
+
+If Online Sequencer changes its public search page or sequence format, the online feature may need an update; **Local MIDI playback remains unaffected**.
+
+## Song check
+
+Song Check uses simple readiness labels plus conversion numbers:
+
+- **Ready to play** — normal fit for the selected BPSR instrument/category.
+- **Playable, but this song is busy** — playable, but dense enough that BPSR may sound less clean.
+- **This song may sound crowded** — complex arrangement likely to lose clarity in a game keyboard.
+- **Remapped** — played notes whose final pitch differs from the source.
+- **Skipped** — notes that cannot be played under the selected profile.
+- **Filtered/simplified** — percussion or chord notes intentionally removed by the automatic instrument policy.
+
+A coherent whole-song transpose is reported separately from local octave fitting so a clean key shift is not mistaken for unstable remapping.
 
 ## Safe Category ranges
 
@@ -61,7 +88,7 @@ If the recommended method works, leave it unchanged.
 | 3 | Unlocks A0–B2 | C2–B6 |
 | 4 | Unlocks C7–C8 | C2–B6 |
 
-Category 3 and 4 deliberately remain inside **C2–B6**. This lets the player use only Default/Low/High octave on the middle page and avoids `<` / `>` page switching.
+Piano Category 3/4 deliberately stays inside **C2–B6** so playback can use only Default/Low/High octave on the middle page.
 
 ### Electric Guitar
 
@@ -71,7 +98,7 @@ Category 3 and 4 deliberately remain inside **C2–B6**. This lets the player us
 | 2 | Unlocks E2–B2 | E2–B4 |
 | 3 | Unlocks C5–D6 | E2–D6 |
 
-The complete Guitar range can be reached with Default/Low/High octave switching, so page keys are unnecessary.
+Guitar can reach its complete safe range using Default/Low/High octave, so page keys are unnecessary.
 
 ### Electric Bass
 
@@ -80,52 +107,48 @@ The complete Guitar range can be reached with Default/Low/High octave switching,
 | 1 | Starts with E1–B2 | E1–B2 |
 | 2 | High range unlocked | E1–B3 |
 
-Bass has no Low Octave mode. Category 1 uses the E1–B2 Default layout. Category 2 uses the single E1–B3 High Octave layout: the app switches High once at the start and stays there, avoiding mid-song Bass mode switching.
+Bass has no Low Octave mode. Category 1 uses Default E1–B2. Category 2 uses the single High E1–B3 layout: the player switches High once at the start, stays there for the song, and resets afterward.
 
 ## Instrument-aware fitting
 
-Normal profiles use one planner but different hidden musical priorities for each BPSR instrument:
+The app uses one planner with hidden musical priorities tailored to each BPSR instrument:
 
-- **Keyboard / Piano** — keeps the established fidelity-first behavior because the overlapping C2–B6 Default/Low/High layout already works well.
-- **Electric Guitar** — still minimizes total remapping first, then protects the upper melody/chord voice when equally-good transpose or octave choices exist. This suits the asymmetric E2–D6 Guitar layout without sacrificing extra notes just for the melody.
-- **Electric Bass** — keeps the lowest note from crowded chords and uses contour-aware octave selection so descending/ascending lines do not bounce between registers unnecessarily. Category 2 stays on the E1–B3 High layout for the whole performance.
+- **Keyboard / Piano** — fidelity-first; preserve the original pitches/chords as much as possible.
+- **Electric Guitar** — still minimizes total remapping first, then uses conservative upper-melody/chord-voice tie-breaking when choices are otherwise comparable.
+- **Electric Bass** — keeps the low line and uses contour-aware octave fitting to reduce register ping-pong, large unnatural jumps, and direction reversals.
 
-These policies are automatic; there is no extra setting to configure.
+There is no Advanced fitting screen. These policies are automatic.
 
 ## Raw MIDI — no remap
 
-`Raw MIDI — no remap` is the final profile for every instrument.
+`Raw MIDI — no remap` is the final Category option for each instrument.
 
 Raw mode:
 
-- keeps original in-range MIDI pitches
+- keeps original in-range pitches
 - keeps full chords
-- does not octave-fold or transpose pitches
-- still uses the small BPSR-safe short-note/retrigger timing correction
-- ignores the MIDI drum channel for pitched instruments
-- skips pitches outside the instrument's safe no-page range instead of remapping them
+- does not transpose or octave-remap pitches
+- still applies the small BPSR-safe short-note/retrigger correction
+- ignores MIDI percussion for the pitched BPSR instruments
+- skips physically unavailable pitches instead of remapping them
 - never uses `<` or `>`
 
-A physically unavailable pitch must be skipped in Raw mode because the app cannot both preserve the original pitch and avoid page switching.
+## Song speed
 
-## Song check
+`100%` means the original MIDI/sequence tempo. Song speed is available for every Category and remains independent from the selected unlock level.
 
-Song Check gives a simple readiness result and useful conversion numbers:
+**Restore song speed to default 100%** resets only the song speed.
 
-- **Remapped** — played notes whose final pitch differs from the source MIDI, including a coherent whole-song shift when one is used
-- **Skipped** — notes that cannot be played under the selected profile, especially in Raw mode
-- **Filtered/simplified** — notes removed by instrument/chord/percussion rules
+## Keyboard connection
 
-A high remap count is not automatically bad, but a simpler arrangement usually sounds more natural in BPSR than a dense orchestral or full-band MIDI.
+The recommended input method is **Win32 scan code**. Four methods remain available because different Windows/game setups can accept injected input differently:
 
-## Octave switching
+- **Win32 scan code (recommended)** — Windows `SendInput` with keyboard scan codes.
+- **Pynput compatibility** — bundled pynput keyboard controller.
+- **Win32 virtual key** — Windows `SendInput` with virtual-key values.
+- **Legacy keybd_event** — older Windows input fallback.
 
-Ctrl and Shift are treated as toggles, matching BPSR behavior:
-
-- pressing the active octave control again returns to Default
-- High can switch directly to Low
-- Low can switch directly to High
-- no forced intermediate Default step is inserted
+If scan code works, leave it unchanged.
 
 ## Restore recommended settings
 
@@ -133,15 +156,26 @@ Restore returns the current instrument to its recommended Category, song speed t
 
 ## Development
 
-The release executable is built with PyInstaller from `modern_launcher.py`. Core MIDI planning lives in `midi_engine.py`; playback scheduling/input cleanup lives in `player.py`; instrument Category policy lives in `profiles.py`; the beginner interface lives in `modern_ui.py`.
+The release executable is built with PyInstaller from `modern_launcher.py`.
 
-Run the test suite with:
+Main modules:
+
+- `midi_engine.py` — MIDI extraction, instrument-aware fitting, BPSR state planning and timing
+- `profiles.py` — user-facing instrument/Category policies
+- `player.py` — playback scheduler and cleanup
+- `win_input.py` — Windows input backends
+- `modern_ui.py` — stable beginner-first scrollable interface
+- `online_sequencer.py` — Online Sequencer public data client, safe parser, temporary cache and MIDI conversion
+- `online_ui.py` — online search/bookmark background workflow and result UI
+- `online_integration.py` — thin layer that inserts the online library without replacing the stable modern UI
+
+Run tests:
 
 ```text
 python -m pytest -q
 ```
 
-Build the Windows executable with:
+Build the Windows executable:
 
 ```text
 pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
@@ -149,4 +183,4 @@ pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
 
 ## License
 
-GNU AGPL-3.0. Created by **MrEz**. See `THIRD_PARTY_NOTICES.md` for attribution details.
+GNU AGPL-3.0. Created by **MrEz**. See `THIRD_PARTY_NOTICES.md` for bundled dependency attribution.
