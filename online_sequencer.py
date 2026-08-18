@@ -8,6 +8,7 @@ import struct
 import tempfile
 import time
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
@@ -43,6 +44,73 @@ _TAG_RE = re.compile(r"<[^>]+>")
 _NOTE_COUNT_RE = re.compile(r"([\d,]+)\s+notes?\b", re.IGNORECASE)
 _AUTHOR_RE = re.compile(r"\bby\s*<a[^>]*>(.*?)</a>", re.IGNORECASE | re.DOTALL)
 _INVALID_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+class _PreviewSearchParser(HTMLParser):
+    """Read current Online Sequencer ``div.preview`` result cards.
+
+    Current public search cards put the sequence title on the card's ``title``
+    attribute and use an empty ``<a href="/123"></a>`` as the clickable
+    target. HTMLParser is intentionally used instead of one large regex so
+    harmless nested markup changes do not break result extraction.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.cards: list[tuple[int, str, int | None]] = []
+        self._card_title = ""
+        self._card_sequence_id: int | None = None
+        self._card_depth = 0
+        self._info_depth: int | None = None
+        self._info_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {name.casefold(): (value or "") for name, value in attrs}
+        tag = tag.casefold()
+
+        if self._card_depth == 0:
+            classes = {item.casefold() for item in values.get("class", "").split()}
+            if tag == "div" and "preview" in classes:
+                self._card_title = " ".join(values.get("title", "").split())
+                self._card_sequence_id = None
+                self._card_depth = 1
+                self._info_depth = None
+                self._info_parts = []
+            return
+
+        if tag == "div":
+            self._card_depth += 1
+            classes = {item.casefold() for item in values.get("class", "").split()}
+            if "info" in classes:
+                self._info_depth = self._card_depth
+        elif tag == "a":
+            match = re.fullmatch(r"/(\d+)/?", values.get("href", "").strip())
+            if match:
+                self._card_sequence_id = int(match.group(1))
+
+    def handle_data(self, data: str) -> None:
+        if self._card_depth and self._info_depth is not None:
+            self._info_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._card_depth == 0 or tag.casefold() != "div":
+            return
+        if self._info_depth == self._card_depth:
+            self._info_depth = None
+        self._card_depth -= 1
+        if self._card_depth != 0:
+            return
+
+        if self._card_sequence_id is not None and self._card_title:
+            info = " ".join("".join(self._info_parts).split())
+            match = _NOTE_COUNT_RE.search(info)
+            note_count = int(match.group(1).replace(",", "")) if match else None
+            self.cards.append((self._card_sequence_id, self._card_title, note_count))
+
+        self._card_title = ""
+        self._card_sequence_id = None
+        self._info_depth = None
+        self._info_parts = []
 
 
 class OnlineSequencerError(RuntimeError):
@@ -132,10 +200,31 @@ def parse_sequence_reference(text: str) -> int | None:
 
 
 def parse_search_results(page_html: str, limit: int = MAX_SEARCH_RESULTS) -> list[SearchResult]:
-    """Parse public sequence cards without depending on one CSS class name."""
+    """Parse the current public preview cards, with a legacy-anchor fallback."""
+    maximum = max(1, int(limit))
+    parser = _PreviewSearchParser()
+    try:
+        parser.feed(page_html)
+        parser.close()
+    except Exception:  # HTMLParser is best-effort; legacy fallback remains below.
+        parser.cards = []
+
     results: list[SearchResult] = []
     seen: set[int] = set()
+    for sequence_id, title, note_count in parser.cards:
+        if sequence_id in seen:
+            continue
+        clean_title = " ".join(html.unescape(title).split())
+        if not clean_title:
+            continue
+        seen.add(sequence_id)
+        results.append(SearchResult(sequence_id, clean_title[:160], "", note_count))
+        if len(results) >= maximum:
+            return results
 
+    # Older versions of the public page used visible sequence-link text. Keep
+    # this small fallback because it costs nothing and makes the client tolerant
+    # of the site switching between those two server-rendered layouts.
     for match in _SEQUENCE_LINK_RE.finditer(page_html):
         sequence_id = int(match.group(1))
         if sequence_id in seen:
@@ -143,19 +232,14 @@ def parse_search_results(page_html: str, limit: int = MAX_SEARCH_RESULTS) -> lis
         title = _clean_text(match.group(2))
         if not title or title.casefold() in {"play", "open", "sequence"}:
             continue
-
-        # Metadata sits close to the sequence link on the public browser page.
-        # Keep this deliberately best-effort; title + ID are sufficient to use
-        # a result even if Online Sequencer changes the surrounding markup.
         nearby = page_html[match.end() : match.end() + 1200]
         author_match = _AUTHOR_RE.search(nearby)
         author = _clean_text(author_match.group(1)) if author_match else ""
         count_match = _NOTE_COUNT_RE.search(_clean_text(nearby))
         note_count = int(count_match.group(1).replace(",", "")) if count_match else None
-
         seen.add(sequence_id)
         results.append(SearchResult(sequence_id, title[:160], author[:80], note_count))
-        if len(results) >= max(1, int(limit)):
+        if len(results) >= maximum:
             break
 
     return results

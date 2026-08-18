@@ -77,24 +77,38 @@ def test_parse_sequence_reference_accepts_id_and_public_url() -> None:
     assert parse_sequence_reference("zelda") is None
 
 
-def test_search_parser_is_tolerant_and_deduplicates() -> None:
+def test_search_parser_reads_current_preview_cards_and_deduplicates() -> None:
     page = """
-    <div class="sequence-card">
-      <a href="/111">Song &amp; One</a>
-      by <a href="/members/abc">Alice</a>
-      <span>1,234 notes</span>
-    </div>
-    <a href="https://onlinesequencer.net/222?x=1"><b>Song Two</b></a>
-    <span>55 notes</span>
-    <a href="/111">Song &amp; One</a>
+    <div id="page_right"><div class="right_column">
+      <div class="preview" title="Song &amp; One">
+        <div class="image" style="background-image:url(/t/11/111.gif)"></div>
+        <div class="info">1,234 notes</div>
+        <a href="/111"></a>
+      </div>
+      <div class="preview" title="Song Two">
+        <div class="image"></div><div class="info">55 notes</div><a href="/222"></a>
+      </div>
+      <div class="preview" title="Duplicate"><div class="info">9 notes</div><a href="/111"></a></div>
+    </div></div>
     """
     results = parse_search_results(page)
     assert [item.sequence_id for item in results] == [111, 222]
     assert results[0].title == "Song & One"
-    assert results[0].author == "Alice"
+    assert results[0].author == ""
     assert results[0].note_count == 1234
     assert results[1].title == "Song Two"
     assert results[1].note_count == 55
+
+
+def test_search_parser_keeps_legacy_visible_anchor_fallback() -> None:
+    page = """
+    <a href="/333">Legacy Song</a>
+    by <a href="/members/abc">Alice</a>
+    <span>77 notes</span>
+    """
+    results = parse_search_results(page)
+    assert [item.sequence_id for item in results] == [333]
+    assert results[0].title == "Legacy Song"
 
 
 def test_proto_conversion_creates_standard_midi_and_preserves_tempo(tmp_path: Path) -> None:
