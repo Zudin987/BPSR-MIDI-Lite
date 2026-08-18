@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.0.1
+
+- Fixed Online Sequencer searches that could return **HTTP 403** on normal desktop/residential connections by using browser-compatible public-request headers, an isolated cookie session, and one safe retry after a homepage warm-up.
+- Added a graceful 403 fallback message that keeps Local MIDI unaffected.
+- Fixed dark mode for the Online Sequencer/Bookmarks tabs, result table body, selected rows, and table headings.
+- **Open on Online Sequencer** now works even with no selected result: it opens the current typed search in the default browser, or the Online Sequencer browser when the search box is empty.
+- Added regression tests for browser headers/403 retry, browser-search fallback, and dark-theme widget coverage.
+
 ## v3.0.0
 
 - Added a built-in **Online Sequencer** browser alongside the existing Local MIDI library.

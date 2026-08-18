@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import tkinter as tk
@@ -7,6 +8,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import ttk
 from typing import Any, Callable
+from urllib.parse import quote_plus
 
 import online_sequencer as osq
 
@@ -628,15 +630,36 @@ def _save_cached_now(app: Any, cached: osq.CachedSequence) -> None:
     app.status_var.set(f"Saved to Local: {target.name}")
 
 
+def _open_external_url(app: Any, url: str) -> None:
+    try:
+        opened = bool(webbrowser.open(url, new=2, autoraise=True))
+        if not opened and os.name == "nt":
+            os.startfile(url)  # type: ignore[attr-defined]
+            opened = True
+    except (OSError, webbrowser.Error):
+        opened = False
+
+    if opened:
+        app.status_var.set("Opened Online Sequencer in your web browser.")
+    else:
+        app.status_var.set("Could not open your web browser.")
+
+
 def open_selected_online(app: Any) -> None:
     sequence_id = _current_action_sequence_id(app)
-    if sequence_id is None:
-        app.status_var.set("Choose an Online Sequencer song first.")
+    if sequence_id is not None:
+        _open_external_url(app, osq.sequence_url(sequence_id))
         return
-    try:
-        webbrowser.open_new_tab(osq.sequence_url(sequence_id))
-    except webbrowser.Error:
-        app.status_var.set("Could not open your web browser.")
+
+    # This is intentionally useful even when in-app search is unavailable. If
+    # the user typed a query, open the equivalent public Online Sequencer search
+    # page; with an empty query, open the sequence browser itself.
+    query = app.online_query_var.get().strip()
+    if query:
+        url = osq.SEARCH_URL.format(query=quote_plus(query))
+    else:
+        url = osq.BASE_URL + "/sequences"
+    _open_external_url(app, url)
 
 
 def load_bookmarks_from_config(app: Any, data: dict[str, Any]) -> None:
