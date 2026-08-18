@@ -20,22 +20,6 @@ jobs:
       - name: Download repository
         uses: actions/checkout@v6
 
-      - name: One-run v3 search parser migration
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/v3.0-online-sequencer' }}
-        shell: pwsh
-        run: |
-          if (Test-Path tools/fix_v300_search_parser.py) {
-            git fetch origin agent/v3.0-online-sequencer
-            git checkout -B agent/v3.0-online-sequencer origin/agent/v3.0-online-sequencer
-            python tools/fix_v300_search_parser.py
-            Remove-Item tools/fix_v300_search_parser.py
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "Fix current Online Sequencer search cards"
-            git push origin HEAD:agent/v3.0-online-sequencer
-          }
-
       - name: Install Python 3.12
         uses: actions/setup-python@v6
         with:
