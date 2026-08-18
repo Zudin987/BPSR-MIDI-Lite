@@ -43,3 +43,5 @@ jobs:
           git add -A
           git commit -m "Integrate Online Sequencer browser and temporary playback"
           git push origin HEAD:agent/v3.0-online-sequencer
+
+# Triggered after the workflow was already present on the feature branch.
