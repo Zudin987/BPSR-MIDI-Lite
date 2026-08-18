@@ -1,5 +1,17 @@
 # Changelog
 
+## v3.0.0
+
+- Added a built-in **Online Sequencer** browser alongside the existing Local MIDI library.
+- Added public title search plus direct Online Sequencer URL / numeric sequence-ID lookup.
+- Online results are converted to temporary standard MIDI and analyzed by the same BPSR planner as Local songs, showing Ready/Busy/Crowded plus Remap/Skip/Filter and playable-note counts before permanent saving.
+- Added direct online playback from a bounded temporary cache; a permanent MIDI download is not required before pressing Play.
+- Added app-local **Bookmarks** and **Save to Local** for permanent/offline MIDI copies.
+- Preserved Online Sequencer note timing/length and tempo markers during conversion; known drum-kit instruments are written to MIDI channel 10 so the existing percussion filter still applies.
+- Added conservative network byte/note limits, lazy result analysis, automatic cache expiry, and failure isolation so Online Sequencer outages/site changes do not break Local playback.
+- Kept Piano/Guitar/Bass fitting, no-page safety, Raw MIDI behavior, BPSR note timing, and keyboard-input backends unchanged.
+- Added parser, conversion, cache-save, generated-MIDI planner, and v3 UI contract tests.
+
 ## v2.5.0
 
 - Added instrument-aware hidden fitting policies based on the confirmed in-game Piano, Guitar, and Bass layouts.
