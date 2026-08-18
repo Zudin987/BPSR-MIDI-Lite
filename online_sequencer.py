@@ -17,9 +17,10 @@ import mido
 
 
 BASE_URL = "https://onlinesequencer.net"
+BROWSE_URL = BASE_URL + "/sequences"
 PROTO_URL = BASE_URL + "/app/api/get_proto.php?id={sequence_id}"
 SEQUENCE_URL = BASE_URL + "/{sequence_id}"
-DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.3 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
+DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.4 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
 
 MAX_PROTO_BYTES = 16 * 1024 * 1024
 MAX_SEQUENCE_NOTES = 75_000

@@ -67,8 +67,7 @@ def test_cloudflare_html_challenge_is_not_treated_as_sequence_data(monkeypatch) 
     assert len(opener.requests) == 1
 
 
-def test_online_modules_have_no_browser_launcher() -> None:
-    assert not hasattr(online_ui, "webbrowser")
+def test_obsolete_browser_launchers_remain_removed() -> None:
     assert not hasattr(online_ui, "find_in_browser")
     assert not hasattr(online_ui, "open_selected_online")
     assert not hasattr(online_ui, "_open_external_url")

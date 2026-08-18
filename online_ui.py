@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import ttk
 from typing import Any, Callable
@@ -22,8 +24,8 @@ def initialize(app: Any) -> None:
     app.online_status_var = tk.StringVar(
         master=app,
         value=(
-            "Paste an Online Sequencer song link or numeric sequence ID. "
-            "It loads here without opening a web browser."
+            "Paste an Online Sequencer song link or numeric sequence ID here. "
+            "It loads into temporary cache for BPSR analysis."
         ),
     )
     app._online_results: dict[int, osq.SearchResult] = {}
@@ -110,7 +112,7 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
 
     online_tab = ttk.Frame(app.song_source_notebook, padding=(8, 10, 8, 8))
     online_tab.columnconfigure(0, weight=1)
-    online_tab.rowconfigure(2, weight=1)
+    online_tab.rowconfigure(3, weight=1)
     app.song_source_notebook.add(online_tab, text="Online Sequencer")
 
     search_row = ttk.Frame(online_tab)
@@ -122,6 +124,11 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     ttk.Button(search_row, text="Load link / ID", command=lambda: search(app)).grid(
         row=0, column=1, padx=(8, 0)
     )
+    ttk.Button(
+        online_tab,
+        text="Find online MIDI ID",
+        command=lambda: find_online_midi_id(app),
+    ).grid(row=1, column=0, sticky="w", pady=(7, 0))
 
     ttk.Label(
         online_tab,
@@ -129,14 +136,14 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
         style="Hint.TLabel",
         wraplength=610,
         justify="left",
-    ).grid(row=1, column=0, sticky="w", pady=(6, 7))
+    ).grid(row=2, column=0, sticky="w", pady=(6, 7))
 
     app.online_tree = _build_result_tree(online_tab)
-    app.online_tree.grid(row=2, column=0, sticky="nsew")
+    app.online_tree.grid(row=3, column=0, sticky="nsew")
     app.online_tree.bind("<<TreeviewSelect>>", lambda _event: _online_selected(app))
 
     online_actions = ttk.Frame(online_tab)
-    online_actions.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    online_actions.grid(row=4, column=0, sticky="ew", pady=(8, 0))
     ttk.Button(online_actions, text="Bookmark", command=lambda: bookmark_selected(app)).pack(side="left")
     ttk.Button(online_actions, text="Save to Local", command=lambda: save_selected_local(app)).pack(
         side="left", padx=(8, 0)
@@ -166,6 +173,7 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     )
 
     app.song_source_notebook.bind("<<NotebookTabChanged>>", lambda _event: _source_tab_changed(app))
+    _schedule_source_notebook_resize(app)
 
 
 def _build_result_tree(parent: Any) -> Any:
@@ -187,6 +195,24 @@ def _build_result_tree(parent: Any) -> Any:
     return tree
 
 
+def _schedule_source_notebook_resize(app: Any) -> None:
+    try:
+        app.after_idle(lambda: _resize_source_notebook(app))
+    except Exception:
+        pass
+
+
+def _resize_source_notebook(app: Any) -> None:
+    """Fit the notebook to the selected tab instead of its largest tab."""
+    try:
+        selected = app.song_source_notebook.select()
+        tab = app.nametowidget(selected)
+        height = max(1, int(tab.winfo_reqheight()))
+        app.song_source_notebook.configure(height=height)
+    except Exception:
+        pass
+
+
 def _source_tab_changed(app: Any) -> None:
     try:
         index = app.song_source_notebook.index(app.song_source_notebook.select())
@@ -194,6 +220,7 @@ def _source_tab_changed(app: Any) -> None:
         return
     source = ("local", "online", "bookmarks")[index]
     app.song_source_var.set(source)
+    _schedule_source_notebook_resize(app)
 
     if source == "local":
         # Refresh now because the folder watcher intentionally sleeps while an
@@ -266,6 +293,25 @@ def search(app: Any) -> None:
         _dispatch(app, lambda results=results: _populate_search(app, generation, results))
 
     _worker(app, work)
+
+
+def find_online_midi_id(app: Any) -> None:
+    """Open the public sequence list only after the user explicitly asks."""
+    try:
+        opened = bool(webbrowser.open(osq.BROWSE_URL, new=2, autoraise=True))
+        if not opened and os.name == "nt":
+            os.startfile(osq.BROWSE_URL)  # type: ignore[attr-defined]
+            opened = True
+    except (OSError, webbrowser.Error):
+        opened = False
+
+    if opened:
+        app.online_status_var.set(
+            "Online Sequencer opened. Choose a song, copy its link or numeric ID, then return here."
+        )
+        app.status_var.set("Find the song ID online, then use Load link / ID in BPSR MIDI Lite.")
+    else:
+        app.online_status_var.set("Could not open Online Sequencer in your web browser.")
 
 
 def _search_failed(app: Any, generation: int, error: Exception) -> None:

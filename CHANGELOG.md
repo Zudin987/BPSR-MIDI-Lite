@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.0.4
+
+- Added one explicit **Find online MIDI ID** button beneath **Load link / ID**; it opens only Online Sequencer's public sequence list.
+- Kept typed titles and **Load link / ID** from opening a browser automatically, avoiding the redundant three-launcher behavior removed in v3.0.3.
+- Made the Song-source notebook resize to the selected tab so Local no longer reserves the empty height needed by the Online results table.
+- Kept Online Sequencer and Bookmarks tall enough for their result tables, and preserved dark-mode styling, direct-ID playback, BPSR analysis, bookmarks, Save to Local, and Local MIDI behavior.
+- Added browser-target, single-launcher, and active-tab height regressions.
+
 ## v3.0.3
 
 - Removed the three redundant browser-opening paths from the Online Sequencer and Bookmarks tabs.

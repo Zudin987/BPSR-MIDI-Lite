@@ -36,11 +36,11 @@ Local playback is completely independent from Online Sequencer and continues to 
 
 ### Online Sequencer
 
-Online Sequencer puts its HTML/title-search page behind a browser challenge and does not publish an app-accessible search API. BPSR MIDI Lite therefore does not scrape the page, bypass the challenge, or open a browser.
+Online Sequencer puts its HTML/title-search page behind a browser challenge and does not publish an app-accessible search API. BPSR MIDI Lite therefore does not scrape the page or bypass the challenge.
 
 To load a song, paste its full Online Sequencer link or numeric sequence ID and click **Load link / ID**. Pressing Enter does the same thing.
 
-Typing a title such as `Taylor` will not open anything. The app explains that title search is unavailable and waits for a link/ID instead.
+If you need to find an ID, click **Find online MIDI ID**. This one explicit browser action opens Online Sequencer's public sequence list. Choose a song there, copy its link or numeric ID, then return to BPSR MIDI Lite. Typing a title such as `Taylor` still does not open anything automatically.
 
 The selected song is checked using the **same BPSR planner used for Local MIDI files**. The result list shows:
 
@@ -64,7 +64,7 @@ A bookmark is not an offline download. If its temporary cache has expired, the a
 
 ### Online service note
 
-Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The app uses the public binary sequence-data endpoint only after you paste a link/ID. It does not open Online Sequencer in a browser and does not ask for or store Online Sequencer login credentials.
+Online Sequencer is a third-party service. BPSR MIDI Lite is not affiliated with or endorsed by Online Sequencer. The app uses the public binary sequence-data endpoint only after you paste a link/ID. It opens Online Sequencer only when you click **Find online MIDI ID**, and it does not ask for or store Online Sequencer login credentials.
 
 If Online Sequencer changes its public sequence-data format or blocks that endpoint, the online feature may need an update; **Local MIDI playback remains unaffected**.
 
