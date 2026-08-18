@@ -78,6 +78,8 @@ def test_parse_sequence_reference_accepts_id_and_public_url() -> None:
 
 
 def test_search_parser_reads_current_preview_cards_and_deduplicates() -> None:
+    # Mirrors the server-rendered preview-card structure verified live before
+    # v3.0.0; titles are attributes and the clickable anchor itself is empty.
     page = """
     <div id="page_right"><div class="right_column">
       <div class="preview" title="Song &amp; One">
