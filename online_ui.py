@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import ttk
@@ -15,15 +16,9 @@ AUTO_ANALYZE_RESULTS = 8
 
 def initialize(app: Any) -> None:
     """Create Online Sequencer state before the Song UI is built."""
-    app.song_source_var = app._modern_module.tk.StringVar(value="local") if hasattr(app._modern_module, "tk") else None
-    # app.py imports tkinter as tk, but modern_ui owns the visible UI. Create
-    # vars using the root's Tk module indirectly only when needed below.
-    if app.song_source_var is None:
-        import tkinter as tk
-        app.song_source_var = tk.StringVar(master=app, value="local")
-    else:
-        import tkinter as tk
-
+    # All Tk variables are created on the UI thread. Background workers receive
+    # plain Python values only and return UI work through _online_ui_queue.
+    app.song_source_var = tk.StringVar(master=app, value="local")
     app.online_query_var = tk.StringVar(master=app)
     app.online_status_var = tk.StringVar(
         master=app,
@@ -38,8 +33,8 @@ def initialize(app: Any) -> None:
     app._online_selected_id: int | None = None
     app._bookmark_selected_id: int | None = None
     app._online_search_generation = 0
-    app._online_fit_generation = 0
     app._online_reanalysis_job: str | None = None
+    app._online_context_generation = 0
     app._online_worker_gate = threading.BoundedSemaphore(2)
     app._online_ui_queue: queue.Queue[Callable[[], None]] = queue.Queue()
     app.after(80, lambda: _drain_ui_queue(app))
@@ -437,11 +432,8 @@ def _fetch_finished(app: Any, cached: osq.CachedSequence) -> None:
 
 
 def _analyze_cached(app: Any, cached: osq.CachedSequence) -> None:
-    app._online_fit_generation += 1
-    # Do not use the global generation for a single fetch: each cached song can
-    # complete independently. Context changes call schedule_reanalysis(), which
-    # replaces these results with fresh ones.
-    context_generation = getattr(app, "_online_context_generation", 0)
+    # Read Tk-backed options on the UI thread before starting the worker.
+    context_generation = app._online_context_generation
     options = app._plan_options()
 
     def work() -> None:
@@ -475,14 +467,14 @@ def _analysis_finished(
     changes: str,
     notes: str,
 ) -> None:
-    if context_generation != getattr(app, "_online_context_generation", 0):
+    if context_generation != app._online_context_generation:
         return
     app._online_fit[sequence_id] = (fit, changes, notes)
     _set_row_status(app, sequence_id, fit, changes, notes)
 
 
 def _analysis_failed(app: Any, sequence_id: int, context_generation: int, error: Exception) -> None:
-    if context_generation != getattr(app, "_online_context_generation", 0):
+    if context_generation != app._online_context_generation:
         return
     app._online_fit[sequence_id] = ("Unavailable", "—", "—")
     _set_row_status(app, sequence_id, "Unavailable", "—", "—")
@@ -543,7 +535,7 @@ def schedule_reanalysis(app: Any, delay_ms: int = 350) -> None:
 
 def _reanalyze_cached(app: Any) -> None:
     app._online_reanalysis_job = None
-    app._online_context_generation = getattr(app, "_online_context_generation", 0) + 1
+    app._online_context_generation += 1
     app._online_fit.clear()
     for cached in list(app._online_cached.values())[:24]:
         _set_row_status(app, cached.sequence_id, "Checking…", "—", f"{cached.note_count:,}")
