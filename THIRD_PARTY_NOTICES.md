@@ -18,4 +18,4 @@ MIDI parsing is provided by the `mido` Python package. See the package distribut
 
 ## Online Sequencer
 
-The Find Songs Online button opens the public sequences webpage in the user's browser. The app does not use an Online Sequencer API, scrape results, or download files automatically.
+BPSR MIDI Lite can fetch public binary sequence data for a user-supplied Online Sequencer link or numeric ID. It does not scrape title-search pages, bypass browser challenges, open Online Sequencer in a browser, or request login credentials.

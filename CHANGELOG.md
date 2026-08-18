@@ -1,5 +1,14 @@
 # Changelog
 
+## v3.0.3
+
+- Removed the three redundant browser-opening paths from the Online Sequencer and Bookmarks tabs.
+- Replaced **Check link / ID** plus **Find in browser** with one honest **Load link / ID** action that never opens a browser.
+- A typed title now stays inside BPSR MIDI Lite and clearly explains that Online Sequencer does not publish an app-accessible title-search API.
+- Kept direct link/ID playback, automatic BPSR fit analysis, temporary cache, bookmarks, Save to Local, Local MIDI isolation, and dark-mode table/notebook colors unchanged.
+- Removed the older hidden/legacy **Find Songs Online** browser action as well, so the application has no Online Sequencer browser launcher.
+- Added regressions for the one-action UI, no-browser behavior, direct link/ID resolution, Cloudflare data rejection, and dark mode.
+
 ## v3.0.2
 
 - Replaced blocked in-app HTML search scraping with a browser-assisted search flow after Online Sequencer put its search/pages behind a Cloudflare browser challenge.

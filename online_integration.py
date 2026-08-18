@@ -63,7 +63,7 @@ def _replace_song_picker(self: Any) -> None:
     ttk.Label(
         songs,
         text=(
-            "Local keeps permanent MIDI files. Online Sequencer can search/check/play from temporary cache. "
+            "Local keeps permanent MIDI files. Online Sequencer loads a direct link/ID into temporary cache. "
             "Bookmarks remember online songs; Save to Local keeps an offline MIDI copy."
         ),
         style="Hint.TLabel",

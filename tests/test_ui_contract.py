@@ -69,13 +69,14 @@ def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
 
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
-    assert 'app.APP_VERSION = "3.0.2"' in launcher
+    assert 'app.APP_VERSION = "3.0.3"' in launcher
     assert "_online_original_build_ui" in integration
     assert "online_ui.build_song_source_ui" in integration
     assert 'text="Online Sequencer"' in online
     assert 'text="Bookmarks"' in online
-    assert 'text="Check link / ID"' in online
-    assert 'text="Find in browser"' in online
+    assert 'text="Load link / ID"' in online
+    assert 'text="Find in browser"' not in online
+    assert 'text="Open on Online Sequencer"' not in online
     assert 'text="Save to Local"' in online
     assert 'text="Bookmark"' in online
     assert "Temporary online cache" in online

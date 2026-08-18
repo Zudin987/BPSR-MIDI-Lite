@@ -8,12 +8,11 @@ import pytest
 
 from midi_engine import PlanOptions, build_plan
 from online_sequencer import (
-    BrowserSearchRequired,
     CachedSequence,
+    OnlineSequencerError,
     parse_sequence_reference,
     save_cached_sequence,
     search_sequences,
-    search_url,
     sequence_proto_to_midi,
 )
 
@@ -93,11 +92,10 @@ def test_direct_reference_resolution_never_scrapes_an_html_page(monkeypatch) -> 
     assert results[0].title == "Sequence #123456"
 
 
-def test_title_search_hands_off_to_a_real_browser() -> None:
-    with pytest.raises(BrowserSearchRequired) as error:
+def test_title_text_is_rejected_without_browser_handoff() -> None:
+    with pytest.raises(OnlineSequencerError, match="does not provide an app-accessible title-search API") as error:
         search_sequences("Taylor Swift")
-    assert error.value.url == "https://onlinesequencer.net/sequences?search=Taylor+Swift"
-    assert search_url("") == "https://onlinesequencer.net/sequences"
+    assert "no browser was opened" in str(error.value)
 
 
 def test_proto_conversion_creates_standard_midi_and_preserves_tempo(tmp_path: Path) -> None:

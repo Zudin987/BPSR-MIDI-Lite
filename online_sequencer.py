@@ -10,17 +10,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qs, quote_plus, urlparse
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, build_opener
 
 import mido
 
 
 BASE_URL = "https://onlinesequencer.net"
-SEARCH_URL = BASE_URL + "/sequences?search={query}"
 PROTO_URL = BASE_URL + "/app/api/get_proto.php?id={sequence_id}"
 SEQUENCE_URL = BASE_URL + "/{sequence_id}"
-DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.2 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
+DATA_USER_AGENT = "BPSR-MIDI-Lite/3.0.3 (+https://github.com/Zudin987/BPSR-MIDI-Lite)"
 
 MAX_PROTO_BYTES = 16 * 1024 * 1024
 MAX_SEQUENCE_NOTES = 75_000
@@ -37,18 +36,6 @@ _INVALID_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 class OnlineSequencerError(RuntimeError):
     """A friendly failure from the optional Online Sequencer integration."""
-
-
-class BrowserSearchRequired(OnlineSequencerError):
-    """Title search must run in a real browser because the site challenges HTML clients."""
-
-    def __init__(self, query: str) -> None:
-        self.query = query
-        self.url = search_url(query)
-        super().__init__(
-            "Online Sequencer title search now requires a web browser. "
-            "Find the song there, then paste its link or sequence ID into BPSR MIDI Lite."
-        )
 
 
 class SequenceTooLargeError(OnlineSequencerError):
@@ -99,11 +86,6 @@ class _TempoMarker:
 
 def sequence_url(sequence_id: int) -> str:
     return SEQUENCE_URL.format(sequence_id=int(sequence_id))
-
-
-def search_url(query: str) -> str:
-    value = query.strip()
-    return SEARCH_URL.format(query=quote_plus(value)) if value else BASE_URL + "/sequences"
 
 
 def cache_directory() -> Path:
@@ -160,7 +142,7 @@ def _read_data_url(opener: object, url: str, *, timeout: float, max_bytes: int) 
         challenged = str(response.headers.get("Cf-Mitigated", "")).casefold() == "challenge"
         if challenged or ("text/html" in content_type and data.lstrip().startswith(b"<")):
             raise OnlineSequencerError(
-                "Online Sequencer requires this request to run in a web browser. Local MIDI still works normally."
+                "Online Sequencer blocked access to this sequence's public data. Local MIDI still works normally."
             )
     if len(data) > max_bytes:
         raise OnlineSequencerError("Online Sequencer returned a file that is too large.")
@@ -177,7 +159,7 @@ def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
         if error.code == 403:
             raise OnlineSequencerError(
                 "Online Sequencer blocked access to this sequence's public data. "
-                "Open the song in your browser, or use Local MIDI."
+                "Try again later, or use Local MIDI."
             ) from error
         raise OnlineSequencerError(f"Online Sequencer returned HTTP {error.code}.") from error
     except (URLError, TimeoutError, OSError) as exc:
@@ -185,14 +167,15 @@ def _request_bytes(url: str, *, timeout: float, max_bytes: int) -> bytes:
 
 
 def search_sequences(query: str) -> list[SearchResult]:
-    """Resolve a pasted public sequence reference without scraping HTML pages."""
+    """Resolve a pasted public sequence reference without opening or scraping HTML pages."""
     value = query.strip()
     direct_id = parse_sequence_reference(value)
     if direct_id is not None:
         return [SearchResult(direct_id, f"Sequence #{direct_id}")]
-    if len(value) < 3:
-        raise OnlineSequencerError("Enter at least 3 characters, or paste an Online Sequencer link / sequence ID.")
-    raise BrowserSearchRequired(value)
+    raise OnlineSequencerError(
+        "Online Sequencer does not provide an app-accessible title-search API. "
+        "Paste a song link or numeric sequence ID; no browser was opened."
+    )
 
 
 def _read_varint(data: bytes, index: int) -> tuple[int, int]:

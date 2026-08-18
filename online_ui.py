@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import os
 import queue
 import threading
 import tkinter as tk
-import webbrowser
 from pathlib import Path
 from tkinter import ttk
 from typing import Any, Callable
@@ -24,8 +22,8 @@ def initialize(app: Any) -> None:
     app.online_status_var = tk.StringVar(
         master=app,
         value=(
-            "Find a song in your browser, then paste its Online Sequencer link or sequence ID here. "
-            "BPSR MIDI Lite will check it against your current instrument/category."
+            "Paste an Online Sequencer song link or numeric sequence ID. "
+            "It loads here without opening a web browser."
         ),
     )
     app._online_results: dict[int, osq.SearchResult] = {}
@@ -121,11 +119,8 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     app.online_search_entry = ttk.Entry(search_row, textvariable=app.online_query_var)
     app.online_search_entry.grid(row=0, column=0, sticky="ew")
     app.online_search_entry.bind("<Return>", lambda _event: search(app))
-    ttk.Button(search_row, text="Check link / ID", command=lambda: search(app)).grid(
+    ttk.Button(search_row, text="Load link / ID", command=lambda: search(app)).grid(
         row=0, column=1, padx=(8, 0)
-    )
-    ttk.Button(search_row, text="Find in browser", command=lambda: find_in_browser(app)).grid(
-        row=0, column=2, padx=(8, 0)
     )
 
     ttk.Label(
@@ -146,11 +141,6 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     ttk.Button(online_actions, text="Save to Local", command=lambda: save_selected_local(app)).pack(
         side="left", padx=(8, 0)
     )
-    ttk.Button(
-        online_actions,
-        text="Open on Online Sequencer",
-        command=lambda: open_selected_online(app),
-    ).pack(side="left", padx=(8, 0))
 
     bookmarks_tab = ttk.Frame(app.song_source_notebook, padding=(8, 10, 8, 8))
     bookmarks_tab.columnconfigure(0, weight=1)
@@ -174,11 +164,6 @@ def build_song_source_ui(app: Any, songs: Any) -> None:
     ttk.Button(bookmark_actions, text="Save to Local", command=lambda: save_selected_local(app)).pack(
         side="left", padx=(8, 0)
     )
-    ttk.Button(
-        bookmark_actions,
-        text="Open on Online Sequencer",
-        command=lambda: open_selected_online(app),
-    ).pack(side="left", padx=(8, 0))
 
     app.song_source_notebook.bind("<<NotebookTabChanged>>", lambda _event: _source_tab_changed(app))
 
@@ -230,7 +215,7 @@ def _source_tab_changed(app: Any) -> None:
             _ensure_result_ready(app, selected)
         else:
             _clear_current_song(app)
-            app.status_var.set("Search Online Sequencer and choose a song.")
+            app.status_var.set("Paste an Online Sequencer link or numeric ID, then load the song.")
         return
 
     refresh_bookmarks(app)
@@ -264,19 +249,12 @@ def search(app: Any) -> None:
         app.online_status_var.set("Paste an Online Sequencer song link or numeric sequence ID first.")
         return
 
-    # Cloudflare now challenges Online Sequencer HTML/search pages. A real
-    # browser is the supported place for title search; direct public sequence
-    # data remains loadable here once the user chooses a link/ID.
-    if osq.parse_sequence_reference(query) is None:
-        find_in_browser(app)
-        return
-
     app._online_search_generation += 1
     generation = app._online_search_generation
     app._online_results.clear()
     for item in app.online_tree.get_children():
         app.online_tree.delete(item)
-    app.online_status_var.set("Searching Online Sequencer…")
+    app.online_status_var.set("Loading Online Sequencer song…")
     _clear_current_song(app)
 
     def work() -> None:
@@ -290,27 +268,11 @@ def search(app: Any) -> None:
     _worker(app, work)
 
 
-def find_in_browser(app: Any) -> None:
-    query = app.online_query_var.get().strip()
-    sequence_id = osq.parse_sequence_reference(query)
-    url = osq.sequence_url(sequence_id) if sequence_id is not None else osq.search_url(query)
-    opened = _open_external_url(app, url)
-    if not opened:
-        return
-    if sequence_id is not None:
-        app.online_status_var.set("Opened this sequence on Online Sequencer in your web browser.")
-        return
-    app.online_status_var.set(
-        "Search opened in your browser. Choose a song, copy its address, then paste it here and click Check link / ID."
-    )
-    app.status_var.set("Online Sequencer search opened in your web browser; Local MIDI remains available here.")
-
-
 def _search_failed(app: Any, generation: int, error: Exception) -> None:
     if generation != app._online_search_generation:
         return
     app.online_status_var.set(str(error))
-    app.status_var.set("Online search unavailable. Local songs still work normally.")
+    app.status_var.set("Online song was not loaded. Local songs still work normally.")
 
 
 def _result_title(result: osq.SearchResult) -> str:
@@ -324,7 +286,7 @@ def _populate_search(app: Any, generation: int, results: list[osq.SearchResult])
         return
     app._online_results = {result.sequence_id: result for result in results}
     app.online_status_var.set(
-        f"Found {len(results)} result(s). Top results are checked automatically; selecting another result checks it on demand."
+        f"Loaded {len(results)} song(s). BPSR fit is checked automatically."
     )
 
     for index, result in enumerate(results):
@@ -660,33 +622,6 @@ def _save_cached_now(app: Any, cached: osq.CachedSequence) -> None:
     app.status_var.set(f"Saved to Local: {target.name}")
 
 
-def _open_external_url(app: Any, url: str) -> bool:
-    try:
-        opened = bool(webbrowser.open(url, new=2, autoraise=True))
-        if not opened and os.name == "nt":
-            os.startfile(url)  # type: ignore[attr-defined]
-            opened = True
-    except (OSError, webbrowser.Error):
-        opened = False
-
-    if opened:
-        app.status_var.set("Opened Online Sequencer in your web browser.")
-    else:
-        app.status_var.set("Could not open your web browser.")
-    return opened
-
-
-def open_selected_online(app: Any) -> None:
-    sequence_id = _current_action_sequence_id(app)
-    if sequence_id is not None:
-        _open_external_url(app, osq.sequence_url(sequence_id))
-        return
-
-    # With no selected result, reuse the browser-assisted flow. A pasted ID/link
-    # opens that sequence; title text opens the real search page.
-    find_in_browser(app)
-
-
 def load_bookmarks_from_config(app: Any, data: dict[str, Any]) -> None:
     app._online_bookmarks.clear()
     raw = data.get("online_bookmarks", [])
@@ -726,7 +661,7 @@ def save_bookmarks_to_config(app: Any, data: dict[str, Any]) -> None:
 def empty_selection_message(app: Any) -> tuple[str, str]:
     source = app.song_source_var.get()
     if source == "online":
-        return "Choose an online song", "Search Online Sequencer and select a result. It is cached temporarily, not saved permanently."
+        return "Choose an online song", "Paste an Online Sequencer link or numeric ID. It is cached temporarily, not saved permanently."
     if source == "bookmarks":
         return "Choose a bookmark", "Select a bookmarked Online Sequencer song, or bookmark one from the Online Sequencer tab first."
     return "Add a MIDI song to begin", "Open the song folder and copy in a .mid or .midi file."
