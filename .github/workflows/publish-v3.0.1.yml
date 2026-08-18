@@ -1,0 +1,86 @@
+name: Publish v3.0.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/publish-v3.0.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    steps:
+      - name: Check out merged v3.0.1 source
+        uses: actions/checkout@v6
+        with:
+          ref: ccee4c822b34ed966c8a544510c9eb18b28ae373
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest -q
+
+      - name: Build standalone EXE
+        shell: pwsh
+        run: pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
+
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe release/BPSR-MIDI-Lite.exe
+
+          New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe portable/BPSR-MIDI-Lite/BPSR-MIDI-Lite.exe
+          Copy-Item README.md portable/BPSR-MIDI-Lite/README.md
+          Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.md portable/BPSR-MIDI-Lite/THIRD_PARTY_NOTICES.md
+
+          Compress-Archive -Path portable/BPSR-MIDI-Lite -DestinationPath release/BPSR-MIDI-Lite-Windows-x64.zip -Force
+
+          $hashExe = (Get-FileHash release/BPSR-MIDI-Lite.exe -Algorithm SHA256).Hash.ToLower()
+          $hashZip = (Get-FileHash release/BPSR-MIDI-Lite-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hashExe  BPSR-MIDI-Lite.exe" | Set-Content release/SHA256SUMS.txt
+          "$hashZip  BPSR-MIDI-Lite-Windows-x64.zip" | Add-Content release/SHA256SUMS.txt
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @'
+          # BPSR MIDI Lite v3.0.1
+
+          Regression fixes for the new Online Sequencer integration:
+
+          - Fixes in-app Online Sequencer requests that could return HTTP 403 on normal desktop/residential connections by using browser-compatible request headers, an isolated cookie session, and one safe retry after a public homepage warm-up.
+          - Fixes the bright white Online Sequencer/Bookmarks result table and light notebook tabs in dark mode.
+          - Open on Online Sequencer now opens the selected sequence when available; if search failed or nothing is selected, it opens the current typed search in the default browser instead.
+          - Adds a Windows browser-launch fallback when Python's normal webbrowser handler reports failure.
+          - Local MIDI playback remains independent from Online Sequencer.
+          - Adds offline regression tests for 403 retry/header behavior, browser-search fallback, and dark-theme widget styling.
+          '@ | Set-Content release-notes.md
+
+          gh release create v3.0.1 `
+            release/BPSR-MIDI-Lite.exe `
+            release/BPSR-MIDI-Lite-Windows-x64.zip `
+            release/SHA256SUMS.txt `
+            --target ccee4c822b34ed966c8a544510c9eb18b28ae373 `
+            --title "BPSR MIDI Lite v3.0.1" `
+            --notes-file release-notes.md
