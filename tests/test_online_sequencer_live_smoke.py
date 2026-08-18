@@ -1,15 +1,43 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from midi_engine import PlanOptions, build_plan
-from online_sequencer import fetch_sequence_to_cache, search_sequences
+from online_sequencer import (
+    MAX_SEARCH_BYTES,
+    SEARCH_URL,
+    _request_bytes,
+    fetch_sequence_to_cache,
+    parse_search_results,
+)
+
+
+def _debug_search_markup(page: str) -> None:
+    print("ONLINE_SEARCH_PAGE_LENGTH", len(page))
+    lowered = page.casefold()
+    for needle in ("zelda", "notes", "sequence", "data-id", "onclick", "href"):
+        positions = [match.start() for match in re.finditer(re.escape(needle), lowered)][:8]
+        print("NEEDLE", needle, "COUNT_SHOWN", len(positions))
+        for pos in positions:
+            start = max(0, pos - 260)
+            end = min(len(page), pos + 520)
+            snippet = re.sub(r"\s+", " ", page[start:end])
+            print("SNIPPET", needle, snippet[:900])
 
 
 def test_live_online_sequencer_search_fetch_and_plan(tmp_path: Path) -> None:
-    # Temporary pre-release smoke test. It will be removed before merge so
+    # Temporary pre-release smoke/debug test. It will be removed before merge so
     # normal project CI never depends on third-party service availability.
-    results = search_sequences("zelda", limit=3)
+    raw = _request_bytes(
+        SEARCH_URL.format(query="zelda"),
+        timeout=8.0,
+        max_bytes=MAX_SEARCH_BYTES,
+    )
+    page = raw.decode("utf-8", errors="replace")
+    results = parse_search_results(page, limit=3)
+    if not results:
+        _debug_search_markup(page)
     assert results, "Online Sequencer title search returned no parseable results"
 
     first = results[0]
