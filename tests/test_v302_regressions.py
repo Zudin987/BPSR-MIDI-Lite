@@ -61,89 +61,17 @@ def test_cloudflare_html_challenge_is_not_treated_as_sequence_data(monkeypatch) 
     )
     monkeypatch.setattr(osq, "build_opener", lambda: opener)
 
-    with pytest.raises(osq.OnlineSequencerError, match="web browser"):
+    with pytest.raises(osq.OnlineSequencerError, match="blocked access"):
         osq._request_bytes(osq.PROTO_URL.format(sequence_id=123), timeout=3.0, max_bytes=1024)
 
     assert len(opener.requests) == 1
 
 
-class _Var:
-    def __init__(self, value: str) -> None:
-        self.value = value
-
-    def get(self) -> str:
-        return self.value
-
-
-class _Tree:
-    def selection(self):
-        return ()
-
-
-class _Status:
-    def __init__(self) -> None:
-        self.value = ""
-
-    def set(self, value: str) -> None:
-        self.value = value
-
-
-class _App:
-    def __init__(self, query: str) -> None:
-        self.song_source_var = _Var("online")
-        self.online_query_var = _Var(query)
-        self.online_tree = _Tree()
-        self.bookmark_tree = _Tree()
-        self.online_status_var = _Status()
-        self.status_var = _Status()
-
-
-def test_title_search_opens_browser_and_explains_the_copy_link_flow(monkeypatch) -> None:
-    opened = []
-    monkeypatch.setattr(online_ui.webbrowser, "open", lambda url, **_kwargs: opened.append(url) or True)
-    app = _App("Taylor Swift")
-
-    online_ui.search(app)
-
-    assert opened == [osq.search_url("Taylor Swift")]
-    assert "copy its address" in app.online_status_var.value
-    assert "Local MIDI remains available" in app.status_var.value
-
-
-def test_find_in_browser_opens_a_pasted_sequence_directly(monkeypatch) -> None:
-    opened = []
-    monkeypatch.setattr(online_ui.webbrowser, "open", lambda url, **_kwargs: opened.append(url) or True)
-    app = _App("https://onlinesequencer.net/2553987")
-
-    online_ui.find_in_browser(app)
-
-    assert opened == [osq.sequence_url(2553987)]
-    assert "Opened this sequence" in app.online_status_var.value
-
-
-def test_browser_open_uses_windows_fallback_when_standard_open_returns_false(monkeypatch) -> None:
-    fallback = []
-    monkeypatch.setattr(online_ui.webbrowser, "open", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(online_ui.os, "name", "nt")
-    monkeypatch.setattr(online_ui.os, "startfile", lambda url: fallback.append(url), raising=False)
-    app = _App("")
-
-    opened = online_ui._open_external_url(app, osq.BASE_URL)
-
-    assert opened is True
-    assert fallback == [osq.BASE_URL]
-    assert "Opened Online Sequencer" in app.status_var.value
-
-
-def test_open_online_uses_current_query_when_no_result_is_selected(monkeypatch) -> None:
-    opened = []
-    monkeypatch.setattr(online_ui.webbrowser, "open", lambda url, **_kwargs: opened.append(url) or True)
-    app = _App("Taylor Swift")
-
-    online_ui.open_selected_online(app)
-
-    assert opened == [osq.search_url("Taylor Swift")]
-    assert "search opened" in app.status_var.value
+def test_online_modules_have_no_browser_launcher() -> None:
+    assert not hasattr(online_ui, "webbrowser")
+    assert not hasattr(online_ui, "find_in_browser")
+    assert not hasattr(online_ui, "open_selected_online")
+    assert not hasattr(online_ui, "_open_external_url")
 
 
 class _Root:

@@ -9,7 +9,6 @@ import subprocess
 import sys
 import time
 import tkinter as tk
-import webbrowser
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -317,20 +316,17 @@ class App(tk.Tk):
         )
         self.midi_combo.grid(row=0, column=0, sticky="ew")
         self.midi_combo.bind("<<ComboboxSelected>>", lambda _event: self._midi_selected())
-        ttk.Button(file_frame, text="Find Songs Online", command=self._open_online_sequencer).grid(
+        ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
             row=0, column=1, padx=(8, 0)
         )
-        ttk.Button(file_frame, text="Open Folder", command=self._open_midi_folder).grid(
-            row=0, column=2, padx=(8, 0)
-        )
         ttk.Button(file_frame, text="Reload", command=self._reload_midi_library).grid(
-            row=0, column=3, padx=(8, 0)
+            row=0, column=2, padx=(8, 0)
         )
         ttk.Label(
             file_frame,
             textvariable=self.midi_folder_var,
             style="Hint.TLabel",
-        ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(7, 0))
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(7, 0))
         ttk.Label(
             file_frame,
             text=(
@@ -909,15 +905,6 @@ class App(tk.Tk):
             use_sustain_pedal=bool(self.pedal_var.get()),
             ignore_percussion=bool(self.percussion_var.get()),
         )
-
-    def _open_online_sequencer(self) -> None:
-        try:
-            webbrowser.open_new("https://onlinesequencer.net/sequences")
-            self.status_var.set(
-                "Online Sequencer opened in your browser. Download a MIDI, put it in the MIDI folder, then press Reload."
-            )
-        except webbrowser.Error as exc:
-            messagebox.showerror(APP_NAME, f"Could not open the browser:\n{exc}")
 
     def _open_midi_folder(self) -> None:
         folder = Path(self.midi_folder_var.get())
