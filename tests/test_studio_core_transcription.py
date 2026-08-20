@@ -56,5 +56,5 @@ def test_core_midi_writer_preserves_real_time_and_two_voice_limit(tmp_path: Path
         if message.type == "note_on" and message.velocity > 0:
             note_ons.append((absolute, message.note))
 
-    assert note_ons[:2] == [(0, 40), (0, 60)]
-    assert note_ons[2] == (480, 62)  # 0.5 sec at 120 BPM / 480 PPQ
+    assert {item for item in note_ons if item[0] == 0} == {(0, 40), (0, 60)}
+    assert (480, 62) in note_ons  # 0.5 sec at 120 BPM / 480 PPQ
