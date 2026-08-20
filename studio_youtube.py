@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -8,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -20,10 +22,13 @@ YTDLP_EXE_URL = (
 YTDLP_SUMS_URL = (
     "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/SHA2-256SUMS"
 )
+DENO_ZIP_NAME = "deno-x86_64-pc-windows-msvc.zip"
+DENO_ZIP_URL = f"https://github.com/denoland/deno/releases/latest/download/{DENO_ZIP_NAME}"
+DENO_SUM_URL = DENO_ZIP_URL + ".sha256sum"
 USER_AGENT = "BPSR-MIDI-Studio/0.1"
 TOP_RESULTS = 3
 MAX_VIDEO_SECONDS = 15 * 60
-MAX_COMPONENT_BYTES = 48 * 1024 * 1024
+MAX_COMPONENT_BYTES = 96 * 1024 * 1024
 COMPONENT_REFRESH_SECONDS = 3 * 24 * 60 * 60
 CACHE_MAX_AGE_SECONDS = 2 * 24 * 60 * 60
 CACHE_MAX_BYTES = 512 * 1024 * 1024
@@ -115,6 +120,35 @@ def _install_latest_ytdlp(target: Path) -> None:
     os.replace(tmp, target)
 
 
+def _expected_deno_sha256() -> str:
+    checksum = _request_bytes(DENO_SUM_URL, max_bytes=256 * 1024).decode(
+        "utf-8", errors="replace"
+    )
+    match = re.search(r"(?im)^([0-9a-f]{64})\s+\*?deno-x86_64-pc-windows-msvc\.zip\s*$", checksum)
+    if not match:
+        raise StudioError("Could not verify the Deno runtime download.")
+    return match.group(1).lower()
+
+
+def _install_latest_deno(target: Path) -> None:
+    expected = _expected_deno_sha256()
+    data = _request_bytes(DENO_ZIP_URL, max_bytes=MAX_COMPONENT_BYTES)
+    actual = hashlib.sha256(data).hexdigest()
+    if actual != expected:
+        raise StudioError("The Deno runtime download failed its SHA-256 verification.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            member = archive.getinfo("deno.exe")
+            if member.file_size > 160 * 1024 * 1024:
+                raise StudioError("The Deno runtime archive was unexpectedly large.")
+            extracted = archive.read(member)
+    except (KeyError, zipfile.BadZipFile) as exc:
+        raise StudioError("The Deno runtime archive was invalid.") from exc
+    tmp = target.with_suffix(".tmp")
+    tmp.write_bytes(extracted)
+    os.replace(tmp, target)
+
+
 def ensure_ytdlp(progress: _PROGRESS | None = None) -> Path:
     target = component_directory() / "yt-dlp.exe"
     stale = True
@@ -139,6 +173,37 @@ def ensure_ytdlp(progress: _PROGRESS | None = None) -> Path:
             return target
         raise
     return target
+
+
+def ensure_deno(progress: _PROGRESS | None = None) -> Path:
+    """Keep the JS runtime yt-dlp now requires for full YouTube support."""
+    target = component_directory() / "deno.exe"
+    stale = True
+    if target.exists():
+        try:
+            stale = (time.time() - target.stat().st_mtime) > 14 * 24 * 60 * 60
+        except OSError:
+            stale = True
+    if target.exists() and not stale:
+        return target
+
+    if progress is not None:
+        progress(
+            "Preparing YouTube JavaScript support…"
+            if not target.exists()
+            else "Refreshing YouTube JavaScript support…"
+        )
+    try:
+        _install_latest_deno(target)
+    except StudioError:
+        if target.exists():
+            return target
+        raise
+    return target
+
+
+def ensure_youtube_components(progress: _PROGRESS | None = None) -> tuple[Path, Path]:
+    return ensure_ytdlp(progress), ensure_deno(progress)
 
 
 def _creation_flags() -> int:
@@ -233,7 +298,7 @@ def search_youtube(
     value = " ".join(query.split()).strip()
     if len(value) < 2:
         raise StudioError("Type at least 2 characters to search YouTube.")
-    executable = ensure_ytdlp(progress)
+    executable, deno = ensure_youtube_components(progress)
     count = max(1, min(TOP_RESULTS, int(limit)))
     if progress is not None:
         progress("Searching YouTube…")
@@ -242,6 +307,8 @@ def search_youtube(
         [
             "--ignore-config",
             "--no-warnings",
+            "--js-runtimes",
+            f"deno:{deno}",
             "--flat-playlist",
             "--dump-json",
             "--playlist-end",
@@ -300,7 +367,7 @@ def _download_audio(
     if result.duration_seconds is not None and result.duration_seconds > MAX_VIDEO_SECONDS:
         raise StudioError("This video is over 15 minutes. Choose a normal song-length upload.")
 
-    executable = ensure_ytdlp(progress)
+    executable, deno = ensure_youtube_components(progress)
     ffmpeg = _ffmpeg_executable()
     if progress is not None:
         progress("Getting audio from YouTube…")
@@ -311,6 +378,8 @@ def _download_audio(
             "--ignore-config",
             "--no-playlist",
             "--no-warnings",
+            "--js-runtimes",
+            f"deno:{deno}",
             "--max-filesize",
             "180M",
             "-f",
