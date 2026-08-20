@@ -86,7 +86,8 @@ jobs:
           $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
           if ($listing -notmatch '(?i)\.onnx') { throw "Basic Pitch ONNX model was not embedded in the EXE" }
           if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg executable was not embedded in the EXE" }
-          if ($listing -notmatch 'studio_core_transcription') { throw "Studio core transcription cleanup was not embedded in the EXE" }
+          $analysis = Get-Content "build/BPSR-MIDI-Studio/Analysis-00.toc" -Raw
+          if ($analysis -notmatch 'studio_core_transcription') { throw "PyInstaller did not discover the Studio core transcription module" }
           $size = (Get-Item "dist/BPSR-MIDI-Studio.exe").Length
           if ($size -lt 50000000) { throw "Studio EXE is unexpectedly small; bundled runtime may be missing" }
           Write-Host "Studio single EXE size: $size bytes"
