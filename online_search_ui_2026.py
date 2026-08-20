@@ -40,6 +40,16 @@ def _build_song_source_ui(app: Any, songs: Any) -> None:
         pass
 
 
+def _search(app: Any) -> None:
+    query = app.online_query_var.get().strip()
+    if not query:
+        app.online_status_var.set("Enter a song title, sequence link, or numeric ID first.")
+        return
+    _ORIGINAL_SEARCH(app)
+    app.online_status_var.set("Searching Online Sequencer…")
+    app.status_var.set("Searching Online Sequencer in the background…")
+
+
 def _find_online_midi_id(app: Any) -> None:
     """One-time browser verification fallback; never asks users to copy anything."""
     query = app.online_query_var.get().strip()
@@ -68,6 +78,7 @@ def install_online_search_ui_2026() -> None:
         return
     online_ui.initialize = _initialize
     online_ui.build_song_source_ui = _build_song_source_ui
+    online_ui.search = _search
     online_ui.find_online_midi_id = _find_online_midi_id
     online_ui._source_tab_changed = _source_tab_changed
     online_ui._search_ui_2026_installed = True
@@ -75,4 +86,5 @@ def install_online_search_ui_2026() -> None:
 
 _ORIGINAL_INITIALIZE = online_ui.initialize
 _ORIGINAL_BUILD = online_ui.build_song_source_ui
+_ORIGINAL_SEARCH = online_ui.search
 _ORIGINAL_SOURCE_CHANGED = online_ui._source_tab_changed
