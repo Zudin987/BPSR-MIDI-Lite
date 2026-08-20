@@ -22,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional Studio version, for example 0.1.1-beta. Leave blank to build only."
+        description: "Optional existing Lite release tag, for example v3.0.7. Leave blank to build only."
         required: false
         type: string
 
@@ -86,6 +86,7 @@ jobs:
           $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
           if ($listing -notmatch '(?i)\.onnx') { throw "Basic Pitch ONNX model was not embedded in the EXE" }
           if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg executable was not embedded in the EXE" }
+          if ($listing -notmatch 'studio_core_transcription') { throw "Studio core transcription cleanup was not embedded in the EXE" }
           $size = (Get-Item "dist/BPSR-MIDI-Studio.exe").Length
           if ($size -lt 50000000) { throw "Studio EXE is unexpectedly small; bundled runtime may be missing" }
           Write-Host "Studio single EXE size: $size bytes"
@@ -94,40 +95,31 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release-studio | Out-Null
-          Copy-Item "dist/BPSR-MIDI-Studio.exe" "release-studio/BPSR-MIDI-Studio.exe"
+          Copy-Item "dist/BPSR-MIDI-Studio.exe" "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
           Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
-          $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  BPSR-MIDI-Studio.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+          $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
 
       - name: Upload Studio artifact
         uses: actions/upload-artifact@v6
         with:
-          name: BPSR-MIDI-Studio-Windows
+          name: BPSR-MIDI-Studio-Experimental-Beta-Windows
           path: release-studio/*
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish Studio release when requested
+      - name: Attach Studio experimental beta to an existing Lite release when requested
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          STUDIO_VERSION: ${{ inputs.release_version }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
-          $version = $env:STUDIO_VERSION.Trim()
-          if ($version.StartsWith("studio-v")) {
-            $tag = $version
-          } elseif ($version.StartsWith("v")) {
-            $tag = "studio-$version"
-          } else {
-            $tag = "studio-v$version"
-          }
-
-          gh release create $tag `
-            release-studio/BPSR-MIDI-Studio.exe `
+          $tag = $env:RELEASE_VERSION.Trim()
+          if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          gh release view $tag | Out-Null
+          gh release upload $tag `
+            release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
             release-studio/SHA256SUMS-STUDIO.txt `
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
-            --target $env:GITHUB_SHA `
-            --title "BPSR MIDI Studio $version" `
-            --notes-file STUDIO_CHANGELOG.md `
-            --prerelease
+            --clobber
