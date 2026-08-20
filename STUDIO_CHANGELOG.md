@@ -8,6 +8,7 @@
 - Added temporary audio cleanup and generated-MIDI cache.
 - Added Save MIDI to keep a conversion in the normal Local library.
 - Added periodically refreshed, SHA-256-verified yt-dlp nightly helper download.
+- Added automatic SHA-256-verified Deno runtime download because current yt-dlp requires an external JavaScript runtime for full YouTube support.
 - Added bundled FFmpeg support through imageio-ffmpeg.
 - Added Spotify Basic Pitch 0.4.0 ONNX transcription in the Studio build.
 - No account login/cookies are requested or stored.
