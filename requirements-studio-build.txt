@@ -1,0 +1,4 @@
+-r requirements-studio.txt
+pyinstaller>=6.11,<7
+pillow>=11,<13
+pytest>=8,<10
