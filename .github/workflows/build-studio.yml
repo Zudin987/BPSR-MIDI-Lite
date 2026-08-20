@@ -56,6 +56,17 @@ jobs:
           python -c "import onnxruntime as ort; print('ONNX providers:', ort.get_available_providers())"
           python -c "from imageio_ffmpeg import get_ffmpeg_exe; import os; p=get_ffmpeg_exe(); print('FFmpeg:', p); assert os.path.exists(p)"
 
+      - name: Verify first-use YouTube components
+        shell: pwsh
+        run: |
+          python -c "import studio_youtube as s, subprocess; y,d=s.ensure_youtube_components(print); print('yt-dlp:', subprocess.check_output([str(y), '--version'], text=True).strip()); print('Deno:', subprocess.check_output([str(d), '--version'], text=True).splitlines()[0])"
+
+      - name: Live YouTube search smoke test
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -c "import studio_youtube as s; r=s.search_youtube('Blue Protocol Star Resonance music', limit=1, progress=print); print('Search result:', r[0].title, r[0].url)"
+
       - name: Run tests
         shell: pwsh
         run: python -m pytest -q
