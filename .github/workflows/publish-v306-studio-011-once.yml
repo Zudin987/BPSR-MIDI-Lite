@@ -1,3 +1,4 @@
+# one-shot dual publisher trigger
 name: Publish Lite 3.0.6 and Studio 0.1.1 once
 
 on:
@@ -107,7 +108,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "dist/BPSR-MIDI-Studio.exe")) { throw "Studio single EXE missing" }
-          $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
+          $listing = (& pyi-archive-viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
           if ($listing -notmatch '(?i)\.onnx') { throw "Basic Pitch ONNX model missing from Studio EXE" }
           if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg missing from Studio EXE" }
 
