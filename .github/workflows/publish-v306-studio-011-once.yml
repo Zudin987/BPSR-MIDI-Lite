@@ -1,0 +1,149 @@
+name: Publish Lite 3.0.6 and Studio 0.1.1 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-v306-studio-011-once.yml"
+
+permissions:
+  contents: write
+
+env:
+  PRODUCT_SHA: e4c99707c0312f167449a7c2f418f68a617c6a4e
+
+jobs:
+  lite:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact reviewed product commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - name: Install Lite build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: Test and build Lite
+        shell: pwsh
+        run: |
+          python -m pytest -q
+          pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
+
+      - name: Prepare Lite release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe release/BPSR-MIDI-Lite.exe
+          New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe portable/BPSR-MIDI-Lite/BPSR-MIDI-Lite.exe
+          Copy-Item README.md portable/BPSR-MIDI-Lite/README.md
+          Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.md portable/BPSR-MIDI-Lite/THIRD_PARTY_NOTICES.md
+          Compress-Archive -Path portable/BPSR-MIDI-Lite -DestinationPath release/BPSR-MIDI-Lite-Windows-x64.zip -Force
+          $exe = (Get-FileHash release/BPSR-MIDI-Lite.exe -Algorithm SHA256).Hash.ToLower()
+          $zip = (Get-FileHash release/BPSR-MIDI-Lite-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$exe  BPSR-MIDI-Lite.exe" | Set-Content release/SHA256SUMS.txt
+          "$zip  BPSR-MIDI-Lite-Windows-x64.zip" | Add-Content release/SHA256SUMS.txt
+
+      - name: Publish Lite v3.0.6
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @'
+          # BPSR MIDI Lite v3.0.6
+
+          - Adds a compact Search box to the Local tab for filtering saved MIDI filenames.
+          - Search is case-insensitive and supports multiple words.
+          - Existing MIDI fitting, Online Sequencer, playback, and Lite dependency footprint remain unchanged.
+          '@ | Set-Content release-notes-lite.md
+          if (gh release view v3.0.6 2>$null) {
+            gh release upload v3.0.6 release/BPSR-MIDI-Lite.exe release/BPSR-MIDI-Lite-Windows-x64.zip release/SHA256SUMS.txt --clobber
+          } else {
+            gh release create v3.0.6 release/BPSR-MIDI-Lite.exe release/BPSR-MIDI-Lite-Windows-x64.zip release/SHA256SUMS.txt --target $env:PRODUCT_SHA --title "BPSR MIDI Lite v3.0.6" --notes-file release-notes-lite.md
+          }
+
+  studio:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact reviewed product commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-studio-build.txt
+
+      - name: Install Studio build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-studio-build.txt
+
+      - name: Test and build Studio single EXE
+        shell: pwsh
+        run: |
+          python -m pytest -q
+          pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
+
+      - name: Verify embedded Studio runtimes
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/BPSR-MIDI-Studio.exe")) { throw "Studio single EXE missing" }
+          $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
+          if ($listing -notmatch '(?i)\.onnx') { throw "Basic Pitch ONNX model missing from Studio EXE" }
+          if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg missing from Studio EXE" }
+
+      - name: Prepare Studio release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-studio | Out-Null
+          Copy-Item dist/BPSR-MIDI-Studio.exe release-studio/BPSR-MIDI-Studio.exe
+          Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
+          $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BPSR-MIDI-Studio.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+
+      - name: Publish Studio 0.1.1-beta
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (gh release view studio-v0.1.1-beta 2>$null) {
+            gh release upload studio-v0.1.1-beta release-studio/BPSR-MIDI-Studio.exe release-studio/SHA256SUMS-STUDIO.txt release-studio/STUDIO_THIRD_PARTY_NOTICES.md --clobber
+          } else {
+            gh release create studio-v0.1.1-beta release-studio/BPSR-MIDI-Studio.exe release-studio/SHA256SUMS-STUDIO.txt release-studio/STUDIO_THIRD_PARTY_NOTICES.md --target $env:PRODUCT_SHA --title "BPSR MIDI Studio 0.1.1-beta" --notes-file STUDIO_CHANGELOG.md --prerelease
+          }
+
+  record:
+    needs: [lite, studio]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record successful dual publication
+        run: |
+          echo "v3.0.6 + studio-v0.1.1-beta $PRODUCT_SHA" > RELEASE_306_STUDIO_011_PUBLISHED.tmp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_306_STUDIO_011_PUBLISHED.tmp
+          git commit -m "Record Lite 3.0.6 and Studio 0.1.1 publication"
+          git push origin HEAD:main
