@@ -51,7 +51,7 @@ def _rename_studio_shell(app: Any) -> None:
                         text=(
                             "Local keeps permanent MIDI files. Online Sequencer uses temporary cache. "
                             "YouTube searches the top 3 results and converts the one you click into temporary MIDI. "
-                            "Save MIDI keeps a permanent offline copy."
+                            "Save MIDI to Local keeps a permanent offline copy."
                         )
                     )
         except tk.TclError:
@@ -61,7 +61,7 @@ def _rename_studio_shell(app: Any) -> None:
 def _build_youtube_tab(app: Any) -> None:
     tab = ttk.Frame(app.song_source_notebook, padding=(8, 10, 8, 8))
     tab.columnconfigure(0, weight=1)
-    tab.rowconfigure(2, weight=1)
+    tab.rowconfigure(3, weight=1)
     app.song_source_notebook.add(tab, text="YouTube")
     app.youtube_tab = tab
 
@@ -88,7 +88,15 @@ def _build_youtube_tab(app: Any) -> None:
         style="Hint.TLabel",
         wraplength=610,
         justify="left",
-    ).grid(row=1, column=0, sticky="w", pady=(6, 7))
+    ).grid(row=1, column=0, sticky="w", pady=(6, 5))
+
+    app.youtube_progress = ttk.Progressbar(
+        tab,
+        mode="determinate",
+        maximum=100,
+        value=0,
+    )
+    app.youtube_progress.grid(row=2, column=0, sticky="ew", pady=(0, 7))
 
     tree = ttk.Treeview(
         tab,
@@ -103,15 +111,15 @@ def _build_youtube_tab(app: Any) -> None:
     tree.column("#0", width=345, minwidth=180, stretch=True)
     tree.column("channel", width=150, minwidth=90, stretch=False)
     tree.column("duration", width=62, minwidth=55, stretch=False, anchor="center")
-    tree.grid(row=2, column=0, sticky="nsew")
+    tree.grid(row=3, column=0, sticky="nsew")
     tree.bind("<<TreeviewSelect>>", lambda _event: _result_selected(app))
     app.youtube_tree = tree
 
     actions = ttk.Frame(tab)
-    actions.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+    actions.grid(row=4, column=0, sticky="ew", pady=(8, 0))
     app.youtube_save_button = ttk.Button(
         actions,
-        text="Save MIDI",
+        text="Save MIDI to Local",
         command=lambda: save_selected_midi(app),
     )
     app.youtube_save_button.pack(side="left")
@@ -125,6 +133,18 @@ def _build_youtube_tab(app: Any) -> None:
         text="No sign-in. Restricted videos are simply skipped.",
         style="Hint.TLabel",
     ).pack(side="left", padx=(12, 0))
+
+    app.youtube_instrumental_tip = ttk.Label(
+        tab,
+        text=(
+            "Tip: choose instrumental, piano, guitar, bass, karaoke, or melody-cover uploads when possible. "
+            "They usually produce much cleaner MIDI than a full vocal/full-band mix."
+        ),
+        style="Hint.TLabel",
+        wraplength=610,
+        justify="left",
+    )
+    app.youtube_instrumental_tip.grid(row=5, column=0, sticky="w", pady=(8, 0))
 
 
 def _dispatch(app: Any, callback: Any) -> None:
@@ -142,6 +162,31 @@ def _worker(app: Any, action: Any) -> None:
 def _set_youtube_status(app: Any, message: str) -> None:
     try:
         app.youtube_status_var.set(message)
+    except tk.TclError:
+        pass
+
+
+def _progress_start(app: Any) -> None:
+    try:
+        app.youtube_progress.stop()
+        app.youtube_progress.configure(mode="indeterminate", maximum=100, value=0)
+        app.youtube_progress.start(12)
+    except tk.TclError:
+        pass
+
+
+def _progress_done(app: Any) -> None:
+    try:
+        app.youtube_progress.stop()
+        app.youtube_progress.configure(mode="determinate", maximum=100, value=100)
+    except tk.TclError:
+        pass
+
+
+def _progress_reset(app: Any) -> None:
+    try:
+        app.youtube_progress.stop()
+        app.youtube_progress.configure(mode="determinate", maximum=100, value=0)
     except tk.TclError:
         pass
 
@@ -172,6 +217,7 @@ def search(app: Any) -> None:
     _clear_current_song(app)
     app.youtube_search_button.configure(state="disabled")
     app.youtube_status_var.set("Preparing YouTube search…")
+    _progress_start(app)
 
     def work() -> None:
         try:
@@ -190,12 +236,14 @@ def search(app: Any) -> None:
 
 def _search_failed(app: Any, error: Exception) -> None:
     app.youtube_search_button.configure(state="normal")
+    _progress_reset(app)
     app.youtube_status_var.set(str(error))
     app.status_var.set("YouTube search unavailable. Local MIDI still works normally.")
 
 
 def _search_finished(app: Any, results: list[youtube.YouTubeResult]) -> None:
     app.youtube_search_button.configure(state="normal")
+    _progress_reset(app)
     app._youtube_results = {result.video_id: result for result in results}
     for result in results:
         app.youtube_tree.insert(
@@ -206,7 +254,7 @@ def _search_finished(app: Any, results: list[youtube.YouTubeResult]) -> None:
             values=(result.channel or "—", youtube.duration_label(result.duration_seconds)),
         )
     app.youtube_status_var.set(
-        f"Found {len(results)} result(s). Click a song to automatically get audio, convert it to MIDI, and run BPSR Song Check."
+        f"Found {len(results)} result(s). Click a song to automatically get audio, build a cleaner core MIDI, and run BPSR Song Check."
     )
     app.status_var.set("Choose one of the YouTube results to convert.")
 
@@ -234,10 +282,11 @@ def _result_selected(app: Any) -> None:
 
     cached = app._youtube_cached_midi.get(video_id)
     if cached is not None and cached.exists():
+        _progress_done(app)
         _activate_midi(app, result, cached)
         return
     if app._youtube_converting:
-        app.youtube_status_var.set("A song is already converting. Wait for it to finish, then click another result.")
+        app.youtube_status_var.set("A song is already converting. The moving bar means Studio is still working.")
         return
     _start_conversion(app, result)
 
@@ -247,7 +296,8 @@ def _start_conversion(app: Any, result: youtube.YouTubeResult) -> None:
     app.youtube_search_button.configure(state="disabled")
     _clear_current_song(app)
     app.youtube_status_var.set(f"Preparing “{result.title}”…")
-    app.status_var.set("Converting YouTube audio to MIDI. This can take a little while.")
+    app.status_var.set("Converting YouTube audio to a cleaner core MIDI. The progress bar moves while Studio is working.")
+    _progress_start(app)
 
     def work() -> None:
         try:
@@ -266,6 +316,7 @@ def _start_conversion(app: Any, result: youtube.YouTubeResult) -> None:
 def _conversion_failed(app: Any, result: youtube.YouTubeResult, error: Exception) -> None:
     app._youtube_converting = False
     app.youtube_search_button.configure(state="normal")
+    _progress_reset(app)
     app.youtube_status_var.set(str(error))
     app.status_var.set(f"Could not convert {result.title}. Choose another YouTube result.")
 
@@ -274,6 +325,7 @@ def _conversion_finished(app: Any, result: youtube.YouTubeResult, midi_path: Pat
     app._youtube_converting = False
     app.youtube_search_button.configure(state="normal")
     app._youtube_cached_midi[result.video_id] = midi_path
+    _progress_done(app)
     if (
         app.song_source_var.get() == "youtube"
         and app._youtube_selected_id == result.video_id
@@ -316,6 +368,7 @@ def _source_tab_changed(app: Any) -> None:
     result = app._youtube_results.get(video_id)
     cached = app._youtube_cached_midi.get(video_id)
     if result is not None and cached is not None and cached.exists():
+        _progress_done(app)
         _activate_midi(app, result, cached)
     else:
         _clear_current_song(app)
@@ -373,5 +426,5 @@ def empty_selection_message() -> tuple[str, str]:
 
 def analysis_suffix() -> str:
     return (
-        "\nTemporary YouTube transcription — use Save MIDI if you want to keep this conversion in your Local library."
+        "\nTemporary YouTube core transcription — use Save MIDI to Local if you want to keep this conversion."
     )
