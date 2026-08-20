@@ -7,7 +7,7 @@ from online_integration import install_online_integration
 
 
 # Keep the established MIDI engine/UI, then layer the optional online library.
-app.APP_VERSION = "3.0.6"
+app.APP_VERSION = "3.0.7"
 
 install_modern_ui(app)
 install_online_integration(app)
