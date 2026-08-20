@@ -25,7 +25,7 @@ def test_legacy_ui_has_no_online_browser_action() -> None:
 
 def test_windows_builder_uses_patch_version() -> None:
     source = Path("build_exe.bat").read_text(encoding="utf-8")
-    assert "set VERSION=3.0.5" in source
+    assert "set VERSION=3.0.6" in source
 
 
 def test_direct_link_still_loads_while_title_text_stays_in_app() -> None:
