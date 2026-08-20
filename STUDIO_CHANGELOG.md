@@ -1,5 +1,13 @@
 # BPSR MIDI Studio changelog
 
+## 0.1.1-beta
+
+- Studio is now distributed as one self-contained `BPSR-MIDI-Studio.exe`; no ZIP extraction or `_internal` folder is required by the user.
+- Fixed the YouTube tab sizing bug where first-search results could stay hidden until switching to Bookmarks and back.
+- Renamed the YouTube save action to **Save MIDI to Local** so keeping a converted MIDI is explicit.
+- Added an in-app reminder that instrumental / piano / guitar / bass YouTube uploads usually transcribe more cleanly than full vocal/full-band mixes.
+- Added Local MIDI filename search, shared with Lite.
+
 ## 0.1.0-beta
 
 - Added a separate Studio build target without changing the Lite launcher/spec.
