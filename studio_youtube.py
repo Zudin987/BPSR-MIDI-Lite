@@ -32,7 +32,7 @@ MAX_COMPONENT_BYTES = 96 * 1024 * 1024
 COMPONENT_REFRESH_SECONDS = 3 * 24 * 60 * 60
 CACHE_MAX_AGE_SECONDS = 2 * 24 * 60 * 60
 CACHE_MAX_BYTES = 512 * 1024 * 1024
-TRANSCRIPTION_CACHE_VERSION = "bp040-v1"
+TRANSCRIPTION_CACHE_VERSION = "bp040-v2"
 
 _PROGRESS = Callable[[str], None]
 _BASIC_PITCH_MODEL = None
@@ -99,14 +99,43 @@ def _request_bytes(url: str, *, max_bytes: int, timeout: float = 30.0) -> bytes:
     return data
 
 
+def _parse_sha256_text(text: str, filename: str | None = None) -> str | None:
+    """Parse standard SHA256SUMS or Windows PowerShell Get-FileHash output."""
+    if filename:
+        escaped = re.escape(filename)
+        match = re.search(
+            rf"(?im)^\s*([0-9a-f]{{64}})\s+\*?{escaped}\s*$",
+            text,
+        )
+        if match:
+            return match.group(1).lower()
+
+    # Deno's Windows .sha256sum asset is PowerShell Get-FileHash output:
+    #   Algorithm : SHA256
+    #   Hash      : ABCD...
+    #   Path      : C:\...\deno-x86_64-pc-windows-msvc.zip
+    match = re.search(r"(?im)^\s*Hash\s*:\s*([0-9a-f]{64})\s*$", text)
+    if match:
+        return match.group(1).lower()
+
+    # Tolerate a bare or otherwise whitespace-delimited SHA-256 token only as
+    # a final fallback. Requiring exactly 64 hex characters avoids accepting
+    # labels such as PowerShell's literal 'Algorithm'.
+    for token in re.split(r"\s+", text):
+        candidate = token.strip("*:,;[](){}<>")
+        if re.fullmatch(r"[0-9a-fA-F]{64}", candidate):
+            return candidate.lower()
+    return None
+
+
 def _expected_ytdlp_sha256() -> str:
     sums = _request_bytes(YTDLP_SUMS_URL, max_bytes=2 * 1024 * 1024).decode(
         "utf-8", errors="replace"
     )
-    match = re.search(r"(?im)^([0-9a-f]{64})\s+\*?yt-dlp\.exe\s*$", sums)
-    if not match:
+    digest = _parse_sha256_text(sums, "yt-dlp.exe")
+    if not digest:
         raise StudioError("Could not verify the yt-dlp download.")
-    return match.group(1).lower()
+    return digest
 
 
 def _install_latest_ytdlp(target: Path) -> None:
@@ -124,10 +153,10 @@ def _expected_deno_sha256() -> str:
     checksum = _request_bytes(DENO_SUM_URL, max_bytes=256 * 1024).decode(
         "utf-8", errors="replace"
     )
-    match = re.search(r"(?im)^([0-9a-f]{64})\s+\*?deno-x86_64-pc-windows-msvc\.zip\s*$", checksum)
-    if not match:
+    digest = _parse_sha256_text(checksum, DENO_ZIP_NAME)
+    if not digest:
         raise StudioError("Could not verify the Deno runtime download.")
-    return match.group(1).lower()
+    return digest
 
 
 def _install_latest_deno(target: Path) -> None:
@@ -442,7 +471,7 @@ def _transcribe_audio(
             _basic_pitch_model(),
             onset_threshold=0.58,
             frame_threshold=0.35,
-            minimum_note_length=90.0,
+            minimum_note_length=120.0,
             minimum_frequency=32.70,
             maximum_frequency=2093.00,
             multiple_pitch_bends=False,
