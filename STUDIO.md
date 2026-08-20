@@ -1,14 +1,14 @@
-# BPSR MIDI Studio (beta)
+# BPSR MIDI Studio (Experimental Beta)
 
-BPSR MIDI Studio is the heavier companion build of **BPSR MIDI Lite**.
+BPSR MIDI Studio is the heavier experimental companion build of **BPSR MIDI Lite**.
 
-Studio reuses the same BPSR MIDI planner/player, then adds a YouTube-to-MIDI workflow for users who do not want to manually download audio or MIDI files. Lite keeps the AI/YouTube stack out of its build; the only shared UI addition in this update is Local MIDI filename search.
+Studio reuses the same BPSR MIDI planner/player, then adds a YouTube-to-MIDI workflow for users who do not want to manually download audio or MIDI files. Lite keeps the AI/YouTube stack out of its build; the Local MIDI browser is the shared UI feature.
 
 ## Download and run
 
-Studio is distributed as a **single `BPSR-MIDI-Studio.exe`**. Download that EXE and run it directly; there is no portable folder to extract first.
+Studio is distributed as one self-contained EXE named **`BPSR-MIDI-Studio-Experimental-Beta.exe`** on the **same GitHub release page as BPSR MIDI Lite**. No Studio ZIP or `_internal` folder is required.
 
-Because the AI/audio runtime is large, the Studio EXE is much bigger than Lite and its first launch can take longer. PyInstaller extracts the bundled runtime to a temporary Windows folder automatically while Studio is running; the user does not need to manage that folder.
+Because the AI/audio runtime is large, Studio is much bigger than Lite and a one-file Studio launch is slower: PyInstaller extracts its bundled runtime to a temporary Windows folder each time the app starts. The user does not need to manage that folder.
 
 ## What Studio adds
 
@@ -17,22 +17,46 @@ Because the AI/audio runtime is large, the Studio EXE is much bigger than Lite a
 3. Search for a song or video title.
 4. Studio shows the top **3** YouTube results.
 5. Click one result.
-6. Studio automatically:
+6. A moving progress bar stays active while Studio is working.
+7. Studio automatically:
    - gets the public audio with yt-dlp,
    - converts it to temporary WAV with FFmpeg,
-   - transcribes the audio to MIDI with Spotify Basic Pitch,
+   - transcribes the audio with Spotify Basic Pitch,
+   - reduces the dense AI transcription into a cleaner melody + optional bass core,
    - deletes the temporary audio,
    - sends the generated MIDI through the normal BPSR Song Check/planner.
-7. Press **Play in BPSR** when Song Check finishes.
-8. Use **Save MIDI to Local** if you want to keep the generated MIDI permanently.
+8. Press **Play in BPSR** when Song Check finishes.
+9. Use **Save MIDI to Local** if you want to keep the generated MIDI permanently.
 
-For cleaner transcription, prefer YouTube uploads that are **instrumental, piano, guitar, bass, or otherwise have one clear lead instrument**. Full vocal/full-band mixes can create much busier MIDI.
+For cleaner transcription, prefer YouTube uploads that are **instrumental, piano, guitar, bass, karaoke, melody covers, or otherwise have one clear lead instrument**. Full vocal/full-band mixes are much harder for audio-to-MIDI models.
 
 No YouTube, Google, Spotify, or other account sign-in is requested or stored.
 
+## Cleaner core transcription
+
+Studio does not send every Basic Pitch note directly into BPSR anymore. Full mixes often create duplicated harmonics, tiny notes, and several competing voices, which sounds busy and hides the song.
+
+The experimental cleanup now:
+
+- uses more conservative Basic Pitch thresholds;
+- ignores very short/noisy note fragments;
+- groups notes that start almost together;
+- follows one continuous mid/high lead melody instead of chasing isolated harmonics;
+- optionally keeps one clearly separated bass note when it is strong enough;
+- limits each onset to at most those two useful voices; and
+- quantizes tiny timing jitter before the existing BPSR instrument/category fitting runs.
+
+This is designed to make converted songs sound more like a simple playable MIDI rather than a raw spectral transcription. It is still experimental: choosing an instrumental or melody-focused upload remains the biggest quality improvement.
+
 ## Local songs
 
-Both Lite and Studio now have a Search box in the Local tab. It filters the `.mid` / `.midi` filenames already inside the normal Local MIDI folder without changing or moving those files.
+Both Lite and Studio use the same Local song browser:
+
+1. **Open folder** opens the normal MIDI folder.
+2. The search bar plus **Search** filters saved `.mid` / `.midi` filenames.
+3. An empty search shows the naturally sorted library.
+4. Five songs are visible at a time and the list scrolls for the rest.
+5. Click a song in the list to run Song Check and play it.
 
 ## First YouTube search
 
@@ -53,6 +77,7 @@ FFmpeg and the Basic Pitch model/runtime are embedded in the single Studio EXE.
 
 - Downloaded YouTube audio is temporary and is deleted after transcription.
 - Generated MIDI is cached temporarily so clicking the same result again does not repeat the AI conversion immediately.
+- The core-transcription update uses a new cache version, so older crowded Studio conversions are regenerated once.
 - Old Studio cache files are removed automatically.
 - **Save MIDI to Local** copies the converted MIDI to the normal Local MIDI folder.
 
@@ -60,9 +85,9 @@ FFmpeg and the Basic Pitch model/runtime are embedded in the single Studio EXE.
 
 Studio is meant for normal songs. Videos over 15 minutes are rejected.
 
-Automatic music transcription is imperfect. Basic Pitch performs best on recordings with one clear instrument; full commercial mixes with vocals, drums, synths, bass, and effects can produce crowded MIDI. BPSR MIDI Lite's normal Piano/Guitar/Bass fitting still runs afterward, but it cannot reconstruct musical information that the transcription model guessed incorrectly.
+Automatic music transcription is imperfect. The cleanup can reduce clutter, but it cannot recover musical information that the transcription model never detected correctly. Full commercial mixes remain more difficult than clean instrumental recordings.
 
-The Studio beta deliberately avoids advanced AI sliders. Search, click, check, play.
+The experimental beta deliberately avoids advanced AI sliders. Search, click, wait for the progress bar, check, play.
 
 ## Account policy
 

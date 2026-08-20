@@ -1,5 +1,14 @@
 # BPSR MIDI Studio changelog
 
+## 0.1.2-experimental-beta
+
+- Added a visible moving progress bar while YouTube search/conversion is working, with stage text for download, transcription, cleanup, and BPSR checking.
+- Reworked YouTube transcription into a cleaner **core arrangement**: conservative Basic Pitch thresholds, short-noise filtering, onset clustering, melodic continuity, and at most a lead + clearly separated bass voice per onset before the normal BPSR fitter runs.
+- Invalidates older Studio transcription cache so previously crowded conversions are regenerated with the new core algorithm.
+- Reworked the Local tab into **Open folder → Search → scrollable song list** with five visible rows; empty search shows the naturally sorted library and searching filters it.
+- Fixed the Local-tab notebook height on the initial view instead of requiring a tab switch first.
+- Studio is now attached to the same Lite GitHub release page as **BPSR MIDI Studio (Experimental Beta)** rather than using a separate Studio release page.
+
 ## 0.1.1-beta
 
 - Studio is now distributed as one self-contained `BPSR-MIDI-Studio.exe`; no ZIP extraction or `_internal` folder is required by the user.

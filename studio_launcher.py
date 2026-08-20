@@ -4,13 +4,15 @@ import app
 from local_search_integration import install_local_search_integration
 from modern_ui import install_modern_ui
 from online_integration import install_online_integration
+from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
 
 
 # Studio remains a separate build target; Lite keeps its own launcher/spec.
-app.APP_VERSION = "Studio 0.1.1-beta"
+app.APP_VERSION = "Studio 0.1.2-experimental-beta"
 
+install_core_transcription()
 install_modern_ui(app)
 install_online_integration(app)
 install_local_search_integration(app)
