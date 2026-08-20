@@ -1,0 +1,188 @@
+name: Publish v3.0.7 Lite + Studio Experimental Beta once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-v307-dual-once.yml"
+
+permissions:
+  contents: write
+
+env:
+  PRODUCT_SHA: 0dc4b1b59e1ec5a0519eb73db16c2f1ac8ad71b0
+  RELEASE_TAG: v3.0.7
+
+jobs:
+  lite:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+      - name: Install Lite build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Test and build Lite
+        shell: pwsh
+        run: |
+          python -m pytest -q
+          pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
+      - name: Prepare Lite assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-lite | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe release-lite/BPSR-MIDI-Lite.exe
+          New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite | Out-Null
+          Copy-Item dist/BPSR-MIDI-Lite.exe portable/BPSR-MIDI-Lite/BPSR-MIDI-Lite.exe
+          Copy-Item README.md portable/BPSR-MIDI-Lite/README.md
+          Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE
+          Copy-Item THIRD_PARTY_NOTICES.md portable/BPSR-MIDI-Lite/THIRD_PARTY_NOTICES.md
+          Compress-Archive -Path portable/BPSR-MIDI-Lite -DestinationPath release-lite/BPSR-MIDI-Lite-Windows-x64.zip -Force
+          $exe = (Get-FileHash release-lite/BPSR-MIDI-Lite.exe -Algorithm SHA256).Hash.ToLower()
+          $zip = (Get-FileHash release-lite/BPSR-MIDI-Lite-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$exe  BPSR-MIDI-Lite.exe" | Set-Content release-lite/SHA256SUMS-LITE.txt
+          "$zip  BPSR-MIDI-Lite-Windows-x64.zip" | Add-Content release-lite/SHA256SUMS-LITE.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-lite
+          path: release-lite/*
+          if-no-files-found: error
+
+  studio:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements-studio-build.txt
+      - name: Install Studio build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-studio-build.txt
+      - name: Test and build Studio experimental beta
+        shell: pwsh
+        run: |
+          python -m pytest -q
+          python -c "from basic_pitch import ICASSP_2022_MODEL_PATH; from basic_pitch.inference import Model; Model(ICASSP_2022_MODEL_PATH); print('Basic Pitch ONNX OK')"
+          python -c "from imageio_ffmpeg import get_ffmpeg_exe; import os; p=get_ffmpeg_exe(); assert os.path.exists(p); print('FFmpeg OK:', p)"
+          pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
+      - name: Verify Studio one-file package
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/BPSR-MIDI-Studio.exe")) { throw "Studio EXE missing" }
+          $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
+          if ($listing -notmatch '(?i)\.onnx') { throw "ONNX model missing from Studio EXE" }
+          if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg missing from Studio EXE" }
+          $analysis = Get-Content "build/BPSR-MIDI-Studio/Analysis-00.toc" -Raw
+          if ($analysis -notmatch 'studio_core_transcription') { throw "Core transcription module missing from Studio build" }
+      - name: Prepare Studio assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-studio | Out-Null
+          Copy-Item dist/BPSR-MIDI-Studio.exe release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe
+          Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
+          $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: release-studio
+          path: release-studio/*
+          if-no-files-found: error
+
+  publish:
+    needs: [lite, studio]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.PRODUCT_SHA }}
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-lite
+          path: release-lite
+      - uses: actions/download-artifact@v6
+        with:
+          name: release-studio
+          path: release-studio
+      - name: Create combined release page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          # BPSR MIDI Lite v3.0.7
+
+          **Recommended:** `BPSR-MIDI-Lite.exe` — lightweight MIDI player.
+
+          - Local now uses a simple **Open folder → Search → song list** workflow.
+          - Empty search shows the normal naturally sorted library.
+          - Five songs are visible at once; scroll for the rest.
+          - Local container sizing is fixed on the first view.
+
+          ## BPSR MIDI Studio 0.1.2 — Experimental Beta
+
+          **Experimental:** `BPSR-MIDI-Studio-Experimental-Beta.exe` — heavier single-file build with YouTube-to-MIDI.
+
+          - Added a moving progress indicator so YouTube search/conversion no longer looks stuck.
+          - Added stage messages while audio is downloaded, transcribed, cleaned, and checked for BPSR.
+          - New experimental **core transcription** reduces raw AI clutter into a lead melody plus an optional strong bass voice before normal BPSR fitting.
+          - Old Studio conversion cache is invalidated once so songs are regenerated with the cleaner method.
+          - Prefer instrumental, piano, guitar, bass, karaoke, or melody-cover YouTube uploads for the best result.
+          - `Save MIDI to Local` keeps a converted result permanently.
+
+          Studio is experimental because audio-to-MIDI cannot perfectly reconstruct every full commercial mix. Lite remains the recommended lightweight build.
+          EOF
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              release-lite/BPSR-MIDI-Lite.exe \
+              release-lite/BPSR-MIDI-Lite-Windows-x64.zip \
+              release-lite/SHA256SUMS-LITE.txt \
+              release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe \
+              release-studio/SHA256SUMS-STUDIO.txt \
+              release-studio/STUDIO_THIRD_PARTY_NOTICES.md \
+              --clobber
+            gh release edit "$RELEASE_TAG" --title "BPSR MIDI Lite v3.0.7 + Studio (Experimental Beta)" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" \
+              release-lite/BPSR-MIDI-Lite.exe \
+              release-lite/BPSR-MIDI-Lite-Windows-x64.zip \
+              release-lite/SHA256SUMS-LITE.txt \
+              release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe \
+              release-studio/SHA256SUMS-STUDIO.txt \
+              release-studio/STUDIO_THIRD_PARTY_NOTICES.md \
+              --target "$PRODUCT_SHA" \
+              --title "BPSR MIDI Lite v3.0.7 + Studio (Experimental Beta)" \
+              --notes-file release-notes.md
+          fi
+
+  record:
+    needs: [publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record successful publication
+        run: |
+          echo "v3.0.7 dual release $PRODUCT_SHA" > RELEASE_307_PUBLISHED.tmp
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_307_PUBLISHED.tmp
+          git commit -m "Record v3.0.7 dual publication"
+          git push origin HEAD:main
