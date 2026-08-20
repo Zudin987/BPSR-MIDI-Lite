@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
 from local_search_integration import install_local_search_integration
 from modern_ui import install_modern_ui
@@ -19,6 +20,7 @@ install_gaming_ui_2026(app)
 install_online_integration(app)
 install_online_search_ui_2026()
 install_local_search_integration(app)
+install_gaming_runtime_2026(app)
 
 
 if __name__ == "__main__":
