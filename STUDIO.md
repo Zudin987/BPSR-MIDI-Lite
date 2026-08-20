@@ -24,9 +24,16 @@ No YouTube, Google, Spotify, or other account sign-in is requested or stored.
 
 ## First YouTube search
 
-Studio keeps yt-dlp as a separately updateable helper so YouTube changes do not require rebuilding the whole AI bundle every time.
+Current yt-dlp needs an external JavaScript runtime for full YouTube support. Studio handles this automatically instead of asking the user to install development tools.
 
-On first YouTube search, Studio downloads the current official **yt-dlp nightly Windows executable** from the yt-dlp GitHub release and verifies it against the release SHA-256 list. Studio refreshes that helper periodically. If an update check fails but a working local copy already exists, Studio keeps using the existing copy.
+On first YouTube search, Studio downloads and SHA-256 verifies:
+
+- the current official **yt-dlp nightly Windows executable** from the yt-dlp GitHub release; and
+- the current official **Deno Windows x64 runtime** from the Deno GitHub release.
+
+The official yt-dlp executable already includes its EJS challenge scripts. Studio passes its private Deno path to yt-dlp, so the user does not need Deno, Node.js, Python, browser cookies, or a YouTube account installed/configured separately.
+
+Studio refreshes yt-dlp periodically and Deno less frequently. If an update check fails but a working local copy already exists, Studio keeps using that copy.
 
 FFmpeg and the Basic Pitch model/runtime are included in the Studio portable build.
 
