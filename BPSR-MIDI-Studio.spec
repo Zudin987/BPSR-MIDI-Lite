@@ -1,8 +1,8 @@
 # Run with: pyinstaller BPSR-MIDI-Studio.spec
 #
-# Studio intentionally uses an onedir portable build. Basic Pitch + ONNX +
-# scientific Python are much more reliable and launch faster this way than
-# unpacking a very large one-file executable every run.
+# Studio is intentionally a one-file build for end users: download the EXE and
+# run it directly, like Lite. PyInstaller extracts the bundled AI/audio runtime
+# to a temporary folder automatically while the app is running.
 
 from pathlib import Path
 
@@ -43,8 +43,9 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.datas,
     [],
-    exclude_binaries=True,
     name="BPSR-MIDI-Studio",
     debug=False,
     bootloader_ignore_signals=False,
@@ -54,14 +55,4 @@ exe = EXE(
     uac_admin=True,
     icon=str(project / "assets" / "app.ico"),
     version=str(project / "studio_version_info.txt"),
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name="BPSR-MIDI-Studio",
 )
