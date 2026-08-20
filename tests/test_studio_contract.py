@@ -17,20 +17,24 @@ def test_studio_is_a_separate_launcher_and_build_target() -> None:
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
     assert "install_studio_integration(app)" in launcher
+    assert "install_core_transcription()" in launcher
     assert "studio_launcher.py" in spec
     assert 'name="BPSR-MIDI-Studio"' in spec
 
 
-def test_studio_youtube_flow_is_search_click_convert_play() -> None:
+def test_studio_youtube_flow_is_search_click_convert_play_with_progress() -> None:
     ui = Path("studio_ui.py").read_text(encoding="utf-8")
     backend = Path("studio_youtube.py").read_text(encoding="utf-8")
 
     assert 'text="YouTube"' in ui
     assert 'text="Search"' in ui
-    assert 'text="Save MIDI"' in ui
+    assert 'text="Save MIDI to Local"' in ui
     assert '"<<TreeviewSelect>>"' in ui
     assert "convert_result_to_midi" in ui
     assert "app._schedule_analysis(20)" in ui
+    assert "ttk.Progressbar(" in ui
+    assert 'mode="indeterminate"' in ui
+    assert "youtube_progress.start" in ui
     assert "TOP_RESULTS = 3" in backend
     assert "ytsearch{count}" in backend
     assert "--extract-audio" in backend
@@ -65,3 +69,18 @@ def test_studio_audio_is_removed_after_transcription() -> None:
     backend = Path("studio_youtube.py").read_text(encoding="utf-8")
     assert "shutil.rmtree(work_dir, ignore_errors=True)" in backend
     assert "save_midi_to_local" in backend
+
+
+def test_studio_core_cleanup_is_studio_only_and_invalidates_old_cache() -> None:
+    core = Path("studio_core_transcription.py").read_text(encoding="utf-8")
+    launcher = Path("studio_launcher.py").read_text(encoding="utf-8")
+    lite = Path("modern_launcher.py").read_text(encoding="utf-8")
+
+    assert 'CORE_CACHE_VERSION = "bp040-core-v3"' in core
+    assert "extract_core_notes" in core
+    assert "melody + optional bass core" in core
+    assert "onset_threshold=0.62" in core
+    assert "frame_threshold=0.40" in core
+    assert "youtube._transcribe_audio = _transcribe_core_audio" in core
+    assert "install_core_transcription()" in launcher
+    assert "studio_core_transcription" not in lite
