@@ -69,7 +69,7 @@ def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
 
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
-    assert 'app.APP_VERSION = "3.0.5"' in launcher
+    assert 'app.APP_VERSION = "3.0.6"' in launcher
     assert "_online_original_build_ui" in integration
     assert "online_ui.build_song_source_ui" in integration
     assert 'text="Online Sequencer"' in online
