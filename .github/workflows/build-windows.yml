@@ -1,11 +1,30 @@
 name: Build Windows EXE
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app.py"
+      - "modern_launcher.py"
+      - "modern_ui.py"
+      - "gaming_*.py"
+      - "online_*.py"
+      - "midi_engine.py"
+      - "profiles.py"
+      - "player.py"
+      - "win_input.py"
+      - "theme.py"
+      - "BPSR-MIDI-Lite.spec"
+      - "requirements*.txt"
+      - "version_info.txt"
+      - "tests/**"
+      - ".github/workflows/build-windows.yml"
   pull_request:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v2.4.0. Leave blank to build only."
+        description: "Optional version to publish, for example v3.1.0. Leave blank to build only."
         required: false
         type: string
 
@@ -68,20 +87,38 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub Release when a version was entered
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
+      - name: Publish requested GitHub Release
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.0]')) }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || 'v3.1.0' }}
         run: |
           $tag = $env:RELEASE_VERSION.Trim()
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
 
-          gh release create $tag `
-            release/BPSR-MIDI-Lite.exe `
-            release/BPSR-MIDI-Lite-Windows-x64.zip `
-            release/SHA256SUMS.txt `
-            --target $env:GITHUB_SHA `
-            --title "BPSR MIDI Lite $tag" `
-            --generate-notes
+          if (gh release view $tag 2>$null) {
+            gh release upload $tag `
+              release/BPSR-MIDI-Lite.exe `
+              release/BPSR-MIDI-Lite-Windows-x64.zip `
+              release/SHA256SUMS.txt `
+              --clobber
+          } else {
+            if ($tag -eq "v3.1.0" -and (Test-Path "RELEASE_NOTES_3.1.0.md")) {
+              gh release create $tag `
+                release/BPSR-MIDI-Lite.exe `
+                release/BPSR-MIDI-Lite-Windows-x64.zip `
+                release/SHA256SUMS.txt `
+                --target $env:GITHUB_SHA `
+                --title "BPSR MIDI Lite $tag" `
+                --notes-file RELEASE_NOTES_3.1.0.md
+            } else {
+              gh release create $tag `
+                release/BPSR-MIDI-Lite.exe `
+                release/BPSR-MIDI-Lite-Windows-x64.zip `
+                release/SHA256SUMS.txt `
+                --target $env:GITHUB_SHA `
+                --title "BPSR MIDI Lite $tag" `
+                --generate-notes
+            }
+          }

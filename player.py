@@ -19,6 +19,7 @@ class MidiPlayer:
 
     def __init__(self) -> None:
         self.stop_event = threading.Event()
+        self.pause_event = threading.Event()
         self.thread: threading.Thread | None = None
         self.sender: WindowsKeySender | None = None
         self.current_page = 1
@@ -26,10 +27,23 @@ class MidiPlayer:
         self.pedal_on = False
         self.page_step_delay = 0.220
         self._key_counts: dict[str, int] = {}
+        self._keys_temporarily_released = False
+        self.position = 0.0
 
     @property
     def is_playing(self) -> bool:
         return bool(self.thread and self.thread.is_alive())
+
+    @property
+    def is_paused(self) -> bool:
+        return self.is_playing and self.pause_event.is_set()
+
+    @property
+    def active_keys(self) -> tuple[str, ...]:
+        try:
+            return tuple(self._key_counts)
+        except RuntimeError:
+            return ()
 
     def start(
         self,
@@ -43,11 +57,14 @@ class MidiPlayer:
             raise RuntimeError("Playback is already running.")
 
         self.stop_event.clear()
+        self.pause_event.clear()
         self.current_page = 1
         self.current_state = 0
         self.pedal_on = False
         self.page_step_delay = max(0.040, float(plan.page_switch_delay))
         self._key_counts.clear()
+        self._keys_temporarily_released = False
+        self.position = 0.0
         self.sender = WindowsKeySender(input_backend)
 
         self.thread = threading.Thread(
@@ -59,6 +76,21 @@ class MidiPlayer:
 
     def stop(self) -> None:
         self.stop_event.set()
+        self.pause_event.clear()
+
+    def toggle_pause(self) -> bool:
+        """Pause/resume without changing the prepared MIDI plan.
+
+        Active note keys are released while paused and restored on resume so a
+        long pause cannot leave BPSR sustaining keys indefinitely.
+        """
+        if not self.is_playing:
+            return False
+        if self.pause_event.is_set():
+            self.pause_event.clear()
+            return False
+        self.pause_event.set()
+        return True
 
     def _wait_until(self, target: float) -> bool:
         while not self.stop_event.is_set():
@@ -142,15 +174,45 @@ class MidiPlayer:
             count = self._key_counts.get(event.key, 0)
             if count <= 1:
                 self._key_counts.pop(event.key, None)
-                self.sender.key_up(event.key)
+                if not self._keys_temporarily_released:
+                    self.sender.key_up(event.key)
             else:
                 self._key_counts[event.key] = count - 1
+
+    def _release_note_keys_for_pause(self) -> None:
+        if self.sender is None or self._keys_temporarily_released:
+            return
+        for key in tuple(self._key_counts):
+            self.sender.key_up(key)
+        self._keys_temporarily_released = True
+
+    def _restore_note_keys_after_pause(self) -> None:
+        if self.sender is None or not self._keys_temporarily_released:
+            return
+        for key in tuple(self._key_counts):
+            self.sender.key_down(key)
+        self._keys_temporarily_released = False
+
+    def _pause_if_needed(self, on_status: StatusCallback, progress: float) -> float:
+        """Block while paused and return seconds that must be added to the schedule."""
+        if not self.pause_event.is_set() or self.stop_event.is_set():
+            return 0.0
+        self._release_note_keys_for_pause()
+        started = time.perf_counter()
+        on_status("Paused — press Resume to continue", progress)
+        while self.pause_event.is_set() and not self.stop_event.is_set():
+            self.stop_event.wait(0.050)
+        elapsed = time.perf_counter() - started
+        if not self.stop_event.is_set():
+            self._restore_note_keys_after_pause()
+        return elapsed
 
     def _cleanup(self) -> None:
         if self.sender is None:
             return
 
         try:
+            self._keys_temporarily_released = False
             if self.pedal_on:
                 self.sender.tap("space")
                 self.pedal_on = False
@@ -163,6 +225,7 @@ class MidiPlayer:
         finally:
             self.sender.release_all()
             self._key_counts.clear()
+            self.pause_event.clear()
 
     def _run(
         self,
@@ -178,6 +241,10 @@ class MidiPlayer:
         try:
             countdown_end = time.perf_counter() + max(0.0, start_delay)
             while not self.stop_event.is_set():
+                if self.pause_event.is_set():
+                    paused_for = self._pause_if_needed(on_status, 0.0)
+                    countdown_end += paused_for
+                    continue
                 remaining = countdown_end - time.perf_counter()
                 if remaining <= 0:
                     break
@@ -188,14 +255,26 @@ class MidiPlayer:
                 return
 
             start = time.perf_counter()
+            paused_total = 0.0
             total = max(plan.duration, 0.001)
             last_status_at = float("-inf")
 
             for index, event in enumerate(plan.events):
-                if not self._wait_until(start + event.time):
+                while not self.stop_event.is_set():
+                    if self.pause_event.is_set():
+                        paused_total += self._pause_if_needed(
+                            on_status,
+                            min(1.0, self.position / total),
+                        )
+                        continue
+                    target = start + paused_total + event.time
+                    if self._wait_until(target):
+                        break
+                if self.stop_event.is_set():
                     break
 
                 self._handle_event(event)
+                self.position = float(event.time)
 
                 status_now = time.perf_counter()
                 if (
@@ -210,6 +289,7 @@ class MidiPlayer:
                     last_status_at = status_now
 
             if not self.stop_event.is_set():
+                self.position = float(plan.duration)
                 on_status("Playback completed", 1.0)
         except Exception as exc:  # noqa: BLE001
             error = str(exc)

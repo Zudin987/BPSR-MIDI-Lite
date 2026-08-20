@@ -1,10 +1,32 @@
 name: Build Windows Studio
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "studio_*.py"
+      - "local_search_integration.py"
+      - "gaming_*.py"
+      - "BPSR-MIDI-Studio.spec"
+      - "requirements-studio*.txt"
+      - "STUDIO*.md"
+      - "tests/test_studio*.py"
+      - "tests/test_local_search.py"
+      - ".github/workflows/build-studio.yml"
+      - "app.py"
+      - "modern_ui.py"
+      - "online_*.py"
+      - "midi_engine.py"
+      - "profiles.py"
+      - "player.py"
+      - "win_input.py"
+      - "theme.py"
   pull_request:
     paths:
       - "studio_*.py"
       - "local_search_integration.py"
+      - "gaming_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
@@ -22,7 +44,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional existing Lite release tag, for example v3.0.7. Leave blank to build only."
+        description: "Optional existing Lite release tag, for example v3.1.0. Leave blank to build only."
         required: false
         type: string
 
@@ -109,16 +131,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Attach Studio experimental beta to an existing Lite release when requested
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
+      - name: Attach Studio experimental beta to requested Lite release
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.0]')) }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || 'v3.1.0' }}
         run: |
           $tag = $env:RELEASE_VERSION.Trim()
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
-          gh release view $tag | Out-Null
+
+          if ($env:GITHUB_EVENT_NAME -eq "push") {
+            $found = $false
+            for ($i = 0; $i -lt 24; $i++) {
+              if (gh release view $tag 2>$null) {
+                $found = $true
+                break
+              }
+              Write-Host "Waiting for Lite release $tag..."
+              Start-Sleep -Seconds 15
+            }
+            if (-not $found) { throw "Lite release $tag was not created in time" }
+          } else {
+            gh release view $tag | Out-Null
+          }
+
           gh release upload $tag `
             release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
             release-studio/SHA256SUMS-STUDIO.txt `
