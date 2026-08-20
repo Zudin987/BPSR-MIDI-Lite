@@ -37,6 +37,16 @@ def test_studio_youtube_flow_is_search_click_convert_play() -> None:
     assert '"wav"' in backend
 
 
+def test_studio_provides_current_youtube_js_runtime_without_user_setup() -> None:
+    backend = Path("studio_youtube.py").read_text(encoding="utf-8")
+
+    assert "denoland/deno/releases/latest" in backend
+    assert "DENO_SUM_URL" in backend
+    assert "_expected_deno_sha256" in backend
+    assert "--js-runtimes" in backend
+    assert 'f"deno:{deno}"' in backend
+
+
 def test_studio_never_requests_youtube_login_or_browser_cookies() -> None:
     backend = Path("studio_youtube.py").read_text(encoding="utf-8")
 
