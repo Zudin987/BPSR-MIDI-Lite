@@ -1,3 +1,4 @@
+# one-shot dual publisher trigger
 name: Publish v3.0.7 Lite + Studio Experimental Beta once
 
 on:
