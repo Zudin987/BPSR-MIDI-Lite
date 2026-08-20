@@ -43,6 +43,26 @@ def test_youtube_search_parser_ignores_noise_and_duplicates() -> None:
     assert results[0].duration_seconds == 61
 
 
+def test_standard_sha256sum_parser() -> None:
+    digest = "ab" * 32
+    text = f"{digest}  yt-dlp.exe\n"
+    assert studio._parse_sha256_text(text, "yt-dlp.exe") == digest
+
+
+def test_windows_powershell_sha256_parser() -> None:
+    digest = "7FDD1F42E6B0855421ECF27BB406E2492ADE1087C85E30EBF0DEAB6280EA743C"
+    text = (
+        "Algorithm : SHA256\n"
+        f"Hash      : {digest}\n"
+        "Path      : C:\\a\\deno\\deno-x86_64-pc-windows-msvc.zip\n"
+    )
+    assert studio._parse_sha256_text(text, studio.DENO_ZIP_NAME) == digest.lower()
+
+
+def test_checksum_parser_rejects_non_hash_tokens() -> None:
+    assert studio._parse_sha256_text("Algorithm : SHA256\nPath : somewhere") is None
+
+
 def test_duration_label() -> None:
     assert studio.duration_label(None) == "—"
     assert studio.duration_label(59) == "0:59"
