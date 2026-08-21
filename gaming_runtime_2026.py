@@ -9,6 +9,10 @@ import modern_ui
 from player import MidiPlayer
 
 
+VISUALIZER_FPS = 30
+VISUALIZER_FRAME_MS = round(1000 / VISUALIZER_FPS)
+
+
 def _pause_aware_wait(self: MidiPlayer, target: float) -> bool:
     """Wake immediately when Pause is requested instead of waiting for the next MIDI event."""
     while not self.stop_event.is_set():
@@ -77,7 +81,7 @@ def _responsive_layout(app: Any, width: int) -> None:
 
 
 def _render_visualizer(app: Any) -> None:
-    """Render the prepared BPSR event stream without creating Tk variables per frame."""
+    """Render the prepared BPSR event stream at a capped 30 FPS."""
     canvas = getattr(app, "midi_visualizer", None)
     if canvas is None:
         return
@@ -166,7 +170,7 @@ def _render_visualizer(app: Any) -> None:
     except (tk.TclError, AttributeError, TypeError, ValueError):
         pass
     try:
-        app.after(80, lambda: _render_visualizer(app))
+        app.after(VISUALIZER_FRAME_MS, lambda: _render_visualizer(app))
     except tk.TclError:
         pass
 
