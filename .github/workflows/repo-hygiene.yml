@@ -26,6 +26,37 @@ jobs:
             exit 1
           fi
 
+      - name: Block credentials and private browser data
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '(^|/)\.env($|\.)|\.(pem|key|p12|pfx|sqlite|sqlite3)$|(^|/)cookies[^/]*\.txt$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Private credentials or browser data must not be committed."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block personal music and video files
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden="$(git ls-files | grep -Ei '\.(mid|midi|wav|mp3|flac|m4a|aac|ogg|webm|mp4|mkv|mov)$' || true)"
+          if [[ -n "$forbidden" ]]; then
+            echo "::error::Personal or copyrighted media must not be committed to the source tree."
+            printf '%s\n' "$forbidden"
+            exit 1
+          fi
+
+      - name: Block obvious committed secret material
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -nEI -- '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}' -- . ':!tests/**' 2>/dev/null; then
+            echo "::error::Possible secret material detected in tracked source."
+            exit 1
+          fi
+
       - name: Keep release history consolidated
         shell: bash
         run: |

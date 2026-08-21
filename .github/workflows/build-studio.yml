@@ -49,7 +49,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-studio:
@@ -79,6 +79,13 @@ jobs:
           python -c "from basic_pitch import ICASSP_2022_MODEL_PATH; from basic_pitch.inference import Model; m=Model(ICASSP_2022_MODEL_PATH); print('Basic Pitch model:', ICASSP_2022_MODEL_PATH)"
           python -c "import onnxruntime as ort; print('ONNX providers:', ort.get_available_providers())"
           python -c "from imageio_ffmpeg import get_ffmpeg_exe; import os; p=get_ffmpeg_exe(); print('FFmpeg:', p); assert os.path.exists(p)"
+
+      - name: Record bundled FFmpeg build information
+        shell: pwsh
+        run: |
+          $ffmpeg = python -c "from imageio_ffmpeg import get_ffmpeg_exe; print(get_ffmpeg_exe())"
+          & $ffmpeg -version | Set-Content FFMPEG_BUILD_INFO.txt
+          & $ffmpeg -buildconf | Add-Content FFMPEG_BUILD_INFO.txt
 
       - name: Verify first-use YouTube components
         shell: pwsh
@@ -120,6 +127,7 @@ jobs:
           New-Item -ItemType Directory -Force release-studio | Out-Null
           Copy-Item "dist/BPSR-MIDI-Studio.exe" "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
           Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
+          Copy-Item FFMPEG_BUILD_INFO.txt release-studio/FFMPEG_BUILD_INFO.txt
           $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
 
@@ -131,8 +139,26 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  release-studio:
+    needs: build-studio
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.0]')) }}
+    runs-on: windows-2022
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download Studio build files
+        uses: actions/download-artifact@v6
+        with:
+          name: BPSR-MIDI-Studio-Experimental-Beta-Windows
+          path: release-studio
+
       - name: Attach Studio experimental beta to requested Lite release
-        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.0]')) }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -160,4 +186,5 @@ jobs:
             release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
             release-studio/SHA256SUMS-STUDIO.txt `
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
+            release-studio/FFMPEG_BUILD_INFO.txt `
             --clobber
