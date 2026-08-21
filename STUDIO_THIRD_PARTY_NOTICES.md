@@ -1,6 +1,6 @@
 # BPSR MIDI Studio — third-party notices
 
-This file applies to the **Studio** build. The existing Lite build and its notice file remain unchanged.
+This file applies to the **Studio** build. The Lite build and `THIRD_PARTY_NOTICES.md` remain applicable where relevant.
 
 ## Spotify Basic Pitch
 
@@ -18,13 +18,17 @@ Purpose: runs the Basic Pitch ONNX neural-network model.
 
 License: MIT (see the ONNX Runtime package/project license distributed by its maintainers).
 
-## imageio-ffmpeg
+## imageio-ffmpeg / FFmpeg
 
 Project: `imageio/imageio-ffmpeg`
 
 Purpose: supplies the platform FFmpeg executable used to convert downloaded audio into WAV for transcription.
 
-License for the Python wrapper: BSD 2-Clause. Platform wheels include an FFmpeg executable; FFmpeg itself is distributed under its applicable FFmpeg build licenses. See the imageio-ffmpeg and FFmpeg license information included with/upstream from those projects.
+License for the Python wrapper: BSD 2-Clause.
+
+Platform wheels include an FFmpeg executable. FFmpeg itself is distributed under the license terms applicable to the exact bundled build. The Studio release process records `ffmpeg -version` and `ffmpeg -buildconf` output in `FFMPEG_BUILD_INFO.txt` so the redistributed build can be identified and audited.
+
+See the imageio-ffmpeg and FFmpeg upstream projects for the license texts and source/compliance information applicable to that build.
 
 ## yt-dlp
 
@@ -46,4 +50,4 @@ Studio downloads the official Windows x64 Deno runtime from the Deno GitHub rele
 
 ## Other dependencies
 
-Studio also contains the dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.
+Studio also contains dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.

@@ -1,234 +1,308 @@
 # 🎹 BPSR MIDI Lite / Studio
 
-A Windows MIDI utility for **Blue Protocol: Star Resonance** Keyboard/Piano, Electric Guitar, and Electric Bass.
+A simple Windows MIDI utility for **Blue Protocol: Star Resonance** instruments.
 
-The project now ships two editions:
+It supports:
 
-- **BPSR MIDI Lite 3.1.0** — lightweight Local MIDI + Online Sequencer player.
-- **BPSR MIDI Studio 0.2.0 Experimental Beta** — everything in Lite plus YouTube/audio-to-MIDI preparation and conversion.
+- 🎹 Keyboard / Piano
+- 🎸 Electric Guitar
+- 🎸 Electric Bass
 
-Both editions use the same BPSR playback engine: MIDI parsing, instrument-aware fitting, transposition, track/percussion handling, timing compensation, hotkeys, and Windows key injection stay shared.
+> ## TL;DR
+>
+> **BPSR MIDI Lite** plays local MIDI files and Online Sequencer songs in BPSR.
+>
+> **BPSR MIDI Studio** does everything Lite does and can also turn compatible YouTube/audio songs into MIDI.
+>
+> Download the latest GitHub Release, choose your instrument and song, then press **Play**.
+>
+> **No Python installation is required.**
+
+## What this app does
+
+BPSR MIDI prepares a song for the instrument range available in BPSR and sends the required keyboard input while the song plays.
+
+Both editions include:
+
+- Local `.mid` / `.midi` playback
+- Online Sequencer search and playback
+- Keyboard/Piano, Guitar and Bass support
+- Automatic note fitting for BPSR
+- Song Check before playing
+- Live MIDI waterfall
+- Adjustable speed
+- Pause / Resume
+- **F10 Panic Stop**
+- Online bookmarks
+- Save online songs as local MIDI
+
+**Studio** additionally includes:
+
+- YouTube song search
+- Audio → MIDI conversion
+- Save converted MIDI locally
+
+The app does **not modify BPSR game files** and does not ask for your BPSR account password.
 
 ## Download
 
 Use the latest **GitHub Release**.
 
+| Edition | Best for |
+|---|---|
+| **BPSR MIDI Lite 3.1.0** | You already have MIDI files or want Online Sequencer |
+| **BPSR MIDI Studio 0.2.0 Experimental Beta** | You also want YouTube/audio → MIDI |
+
 ### Lite
 
-Run `BPSR-MIDI-Lite.exe` for the smallest download and normal MIDI playback.
+Run `BPSR-MIDI-Lite.exe`.
+
+This is the smaller version.
 
 ### Studio
 
-Run `BPSR-MIDI-Studio-Experimental-Beta.exe` if you also want YouTube/audio conversion.
+Run `BPSR-MIDI-Studio-Experimental-Beta.exe`.
 
-Both builds are standalone. End users do **not** need Python installed. The executable requests Administrator permission because BPSR does not consistently accept injected input from a lower-privilege process.
+Studio is larger because it contains the audio/AI tools needed for conversion.
 
-## What's new in 3.1
+Both versions are standalone Windows applications. **Python is not required.**
 
-The old long form has been replaced with a dark, responsive **single-window gaming utility**.
+## 🚀 Quick Start — 1, 2, 3
 
-- Collapsible **MIDI Library** on the left.
-- Central **Live MIDI** waterfall showing the actual prepared BPSR key stream.
-- Inline **Song Check** with Ready / Busy / Crowded status and remap/skip/filter counts.
-- Collapsible **Settings / session** area instead of detached windows.
-- Permanently anchored **Preset, Tempo/Speed, Play, Pause/Resume, Panic Stop, status, and progress** controls.
-- Best-effort Windows 11 Mica backdrop with a normal dark fallback.
-- Compact-player behavior when the window becomes narrow.
-- Safe **Pause/Resume** that releases held notes while paused and resumes without a catch-up burst.
-- **F10 Panic Stop** remains available at all times.
+### 1. Open the app
 
-The interface is still one application window. No floating playback overlay or secondary settings window is required.
+Run the Lite or Studio EXE.
 
-## Quick start
+Windows may ask for **Administrator permission**. BPSR can reject keyboard input sent from a lower-privilege application, so the player runs elevated for compatibility.
 
-1. Choose **Keyboard**, **Guitar**, or **Bass**.
-2. Choose the BPSR **Category** you have unlocked.
-3. Choose **Local**, **Online Sequencer**, **Bookmarks**, or **YouTube** in Studio.
-4. Leave Tempo / speed at `100%` for the original song speed, or adjust it.
-5. Read **Song Check**.
-6. Press **Play**, then return to BPSR before the countdown ends.
+### 2. Pick your instrument and song
 
-Use **Pause / Resume** when you want to temporarily stop the song without restarting it. Use **F10 / Panic Stop** when you need every held key released immediately.
+Choose:
 
-## Song sources
+**Instrument → Category → Song**
 
-### Local
+Example:
 
-Local is the permanent `.mid` / `.midi` library on your PC.
+`Keyboard → Category 3 → Local song`
 
-Click **Open folder** to add or remove songs with File Explorer. The library refreshes automatically and works completely offline.
+Leave **Speed at 100%** if you want the song's normal speed.
 
-### Online Sequencer
+### 3. Press Play
 
-Type a song title, or paste an Online Sequencer URL / numeric sequence ID, then press **Search**.
+Check the **Song Check** result, then press **Play**.
 
-The app first tries Online Sequencer's public search normally. If the site requires a browser verification session, **Verify once** opens the real Online Sequencer page so you can complete that check in Firefox and return to the app. No manual cookie, DevTools, URL, or sequence-ID copying is required for normal title search.
+Return to BPSR before the countdown finishes.
 
-When a compatible Firefox Online Sequencer session already exists, the search bridge can reuse the site's cookie together with the installed Firefox user agent. That cookie is not displayed, saved in app settings, or sent to unrelated hosts.
+> **Emergency stop:** press **F10** at any time to stop playback and release held keys.
+
+## Song Sources
+
+### 📁 Local
+
+Use this for MIDI files already on your PC.
+
+1. Open the **Local** tab.
+2. Press **Open folder**.
+3. Put your `.mid` or `.midi` files there.
+4. Choose a song and press **Play**.
+
+Local playback works completely offline.
+
+### 🌐 Online Sequencer
+
+You can:
+
+- Search by song name
+- Paste an Online Sequencer link
+- Paste a numeric sequence ID
+
+The app first tries a normal public search.
+
+Sometimes Online Sequencer asks for browser verification. If that happens:
+
+1. Click **Verify once**.
+2. Complete the check in Firefox.
+3. Return to BPSR MIDI.
+4. Search again.
+
+When that fallback is needed, the app can read existing `onlinesequencer.net` cookies from the local Firefox profile and send them only back to `onlinesequencer.net` together with the matching Firefox user agent. Cookie values are not shown in the app, saved in app settings, or sent to unrelated hosts.
+
+The app does not ask for your Online Sequencer username or password.
 
 Direct sequence URL / ID loading remains available as a fallback.
 
-Online results show:
+### ⭐ Bookmarks
 
-- **BPSR fit** — Ready, Busy, Crowded, Too large, or Unavailable.
-- **R** — notes remapped to fit the selected instrument/category.
-- **S** — skipped notes.
-- **F** — filtered/simplified notes.
-- **Playable** — final playable-note count.
+Bookmarks remember an Online Sequencer song without keeping a permanent MIDI copy.
 
-Selected songs are converted into temporary standard MIDI and passed through the same BPSR planner used for Local songs. Use **Save to Local** when you want a permanent offline MIDI copy.
+If you want the song available offline, use **Save to Local** instead.
 
-### Bookmarks
+### ▶️ YouTube — Studio only
 
-Bookmarks remember Online Sequencer songs without permanently downloading them.
+Studio can search YouTube and convert compatible audio into MIDI automatically.
 
-If the temporary cache expires, the app fetches the song again when needed. Use **Save to Local** for a true offline copy.
+For cleaner results, prefer uploads such as:
 
-### YouTube — Studio only
+- Piano covers
+- Guitar covers
+- Bass covers
+- Instrumental versions
+- Karaoke versions
+- Melody-focused covers
 
-Studio adds a **YouTube** source tab.
+A full song containing vocals, drums and many instruments at once is harder to convert cleanly.
 
-Search by title, choose a result, and Studio automatically gets the available audio, builds a cleaner/core MIDI, runs the normal BPSR Song Check, and makes the converted MIDI playable in the same window.
+Studio does not use your Google/YouTube login or browser cookies. Restricted or inaccessible videos are skipped.
 
-There is **no Studio account, sign-in, or subscription**. Restricted or inaccessible videos are simply skipped.
-
-For the cleanest result, prefer uploads such as:
-
-- instrumental
-- piano cover
-- guitar cover
-- bass cover
-- karaoke
-- melody-focused cover
-
-Full vocal/full-band mixes are harder to transcribe cleanly because several instruments and voices overlap at once.
-
-Studio keeps downloaded audio temporary by default. Use **Save MIDI to Local** when you want to keep the generated MIDI permanently.
-
-## Live MIDI visualizer
-
-The waterfall is not a decorative approximation. It is built from the already-prepared BPSR `PlannedEvent` stream, so it previews the note/key events the playback engine intends to send after fitting.
-
-The visualizer refreshes every **80 ms**, which is about **12.5 visual updates per second**. Playback itself is not limited to 12.5 Hz: the MIDI scheduler uses high-resolution timing independently of the visual refresh.
-
-The UI status queue updates every 50 ms, while F10 is polled every 60 ms. Those are UI/control polling intervals, not MIDI timing resolution.
+Downloaded audio is temporary. Use **Save MIDI to Local** if you want to keep the resulting MIDI.
 
 ## Song Check
 
-Song Check uses simple readiness labels plus conversion numbers:
+Before playing, the app checks how well the song fits your selected BPSR instrument.
 
-- **Ready to play** — normal fit for the selected BPSR instrument/category.
-- **Playable, but this song is busy** — playable, but dense enough that BPSR may sound less clean.
-- **This song may sound crowded** — complex arrangement likely to lose clarity in a game keyboard.
-- **Remapped** — played notes whose final pitch differs from the source.
-- **Skipped** — notes that cannot be played under the selected profile.
-- **Filtered/simplified** — percussion or chord notes intentionally removed by the automatic instrument policy.
+### ✅ Ready to play
 
-A coherent whole-song transpose is reported separately from local fitting, so a clean key shift is not mistaken for random pitch distortion.
+The song should fit normally.
 
-## Safe Category ranges
+### 🟡 Playable, but busy
 
-### Keyboard / Piano
+The song works, but some sections may contain many notes at once.
 
-| Category | Game progression | Safe playback used by the app |
-|---|---|---|
-| 1 | Starts with C3–B4 | C3–B4 |
-| 2 | Unlocks C5–B6 | C3–B6 |
-| 3 | Unlocks A0–B2 | C2–B6 |
-| 4 | Unlocks C7–C8 | C2–B6 |
+### 🟠 Crowded
 
-Piano Category 3/4 deliberately stays inside **C2–B6** so normal playback can remain on the middle page.
+The arrangement is complex enough that it may lose some clarity inside BPSR.
 
-### Electric Guitar
+You may also see:
 
-| Category | Game progression | Safe playback used by the app |
-|---|---|---|
-| 1 | Starts with C3–B4 | C3–B4 |
-| 2 | Unlocks E2–B2 | E2–B4 |
-| 3 | Unlocks C5–D6 | E2–D6 |
+- **R — Remapped:** notes moved to a playable BPSR pitch
+- **S — Skipped:** notes BPSR cannot safely play
+- **F — Filtered:** notes automatically simplified or removed
+- **Playable:** final number of notes that will be played
 
-Guitar can reach its safe range with Default/Low/High octave, so normal profiles do not require page keys.
+You normally do not need to change anything manually.
 
-### Electric Bass
+## Pause and Emergency Stop
 
-| Category | Game progression | Safe playback used by the app |
-|---|---|---|
-| 1 | Starts with E1–B2 | E1–B2 |
-| 2 | High range unlocked | E1–B3 |
+### Pause
 
-Bass has no Low Octave mode. Category 2 switches to High once at playback start, stays there, and resets afterward.
+**Pause** stops the song temporarily and releases currently held note keys.
 
-## Instrument-aware fitting
+### Resume
 
-The planner applies hidden musical priorities automatically:
+**Resume** continues from the same place without rapidly playing overdue notes.
 
-- **Keyboard / Piano** — fidelity-first pitch/chord preservation.
-- **Electric Guitar** — protects the upper melody/chord voice when fitting choices are otherwise comparable.
-- **Electric Bass** — keeps the low line and uses contour-aware octave choices to reduce unnatural register jumps.
+### F10 / Panic Stop
 
-Normal profiles never use `<` / `>` page switching. Outer notes are fitted into the safe range instead.
+Press **F10** if anything goes wrong.
 
-## Raw MIDI — no remap
-
-`Raw MIDI — no remap` keeps original in-range pitches and full chords.
-
-Out-of-range notes are skipped instead of remapped. Raw mode also keeps the BPSR-safe short-note/retrigger correction and percussion handling, and it never uses `<` / `>` page switching.
-
-## Tempo / speed
-
-`100%` means the original MIDI/sequence tempo.
-
-The supported range is **25%–200%**. Speed is independent from the selected instrument Category.
-
-## Keyboard connection
-
-The recommended input method is **Win32 scan code**.
-
-Other compatibility backends remain available because different Windows/game setups can accept injected input differently:
-
-- Win32 scan code — recommended
-- Pynput compatibility
-- Win32 virtual key
-- Legacy `keybd_event`
-
-If scan code works, leave it unchanged.
-
-## Pause and Panic Stop
-
-**Pause** releases currently held BPSR note keys and freezes the playback timeline.
-
-**Resume** restores the required held-key state and shifts the timeline by the paused duration, preventing a burst of overdue notes.
-
-**F10 / Panic Stop** immediately stops playback and releases held keys/instrument state.
+It immediately stops playback and releases the keys controlled by BPSR MIDI.
 
 ## Lite vs Studio
 
 | Feature | Lite | Studio |
 |---|:---:|:---:|
 | Local MIDI | ✅ | ✅ |
-| Online Sequencer search | ✅ | ✅ |
-| Online bookmarks | ✅ | ✅ |
+| Online Sequencer | ✅ | ✅ |
+| Bookmarks | ✅ | ✅ |
 | Save MIDI locally | ✅ | ✅ |
 | Live MIDI waterfall | ✅ | ✅ |
+| Song Check | ✅ | ✅ |
 | Pause / Resume | ✅ | ✅ |
-| YouTube search | — | ✅ |
-| Audio → MIDI transcription | — | ✅ |
-| Bundled AI/audio runtime | — | ✅ |
-| Smallest download | ✅ | — |
+| F10 Panic Stop | ✅ | ✅ |
+| YouTube search | ❌ | ✅ |
+| Audio → MIDI | ❌ | ✅ |
+| Smallest download | ✅ | ❌ |
 
-Studio is intentionally heavier because it bundles the transcription/audio runtime. Lite remains the better choice when you already have MIDI files.
+**Use Lite unless you specifically need YouTube/audio conversion.**
 
-## Online and third-party notes
+<details>
+<summary><strong>Instrument / Category ranges</strong></summary>
 
-Online Sequencer and YouTube are third-party services. This project is not affiliated with or endorsed by them.
+### Keyboard / Piano
 
-Online features can need maintenance when those sites change. Local MIDI playback is intentionally isolated so a website outage or extraction change does not break the core player.
+| Category | BPSR progression | Range used by the app |
+|---|---|---|
+| 1 | C3–B4 | C3–B4 |
+| 2 | Unlocks C5–B6 | C3–B6 |
+| 3 | Unlocks A0–B2 | C2–B6 |
+| 4 | Unlocks C7–C8 | C2–B6 |
 
-Studio's YouTube source is intended for publicly accessible material the user is permitted to process. The app does not provide a login/DRM bypass workflow.
+Categories 3 and 4 deliberately stay inside **C2–B6** during normal playback so the player does not need constant page switching.
 
-See `THIRD_PARTY_NOTICES.md` and `STUDIO_THIRD_PARTY_NOTICES.md` for bundled dependency attribution.
+### Electric Guitar
 
-## Development
+| Category | BPSR progression | Range used by the app |
+|---|---|---|
+| 1 | C3–B4 | C3–B4 |
+| 2 | Unlocks E2–B2 | E2–B4 |
+| 3 | Unlocks C5–D6 | E2–D6 |
+
+### Electric Bass
+
+| Category | BPSR progression | Range used by the app |
+|---|---|---|
+| 1 | E1–B2 | E1–B2 |
+| 2 | High range unlocked | E1–B3 |
+
+</details>
+
+<details>
+<summary><strong>Advanced input settings</strong></summary>
+
+The recommended input method is **Win32 scan code**.
+
+Other compatibility options remain available:
+
+- Win32 scan code — recommended
+- Pynput compatibility
+- Win32 virtual key
+- Legacy `keybd_event`
+
+If the default works, leave it unchanged.
+
+`Raw MIDI — no remap` is also available for users who want original in-range pitches and full chords. Out-of-range notes are skipped instead of remapped.
+
+</details>
+
+## Privacy & Online Features
+
+### Local MIDI
+
+Local songs stay on your PC.
+
+### Online Sequencer
+
+Public Online Sequencer pages and sequence data are contacted only when you use Online Sequencer features.
+
+If **Verify once** is needed, the app may read existing Online Sequencer cookies from the local Firefox profile and send them only back to `onlinesequencer.net`. The values are not displayed, stored in BPSR MIDI settings, or sent to unrelated hosts.
+
+For some directly loaded sequences, the public sequence URL may also be sent to the **Microlink metadata API** to obtain a display-only title/author. MIDI playback does not depend on this lookup.
+
+### Studio / YouTube
+
+Studio uses **yt-dlp** for public YouTube search/audio retrieval.
+
+It does not use your Google/YouTube login or browser cookies.
+
+Temporary audio is removed after conversion. Generated MIDI is cached for a limited time unless you explicitly save it.
+
+## Safety Notes
+
+BPSR MIDI:
+
+- Does not modify BPSR game files
+- Does not ask for your BPSR password
+- Does not record arbitrary keyboard typing
+- Uses keyboard input only to play the selected BPSR instrument
+- Uses F10 as the global Panic Stop hotkey
+
+Online features can stop working temporarily when third-party websites change. **Local MIDI playback remains independent.**
+
+Use only MIDI/audio/content that you are permitted to use or process.
+
+This is an **unofficial fan-made utility**. It is not affiliated with or endorsed by Blue Protocol: Star Resonance, Online Sequencer, YouTube, or their respective owners/operators.
+
+## For Developers
 
 Lite entry point: `modern_launcher.py`
 
@@ -236,17 +310,15 @@ Studio entry point: `studio_launcher.py`
 
 Important modules:
 
-- `midi_engine.py` — MIDI extraction, fitting, transposition, BPSR planning and timing
-- `profiles.py` — user-facing instrument/Category policies
-- `player.py` — playback scheduler, pause/resume and cleanup
-- `win_input.py` — Windows input backends
-- `gaming_ui_2026.py` — responsive single-window shell and Live MIDI visualizer
-- `gaming_runtime_2026.py` — 2026 runtime integration layer
-- `online_sequencer.py` — Online Sequencer sequence client/cache/conversion
-- `online_search_bridge.py` — in-app title search and browser-session compatibility bridge
-- `online_ui.py` — Online Sequencer/bookmark workflow
-- `studio_youtube.py` — Studio YouTube search/audio acquisition
-- `studio_core_transcription.py` — Studio audio-to-MIDI transcription pipeline
+- `midi_engine.py` — MIDI preparation and note fitting
+- `profiles.py` — instrument/category rules
+- `player.py` — playback and timing
+- `win_input.py` — Windows keyboard input
+- `gaming_ui_2026.py` — main interface and Live MIDI view
+- `online_sequencer.py` — sequence download/cache/conversion
+- `online_search_bridge.py` — Online Sequencer title search
+- `studio_youtube.py` — Studio YouTube support
+- `studio_core_transcription.py` — audio → MIDI processing
 
 Run tests:
 
@@ -266,6 +338,10 @@ Build Studio:
 pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
 ```
 
+See `CHANGELOG.md`, `THIRD_PARTY_NOTICES.md`, `STUDIO.md`, and `STUDIO_THIRD_PARTY_NOTICES.md` for additional technical and licensing information.
+
 ## License
 
-GNU AGPL-3.0. Created by **MrEz**.
+**GNU AGPL-3.0**
+
+Created by **MrEz**.

@@ -1,14 +1,93 @@
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
 __pycache__/
 *.py[cod]
+*.pyd
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.eggs/
+
+# ------------------------------------------------------------
+# Virtual environments
+# ------------------------------------------------------------
 .venv/
-.venv-build/
+.venv-*/
+venv/
+env/
+
+# ------------------------------------------------------------
+# Build / packaging output
+# ------------------------------------------------------------
 build/
 dist/
 release/
+release-studio/
 portable/
+
+# ------------------------------------------------------------
+# BPSR MIDI local application state
+# ------------------------------------------------------------
 bpsr_midi_lite.json
 
-# Keep personal song files out of Git while preserving the folder.
+# ------------------------------------------------------------
+# Logs / temporary files
+# ------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# ------------------------------------------------------------
+# Secrets / credentials
+# ------------------------------------------------------------
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Browser/private local data must never enter the repository.
+*.sqlite
+*.sqlite3
+cookies.txt
+cookies-*.txt
+
+# ------------------------------------------------------------
+# Personal music / media
+# ------------------------------------------------------------
+# Keep the user's MIDI library out of Git while preserving the placeholder.
 MIDI/*
 !MIDI/PUT_MIDI_FILES_HERE.txt
+
+*.mid
+*.midi
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.aac
+*.ogg
+*.webm
+*.mp4
+*.mkv
+*.mov
+
+# ------------------------------------------------------------
+# IDE / OS junk
+# ------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
