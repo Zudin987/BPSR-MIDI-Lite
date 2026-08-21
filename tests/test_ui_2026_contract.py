@@ -29,6 +29,14 @@ def test_compact_runtime_keeps_real_library_watcher_and_pause_responsive() -> No
     assert "columnconfigure(2, minsize=0)" in runtime
 
 
+def test_live_midi_visualizer_is_capped_at_30_fps() -> None:
+    runtime = Path("gaming_runtime_2026.py").read_text(encoding="utf-8")
+
+    assert "VISUALIZER_FPS = 30" in runtime
+    assert "VISUALIZER_FRAME_MS = round(1000 / VISUALIZER_FPS)" in runtime
+    assert "app.after(VISUALIZER_FRAME_MS" in runtime
+
+
 def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> None:
     lite = Path("modern_launcher.py").read_text(encoding="utf-8")
     studio = Path("studio_launcher.py").read_text(encoding="utf-8")
@@ -39,8 +47,8 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_online_search_ui_2026()" in launcher
         assert "install_gaming_runtime_2026(app)" in launcher
 
-    assert 'app.APP_VERSION = "3.1.0"' in lite
-    assert 'app.APP_VERSION = "Studio 0.2.0-experimental-beta"' in studio
+    assert 'app.APP_VERSION = "3.1.1"' in lite
+    assert 'app.APP_VERSION = "Studio 0.2.1-experimental-beta"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:
