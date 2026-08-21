@@ -14,7 +14,7 @@ from studio_polish import install_studio_polish
 
 
 # Studio remains a separate experimental build target; Lite keeps its own spec.
-app.APP_VERSION = "Studio 0.2.0-experimental-beta"
+app.APP_VERSION = "Studio 0.2.1-experimental-beta"
 
 install_core_transcription()
 install_online_search_bridge()
