@@ -44,7 +44,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional existing Lite release tag, for example v3.1.0. Leave blank to build only."
+        description: "Optional existing Lite release tag, for example v3.1.1. Leave blank to build only."
         required: false
         type: string
 
@@ -141,7 +141,7 @@ jobs:
 
   release-studio:
     needs: build-studio
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.0]')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.1]')) }}
     runs-on: windows-2022
     permissions:
       contents: write
@@ -162,7 +162,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || 'v3.1.0' }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || 'v3.1.1' }}
         run: |
           $tag = $env:RELEASE_VERSION.Trim()
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }

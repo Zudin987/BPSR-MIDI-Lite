@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-set VERSION=3.1.0
+set VERSION=3.1.1
 
 echo ========================================
 echo BPSR MIDI Lite v%VERSION% Windows builder

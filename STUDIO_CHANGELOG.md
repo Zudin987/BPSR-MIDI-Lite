@@ -1,5 +1,10 @@
 # BPSR MIDI Studio changelog
 
+## 0.2.1-experimental-beta
+
+- Updated the shared Live MIDI visualizer to a capped **30 FPS** render loop (about 33 ms per frame) for smoother note movement and faster active-key feedback.
+- Playback timing, MIDI conversion, BPSR fitting, YouTube workflow, Local/Online search, and input behavior are unchanged.
+
 ## 0.1.2-experimental-beta
 
 - Added a visible moving progress bar while YouTube search/conversion is working, with stage text for download, transcription, cleanup, and BPSR checking.
