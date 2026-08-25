@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v3.1.1. Leave blank to build only."
+        description: "Optional version to publish, for example v3.1.2. Leave blank to build only."
         required: false
         type: string
 
@@ -89,7 +89,7 @@ jobs:
 
   release:
     needs: build
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_version != '') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release v3.1.1]')) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
     runs-on: windows-2022
     permissions:
       contents: write
@@ -110,7 +110,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version || 'v3.1.1' }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
           $tag = $env:RELEASE_VERSION.Trim()
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
@@ -122,21 +122,11 @@ jobs:
               release/SHA256SUMS.txt `
               --clobber
           } else {
-            if ($tag -eq "v3.1.1" -and (Test-Path "RELEASE_NOTES_3.1.1.md")) {
-              gh release create $tag `
-                release/BPSR-MIDI-Lite.exe `
-                release/BPSR-MIDI-Lite-Windows-x64.zip `
-                release/SHA256SUMS.txt `
-                --target $env:GITHUB_SHA `
-                --title "BPSR MIDI Lite $tag" `
-                --notes-file RELEASE_NOTES_3.1.1.md
-            } else {
-              gh release create $tag `
-                release/BPSR-MIDI-Lite.exe `
-                release/BPSR-MIDI-Lite-Windows-x64.zip `
-                release/SHA256SUMS.txt `
-                --target $env:GITHUB_SHA `
-                --title "BPSR MIDI Lite $tag" `
-                --generate-notes
-            }
+            gh release create $tag `
+              release/BPSR-MIDI-Lite.exe `
+              release/BPSR-MIDI-Lite-Windows-x64.zip `
+              release/SHA256SUMS.txt `
+              --target $env:GITHUB_SHA `
+              --title "BPSR MIDI Lite $tag" `
+              --generate-notes
           }

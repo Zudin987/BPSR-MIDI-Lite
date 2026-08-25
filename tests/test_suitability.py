@@ -12,6 +12,7 @@ def make_plan(**overrides):
         "source_percussion_notes": 0,
         "max_source_chord": 2,
         "max_planned_chord": 2,
+        "max_simultaneous_keys": 2,
         "folded_notes": 0,
         "skipped_notes": 0,
         "chord_removed_notes": 0,

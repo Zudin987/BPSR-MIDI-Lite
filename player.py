@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections.abc import Callable
 
 from midi_engine import MidiPlan, PlannedEvent
-from win_input import WindowsKeySender
-
+from win_input import WindowsKeySender, foreground_process_id
 
 StatusCallback = Callable[[str, float], None]
 FinishedCallback = Callable[[str | None], None]
@@ -29,6 +29,14 @@ class MidiPlayer:
         self._key_counts: dict[str, int] = {}
         self._keys_temporarily_released = False
         self.position = 0.0
+        self._clock_started_at: float | None = None
+        self._clock_paused_total = 0.0
+        self._clock_pause_started_at: float | None = None
+        self._clock_duration = 0.0
+        self._focus_guard_enabled = False
+        self._target_process_id: int | None = None
+        self._last_focus_check_at = 0.0
+        self._last_focus_check_result = True
 
     @property
     def is_playing(self) -> bool:
@@ -45,6 +53,20 @@ class MidiPlayer:
         except RuntimeError:
             return ()
 
+    @property
+    def playback_position(self) -> float:
+        """Continuous read-only playhead used by the visualizer."""
+        started = self._clock_started_at
+        if started is None:
+            return float(self.position)
+        now = (
+            self._clock_pause_started_at
+            if self._clock_pause_started_at is not None
+            else time.perf_counter()
+        )
+        elapsed = max(0.0, now - started - self._clock_paused_total)
+        return min(self._clock_duration, elapsed)
+
     def start(
         self,
         plan: MidiPlan,
@@ -55,6 +77,11 @@ class MidiPlayer:
     ) -> None:
         if self.is_playing:
             raise RuntimeError("Playback is already running.")
+        if getattr(plan, "mode", None) == "stable" and (
+            int(getattr(plan, "page_switches", 0)) > 0
+            or any(event.kind == "page" for event in plan.events)
+        ):
+            raise ValueError("Stable playback cannot contain < or > page switching.")
 
         self.stop_event.clear()
         self.pause_event.clear()
@@ -65,6 +92,14 @@ class MidiPlayer:
         self._key_counts.clear()
         self._keys_temporarily_released = False
         self.position = 0.0
+        self._clock_started_at = None
+        self._clock_paused_total = 0.0
+        self._clock_pause_started_at = None
+        self._clock_duration = max(0.0, float(plan.duration))
+        self._focus_guard_enabled = os.name == "nt"
+        self._target_process_id = None
+        self._last_focus_check_at = 0.0
+        self._last_focus_check_result = True
         self.sender = WindowsKeySender(input_backend)
 
         self.thread = threading.Thread(
@@ -94,6 +129,8 @@ class MidiPlayer:
 
     def _wait_until(self, target: float) -> bool:
         while not self.stop_event.is_set():
+            if not self._target_has_focus():
+                return False
             remaining = target - time.perf_counter()
             if remaining <= 0:
                 return True
@@ -102,6 +139,40 @@ class MidiPlayer:
             else:
                 time.sleep(min(remaining, 0.001))
         return False
+
+    def _target_has_focus(self, *, force: bool = False) -> bool:
+        if not self._focus_guard_enabled:
+            return True
+        now = time.perf_counter()
+        if not force and now - self._last_focus_check_at < 0.025:
+            return self._last_focus_check_result
+        self._last_focus_check_at = now
+        self._last_focus_check_result = (
+            foreground_process_id() == self._target_process_id
+        )
+        return self._last_focus_check_result
+
+    def _capture_target_process(self) -> None:
+        if not self._focus_guard_enabled:
+            return
+        process_id = foreground_process_id()
+        if process_id is None or process_id == os.getpid():
+            raise RuntimeError(
+                "BPSR was not focused when the countdown ended. Press Play again "
+                "and switch to the game before the countdown reaches zero."
+            )
+        self._target_process_id = process_id
+        self._last_focus_check_at = time.perf_counter()
+        self._last_focus_check_result = True
+
+    def _begin_clock_pause(self, started: float) -> None:
+        if self._clock_started_at is not None and self._clock_pause_started_at is None:
+            self._clock_pause_started_at = started
+
+    def _finish_clock_pause(self, elapsed: float) -> None:
+        if self._clock_pause_started_at is not None:
+            self._clock_paused_total += elapsed
+            self._clock_pause_started_at = None
 
     def _switch_page(self, target_page: int, wait_between_steps: bool = False) -> None:
         assert self.sender is not None
@@ -199,12 +270,41 @@ class MidiPlayer:
             return 0.0
         self._release_note_keys_for_pause()
         started = time.perf_counter()
+        self._begin_clock_pause(started)
         on_status("Paused — press Resume to continue", progress)
         while self.pause_event.is_set() and not self.stop_event.is_set():
             self.stop_event.wait(0.050)
+        if (
+            not self.stop_event.is_set()
+            and self._target_process_id is not None
+            and not self._target_has_focus(force=True)
+        ):
+            on_status("Resume ready — return to BPSR to continue", progress)
+            while not self._target_has_focus(force=True) and not self.stop_event.is_set():
+                self.stop_event.wait(0.050)
         elapsed = time.perf_counter() - started
+        self._finish_clock_pause(elapsed)
         if not self.stop_event.is_set():
             self._restore_note_keys_after_pause()
+        return elapsed
+
+    def _pause_for_focus(self, on_status: StatusCallback, progress: float) -> float:
+        if self._target_has_focus(force=True) or self.stop_event.is_set():
+            return 0.0
+        self._release_note_keys_for_pause()
+        started = time.perf_counter()
+        self._begin_clock_pause(started)
+        on_status(
+            "Auto-paused — BPSR lost focus. Return to the same game window to resume.",
+            progress,
+        )
+        while not self._target_has_focus(force=True) and not self.stop_event.is_set():
+            self.stop_event.wait(0.050)
+        elapsed = time.perf_counter() - started
+        self._finish_clock_pause(elapsed)
+        if not self.stop_event.is_set():
+            self._restore_note_keys_after_pause()
+            on_status("BPSR focus restored — resuming playback", progress)
         return elapsed
 
     def _cleanup(self) -> None:
@@ -254,7 +354,10 @@ class MidiPlayer:
             if self.stop_event.is_set():
                 return
 
+            self._capture_target_process()
             start = time.perf_counter()
+            self._clock_started_at = start
+            self._clock_duration = max(0.0, float(plan.duration))
             paused_total = 0.0
             total = max(plan.duration, 0.001)
             last_status_at = float("-inf")
@@ -267,9 +370,16 @@ class MidiPlayer:
                             min(1.0, self.position / total),
                         )
                         continue
+                    if not self._target_has_focus():
+                        paused_total += self._pause_for_focus(
+                            on_status,
+                            min(1.0, self.position / total),
+                        )
+                        continue
                     target = start + paused_total + event.time
                     if self._wait_until(target):
-                        break
+                        if self._target_has_focus(force=True):
+                            break
                 if self.stop_event.is_set():
                     break
 
@@ -297,4 +407,10 @@ class MidiPlayer:
             try:
                 self._cleanup()
             finally:
+                self._clock_started_at = None
+                self._clock_pause_started_at = None
+                self._focus_guard_enabled = False
+                self._target_process_id = None
+                self._last_focus_check_at = 0.0
+                self._last_focus_check_result = True
                 on_finished(error)

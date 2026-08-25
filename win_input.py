@@ -5,7 +5,6 @@ import os
 import threading
 import time
 
-
 # Fixed-width Win32 types. Using ctypes.wintypes.LONG outside Windows can have
 # the host platform's size, so define the ABI types explicitly.
 WORD = ctypes.c_uint16
@@ -123,6 +122,10 @@ if os.name == "nt" and user32 is not None:
     user32.keybd_event.restype = None
     user32.GetAsyncKeyState.argtypes = (INT,)
     user32.GetAsyncKeyState.restype = ctypes.c_short
+    user32.GetForegroundWindow.argtypes = ()
+    user32.GetForegroundWindow.restype = ctypes.c_void_p
+    user32.GetWindowThreadProcessId.argtypes = (ctypes.c_void_p, ctypes.POINTER(DWORD))
+    user32.GetWindowThreadProcessId.restype = DWORD
 
 
 def input_abi_diagnostics() -> str:
@@ -130,6 +133,18 @@ def input_abi_diagnostics() -> str:
         f"INPUT={ctypes.sizeof(INPUT)} bytes "
         f"(expected {EXPECTED_INPUT_SIZE}), pointer={ctypes.sizeof(ctypes.c_void_p) * 8}-bit"
     )
+
+
+def foreground_process_id() -> int | None:
+    """Return the process owning the current foreground window on Windows."""
+    if os.name != "nt" or user32 is None:
+        return None
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return None
+    process_id = DWORD(0)
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+    return int(process_id.value) or None
 
 
 class WindowsKeySender:

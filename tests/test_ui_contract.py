@@ -58,7 +58,7 @@ def test_ui_keeps_raw_mode_and_page_fail_safe() -> None:
     assert 'text="Song speed"' in source
     assert "Raw MIDI" in source
     assert "out-of-range notes are skipped" in source
-    assert "if plan.page_switches:" in source
+    assert 'if plan.page_switches or any(event.kind == "page"' in source
     assert "Playback blocked — unexpected page change" in source
 
 
@@ -69,7 +69,7 @@ def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
 
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
-    assert 'app.APP_VERSION = "3.1.1"' in launcher
+    assert 'app.APP_VERSION = "3.1.2"' in launcher
     assert "install_gaming_ui_2026(app)" in launcher
     assert "install_online_search_bridge()" in launcher
     assert "_online_original_build_ui" in integration
@@ -94,3 +94,11 @@ def test_online_library_keeps_local_playback_isolated() -> None:
     assert "if hasattr(self, \"song_source_var\") and not online_ui.is_local_source(self):" in integration
     assert "app._reload_midi_library" in online
     assert "Save to Local" in online
+
+
+def test_fresh_ui_does_not_assume_higher_categories() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert 'self._active_profile_code = "tier1"' in source
+    assert '"keyboard": "tier1", "guitar": "tier1", "bass": "tier1"' in source
+    assert 'default="tier1"' in source

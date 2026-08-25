@@ -12,6 +12,7 @@ class SuitabilityPlan(Protocol):
     source_percussion_notes: int
     max_source_chord: int
     max_planned_chord: int
+    max_simultaneous_keys: int
     folded_notes: int
     skipped_notes: int
     chord_removed_notes: int
@@ -62,7 +63,11 @@ def evaluate_song_suitability(plan: SuitabilityPlan) -> SuitabilityResult:
         score += 1
         reasons.append(f"moderate note density ({notes_per_second:.1f} notes/sec)")
 
-    max_chord = max(int(plan.max_source_chord), int(plan.max_planned_chord))
+    max_chord = max(
+        int(plan.max_source_chord),
+        int(plan.max_planned_chord),
+        int(getattr(plan, "max_simultaneous_keys", plan.max_planned_chord)),
+    )
     if max_chord >= 12:
         score += 3
         reasons.append(f"very large chords (up to {max_chord} notes together)")

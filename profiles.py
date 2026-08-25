@@ -137,11 +137,11 @@ def profile_label_for(instrument: InstrumentCode, code: str) -> str:
 
 
 def default_profile_code(instrument: InstrumentCode) -> str:
-    if instrument == "keyboard":
-        return "tier4"
-    if instrument == "guitar":
-        return "tier3"
-    return "tier2"
+    # Category is an unlock declaration, not an automatic quality setting.
+    # Every instrument starts with Category 1, so this is the only safe default
+    # for a fresh install. Existing saved selections are preserved by App.
+    del instrument
+    return "tier1"
 
 
 def get_fixed_profile(instrument: InstrumentCode, code: str) -> PlaybackProfile:

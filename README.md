@@ -15,6 +15,8 @@ Both are standalone Windows builds; **Python is not required** for normal use.
 2. Choose **Instrument → Category → Song** and leave Speed at **100%** unless you want a different tempo.
 3. Check **Song Check**, press **Play**, and return to BPSR before the countdown ends.
 
+Fresh installs start at **Category 1**. Select a higher Category only when that instrument range is actually unlocked on your BPSR character; saved choices are remembered.
+
 > **Emergency stop:** press **F10** at any time to stop playback and release held keys.
 
 ## Features
@@ -52,7 +54,7 @@ Studio does not use your Google/YouTube login or browser cookies. Downloaded aud
 
 ## Song Check
 
-Song Check reports whether the selected MIDI is ready, busy, or crowded and shows how many notes were remapped, skipped, filtered, and finally playable. Normally you do not need to adjust anything manually.
+Song Check reports whether the selected MIDI is ready, busy, or crowded and shows remapped, skipped, filtered, close-repeat, peak-held-key, and finally playable-note information. Normally you do not need to adjust anything manually.
 
 The recommended input method is **Win32 scan code**. Leave it unchanged if playback works correctly.
 
@@ -62,6 +64,7 @@ The recommended input method is **Win32 scan code**. Leave it unchanged if playb
 - Online features contact their relevant public services only when used.
 - BPSR MIDI does not record arbitrary keyboard typing.
 - Keyboard input is used to play the selected BPSR instrument.
+- The app locks playback to the foreground process seen when the countdown ends. If another app takes focus, held keys are released and the song waits until the same BPSR process is foreground again.
 - F10 is the global Panic Stop hotkey.
 
 Third-party websites can change and temporarily break online features; local MIDI playback remains independent.

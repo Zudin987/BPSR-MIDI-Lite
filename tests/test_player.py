@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
+import player as player_module
 from midi_engine import PlannedEvent
 from player import MidiPlayer
 
@@ -51,6 +54,8 @@ def make_plan(events: list[PlannedEvent], duration: float):
         events=events,
         duration=duration,
         page_switch_delay=0.220,
+        mode="stable",
+        page_switches=0,
     )
 
 
@@ -171,3 +176,39 @@ def test_dense_events_do_not_spam_ui_status() -> None:
     assert len(statuses) <= 3
     assert statuses[-1] == ("Playback completed", 1.0)
     assert finished == [None]
+
+
+def test_stable_start_rejects_page_event_before_input_initializes() -> None:
+    plan = make_plan(
+        [PlannedEvent(time=0.0, priority=-30, kind="page", page=0)],
+        duration=0.1,
+    )
+    plan.page_switches = 1
+
+    with pytest.raises(ValueError, match="Stable playback"):
+        MidiPlayer().start(plan, 0.0, lambda *_args: None, lambda _error: None)
+
+
+def test_visualizer_playhead_moves_continuously_and_freezes_while_paused(monkeypatch) -> None:
+    player = MidiPlayer()
+    player.position = 1.0
+    player._clock_started_at = 100.0
+    player._clock_paused_total = 1.0
+    player._clock_duration = 10.0
+    monkeypatch.setattr(player_module.time, "perf_counter", lambda: 106.0)
+
+    assert player.playback_position == pytest.approx(5.0)
+
+    player._clock_pause_started_at = 104.0
+    assert player.playback_position == pytest.approx(3.0)
+
+
+def test_focus_guard_tracks_the_countdown_target_process(monkeypatch) -> None:
+    player = MidiPlayer()
+    player._focus_guard_enabled = True
+    player._target_process_id = 1234
+    monkeypatch.setattr(player_module, "foreground_process_id", lambda: 1234)
+    assert player._target_has_focus(force=True)
+
+    monkeypatch.setattr(player_module, "foreground_process_id", lambda: 5678)
+    assert not player._target_has_focus(force=True)
