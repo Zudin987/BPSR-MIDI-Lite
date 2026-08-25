@@ -2,6 +2,8 @@
 
 A Windows MIDI utility for **Blue Protocol: Star Resonance** instruments: Keyboard/Piano, Electric Guitar, and Electric Bass.
 
+**Website:** https://zudin987.github.io/projects/bpsr-midi/
+
 | Edition | Use it when |
 |---|---|
 | **Lite** | You already have MIDI files or want Online Sequencer playback. |
