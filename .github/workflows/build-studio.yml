@@ -141,7 +141,11 @@ jobs:
 
   release-studio:
     needs: build-studio
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.release_version != '') ||
+        (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[release v'))
+      }}
     runs-on: windows-2022
     permissions:
       contents: write
@@ -163,11 +167,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          $tag = $env:RELEASE_VERSION.Trim()
+          [string] $tag = $env:RELEASE_VERSION
+          $tag = $tag.Trim()
+          if (-not $tag) {
+            if ($env:RELEASE_COMMIT_MESSAGE -notmatch '^\[release (v\d+\.\d+\.\d+)\]') {
+              throw "Release commits must start with [release vX.Y.Z]"
+            }
+            $tag = $Matches[1]
+          }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release version must use vX.Y.Z"
+          }
 
-          gh release view $tag | Out-Null
+          $deadline = (Get-Date).AddMinutes(10)
+          while ($true) {
+            gh release view $tag 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            if ((Get-Date) -ge $deadline) {
+              throw "Lite release $tag was not available within 10 minutes"
+            }
+            Write-Host "Waiting for Lite release $tag before attaching Studio..."
+            Start-Sleep -Seconds 15
+          }
 
           gh release upload $tag `
             release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `

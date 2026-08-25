@@ -89,7 +89,11 @@ jobs:
 
   release:
     needs: build
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_version != '' }}
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.release_version != '') ||
+        (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[release v'))
+      }}
     runs-on: windows-2022
     permissions:
       contents: write
@@ -111,9 +115,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          $tag = $env:RELEASE_VERSION.Trim()
+          [string] $tag = $env:RELEASE_VERSION
+          $tag = $tag.Trim()
+          if (-not $tag) {
+            if ($env:RELEASE_COMMIT_MESSAGE -notmatch '^\[release (v\d+\.\d+\.\d+)\]') {
+              throw "Release commits must start with [release vX.Y.Z]"
+            }
+            $tag = $Matches[1]
+          }
           if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Release version must use vX.Y.Z"
+          }
 
           if (gh release view $tag 2>$null) {
             gh release upload $tag `
