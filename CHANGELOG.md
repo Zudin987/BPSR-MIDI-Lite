@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.1.2
+
+- Defaulted fresh installs and unspecific legacy settings to Category 1 instead of silently assuming the highest Piano, Guitar, or Bass unlock.
+- Made Stable planning reject under-led Ctrl/Shift changes and prefer safe local octave fitting during rapid register alternation.
+- Merged physically impossible same-key repeats, reported dropped/merged retriggers honestly, and measured peak simultaneously held keys instead of only exact-onset chords.
+- Applied chord limits to lightly humanized attacks within a conservative 15 ms onset window, including monophonic Bass fitting.
+- Added hard no-page checks in the UI and player so a future planner regression cannot start normal playback with `<` / `>` events.
+- Added a foreground-process guard that auto-pauses and releases held keys when BPSR loses focus, then resumes on the same game process.
+- Made the 30 FPS visualizer use a continuous pause-aware playhead, indexed visible-note rendering, cached grid lines, and a lower idle refresh rate without changing MIDI scheduling.
+- Added adversarial regressions for rapid octave changes, close retriggers, humanized Bass chords, held-key polyphony, page blocking, visualizer time, and focus safety.
+
 ## v3.0.5
 
 - Added automatic real-title and author lookup after a direct Online Sequencer link/ID is loaded, without opening a visible browser.

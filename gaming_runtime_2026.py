@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import time
 import tkinter as tk
+from bisect import bisect_left, bisect_right
 from typing import Any
 
 import gaming_ui_2026 as gaming
 import modern_ui
 from player import MidiPlayer
-
 
 VISUALIZER_FPS = 30
 VISUALIZER_FRAME_MS = round(1000 / VISUALIZER_FPS)
@@ -16,7 +16,7 @@ VISUALIZER_FRAME_MS = round(1000 / VISUALIZER_FPS)
 def _pause_aware_wait(self: MidiPlayer, target: float) -> bool:
     """Wake immediately when Pause is requested instead of waiting for the next MIDI event."""
     while not self.stop_event.is_set():
-        if self.pause_event.is_set():
+        if self.pause_event.is_set() or not self._target_has_focus():
             return False
         remaining = target - time.perf_counter()
         if remaining <= 0:
@@ -81,37 +81,67 @@ def _responsive_layout(app: Any, width: int) -> None:
 
 
 def _render_visualizer(app: Any) -> None:
-    """Render the prepared BPSR event stream at a capped 30 FPS."""
+    """Render only the visible note window at a capped active 30 FPS."""
     canvas = getattr(app, "midi_visualizer", None)
     if canvas is None:
         return
+    is_active = False
     try:
         width = max(10, canvas.winfo_width())
         height = max(10, canvas.winfo_height())
         palette = gaming._visualizer_colors(app)
         canvas.configure(background=palette["bg"])
-        canvas.delete("all")
 
         plan = getattr(app, "current_plan", None)
         plan_id = id(plan) if plan is not None else None
         if plan_id != getattr(app, "_gaming_visual_plan_id", None):
             app._gaming_visual_plan_id = plan_id
-            app._gaming_note_spans = gaming._build_note_spans(plan) if plan is not None else {}
+            spans = gaming._build_note_spans(plan) if plan is not None else {}
+            app._gaming_note_spans = spans
+            app._gaming_note_span_starts = {
+                key: [start for start, _end in values]
+                for key, values in spans.items()
+            }
+            app._gaming_note_span_max_duration = {
+                key: max((end - start for start, end in values), default=0.0)
+                for key, values in spans.items()
+            }
 
         lane_count = len(gaming.KEY_LANES)
         lane_w = width / lane_count
-        for index in range(lane_count + 1):
-            x = index * lane_w
-            canvas.create_line(x, 0, x, height, fill=palette["grid"])
+        static_signature = (width, height, palette["bg"], palette["grid"])
+        if static_signature != getattr(app, "_gaming_visual_static_signature", None):
+            app._gaming_visual_static_signature = static_signature
+            canvas.delete("all")
+            for index in range(lane_count + 1):
+                x = index * lane_w
+                canvas.create_line(
+                    x,
+                    0,
+                    x,
+                    height,
+                    fill=palette["grid"],
+                    tags=("static",),
+                )
+        else:
+            canvas.delete("dynamic")
 
-        now = float(getattr(app.player, "position", 0.0)) if app.player.is_playing else 0.0
+        is_active = bool(app.player.is_playing and not app.player.is_paused)
+        now = float(app.player.playback_position) if app.player.is_playing else 0.0
         lookahead = 5.0
         current_y = height - 34
         spans = getattr(app, "_gaming_note_spans", {})
+        starts_by_key = getattr(app, "_gaming_note_span_starts", {})
+        max_duration_by_key = getattr(app, "_gaming_note_span_max_duration", {})
         for lane_index, key in enumerate(gaming.KEY_LANES):
             x1 = lane_index * lane_w + 1
             x2 = (lane_index + 1) * lane_w - 1
-            for start, end in spans.get(key, ()):
+            lane_spans = spans.get(key, ())
+            lane_starts = starts_by_key.get(key, ())
+            maximum_duration = float(max_duration_by_key.get(key, 0.0))
+            first = bisect_left(lane_starts, now - 0.15 - maximum_duration)
+            last = bisect_right(lane_starts, now + lookahead)
+            for start, end in lane_spans[first:last]:
                 if end < now - 0.15 or start > now + lookahead:
                     continue
                 y_start = current_y - ((start - now) / lookahead) * max(1, current_y - 8)
@@ -123,13 +153,15 @@ def _render_visualizer(app: Any) -> None:
                     max(y_start, y_end),
                     fill=palette["note"],
                     outline="",
+                    tags=("dynamic",),
                 )
 
         active_keys = tuple(app.player.active_keys)
+        lane_index_by_key = {key: index for index, key in enumerate(gaming.KEY_LANES)}
         for key in active_keys:
-            if key not in gaming.KEY_LANES:
+            lane_index = lane_index_by_key.get(key)
+            if lane_index is None:
                 continue
-            lane_index = gaming.KEY_LANES.index(key)
             canvas.create_rectangle(
                 lane_index * lane_w + 1,
                 current_y,
@@ -137,9 +169,18 @@ def _render_visualizer(app: Any) -> None:
                 height,
                 fill=palette["active"],
                 outline="",
+                tags=("dynamic",),
             )
 
-        canvas.create_line(0, current_y, width, current_y, fill=palette["line"], width=2)
+        canvas.create_line(
+            0,
+            current_y,
+            width,
+            current_y,
+            fill=palette["line"],
+            width=2,
+            tags=("dynamic",),
+        )
         if plan is None:
             canvas.create_text(
                 width / 2,
@@ -147,6 +188,7 @@ def _render_visualizer(app: Any) -> None:
                 text="Choose a song to preview the BPSR note stream",
                 fill=palette["text"],
                 font=("Segoe UI Variable Text", 11),
+                tags=("dynamic",),
             )
         elif not app.player.is_playing:
             canvas.create_text(
@@ -156,6 +198,7 @@ def _render_visualizer(app: Any) -> None:
                 text="5-second note preview",
                 fill=palette["text"],
                 font=("Segoe UI Variable Text", 8),
+                tags=("dynamic",),
             )
 
         app._gaming_active_keys_var.set("  ".join(key.upper() for key in active_keys[:12]) if active_keys else "—")
@@ -165,12 +208,15 @@ def _render_visualizer(app: Any) -> None:
         else:
             percussion = "drums ignored" if bool(app.percussion_var.get()) else "drums included"
             app._gaming_router_var.set(
-                f"Auto router • {plan.source_track_count} track(s) • {percussion} • max chord {plan.max_planned_chord}"
+                f"Auto router • {plan.source_track_count} track(s) • {percussion} • peak keys {plan.max_simultaneous_keys}"
             )
     except (tk.TclError, AttributeError, TypeError, ValueError):
         pass
     try:
-        app.after(VISUALIZER_FRAME_MS, lambda: _render_visualizer(app))
+        if is_active:
+            app.after(VISUALIZER_FRAME_MS, lambda: _render_visualizer(app))
+        else:
+            app.after(200, lambda: _render_visualizer(app))
     except tk.TclError:
         pass
 

@@ -4,7 +4,7 @@ import ctypes
 import os
 import queue
 import tkinter as tk
-from collections import defaultdict
+from collections import defaultdict, deque
 from tkinter import ttk
 from typing import Any
 
@@ -116,7 +116,7 @@ def _responsive_layout(app: Any, width: int) -> None:
 
 
 def _build_note_spans(plan: Any) -> dict[str, list[tuple[float, float]]]:
-    active: dict[str, list[float]] = defaultdict(list)
+    active: dict[str, deque[float]] = defaultdict(deque)
     spans: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for event in getattr(plan, "events", ()):  # preserve the engine's prepared timeline exactly
         key = getattr(event, "key", None)
@@ -125,7 +125,7 @@ def _build_note_spans(plan: Any) -> dict[str, list[tuple[float, float]]]:
         if event.kind == "note_on":
             active[key].append(float(event.time))
         elif event.kind == "note_off" and active[key]:
-            start = active[key].pop(0)
+            start = active[key].popleft()
             end = max(start + 0.02, float(event.time))
             spans[key].append((start, end))
     duration = float(getattr(plan, "duration", 0.0))
@@ -267,6 +267,13 @@ def _single_window_start(self: Any) -> None:
     self._analyze()
     if self.current_plan is None:
         self.status_var.set("Choose a valid MIDI or online song first.")
+        return
+    if self.current_plan.page_switches or any(
+        event.kind == "page" for event in self.current_plan.events
+    ):
+        self.status_var.set("Playback blocked: this Category produced an unexpected < / > page change.")
+        self.suitability_var.set("Playback blocked — unexpected page change")
+        self.suitability_label.configure(style="Danger.TLabel")
         return
     try:
         delay = float(self.start_delay_var.get())

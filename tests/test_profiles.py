@@ -34,10 +34,10 @@ def test_no_selectable_profile_exposes_page_mode() -> None:
             assert allowed_modes_for_unlock(instrument, tier) == ("stable",)
 
 
-def test_defaults_are_highest_normal_categories() -> None:
-    assert default_profile_code("keyboard") == "tier4"
-    assert default_profile_code("guitar") == "tier3"
-    assert default_profile_code("bass") == "tier2"
+def test_defaults_never_assume_unlocked_categories() -> None:
+    assert default_profile_code("keyboard") == "tier1"
+    assert default_profile_code("guitar") == "tier1"
+    assert default_profile_code("bass") == "tier1"
 
 
 def test_bass_normal_profiles_remain_monophonic_but_raw_does_not() -> None:

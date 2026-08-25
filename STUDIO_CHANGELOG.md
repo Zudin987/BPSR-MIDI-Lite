@@ -1,5 +1,10 @@
 # BPSR MIDI Studio changelog
 
+## 0.2.2-experimental-beta
+
+- Inherited Lite 3.1.2's Category-safe defaults, modifier timing protection, retrigger handling, true held-key metrics, hard no-page guard, focus safety, and lower-overhead continuous 30 FPS visualizer.
+- Kept YouTube download, Basic Pitch transcription, core arrangement cleanup, FFmpeg/ONNX packaging, and temporary-audio workflow unchanged.
+
 ## 0.2.1-experimental-beta
 
 - Updated the shared Live MIDI visualizer to a capped **30 FPS** render loop (about 33 ms per frame) for smoother note movement and faster active-key feedback.

@@ -183,9 +183,9 @@ class App(tk.Tk):
         self._analysis_job: str | None = None
         self._suspend_auto_analysis = True
         self._active_instrument_code = "keyboard"
-        self._active_profile_code = "tier4"
+        self._active_profile_code = "tier1"
         self._profile_by_instrument: dict[str, str] = {
-            "keyboard": "tier4", "guitar": "tier3", "bass": "tier2"
+            "keyboard": "tier1", "guitar": "tier1", "bass": "tier1"
         }
         self._custom_settings_by_instrument: dict[str, dict[str, object]] = {
             code: dict(settings)
@@ -198,9 +198,9 @@ class App(tk.Tk):
         self._midi_lookup: dict[str, Path] = {}
 
         self.instrument_var = tk.StringVar(value=INSTRUMENT_LABELS_REVERSE["keyboard"])
-        self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier4"))
+        self.profile_var = tk.StringVar(value=profile_label_for("keyboard", "tier1"))
         self.mode_var = tk.StringVar(value=MODE_LABELS_REVERSE["stable"])
-        self.unlock_var = tk.StringVar(value="Category 4 safe — C2–B6")
+        self.unlock_var = tk.StringVar(value="Category 1 — C3–B4")
         self.speed_var = tk.IntVar(value=100)
         self.length_var = tk.IntVar(value=100)
         self.minimum_note_var = tk.IntVar(value=70)
@@ -831,7 +831,7 @@ class App(tk.Tk):
                 if candidate in profile_labels_for(instrument).values():  # type: ignore[arg-type]
                     self._profile_by_instrument[instrument] = candidate
         elif config_existed:
-            old_profile = str(data.get("profile", "tier3"))
+            old_profile = str(data.get("profile", default_profile_code("keyboard")))
             if old_profile in profile_labels_for("keyboard").values():
                 self._profile_by_instrument["keyboard"] = old_profile
 
@@ -1059,6 +1059,14 @@ class App(tk.Tk):
         if self.current_plan is None:
             messagebox.showerror(APP_NAME, "Choose a valid MIDI from the library first.")
             return
+        if self.current_plan.page_switches or any(
+            event.kind == "page" for event in self.current_plan.events
+        ):
+            messagebox.showerror(
+                APP_NAME,
+                "Playback blocked because this Category produced an unexpected < / > page change.",
+            )
+            return
         try:
             delay = float(self.start_delay_var.get())
             self.player.start(
@@ -1184,8 +1192,8 @@ def main() -> int:
     parser.add_argument(
         "--unlock-tier",
         choices=("tier1", "tier2", "tier3", "tier4"),
-        default="tier4",
-        help="Keyboard tier3/tier4 use safe C2-B6 no-page playback",
+        default="tier1",
+        help="Unlocked in-game Category; defaults safely to Category 1",
     )
     parser.add_argument(
         "--mapping",

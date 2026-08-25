@@ -438,7 +438,7 @@ def _friendly_analyze(self: Any) -> None:
 
     # Product-level invariant: no selectable profile may use page buttons.
     # Block playback instead of silently violating the no-page product promise.
-    if plan.page_switches:
+    if plan.page_switches or any(event.kind == "page" for event in plan.events):
         self.suitability_var.set("Playback blocked — unexpected page change")
         self.suitability_label.configure(style="Danger.TLabel")
         self.analysis_var.set("This profile should never press < or >. Playback was blocked so the instrument cannot desync.")
@@ -461,7 +461,15 @@ def _friendly_analyze(self: Any) -> None:
     duration = f"{minutes}:{seconds:02d}" if minutes else f"{seconds}s"
 
     remapped = plan.remapped_notes
-    metrics = f"Remapped: {remapped:,} • Skipped: {plan.skipped_notes:,} • Filtered/simplified: {plan.filtered_notes:,}"
+    metrics = (
+        f"Remapped: {remapped:,} • Skipped: {plan.skipped_notes:,} • "
+        f"Filtered/simplified: {plan.filtered_notes:,} • Peak keys: {plan.max_simultaneous_keys:,}"
+    )
+    if plan.retrigger_merged_notes or plan.retrigger_dropped_notes:
+        metrics += (
+            f" • Close repeats merged: {plan.retrigger_merged_notes:,}"
+            f" / dropped: {plan.retrigger_dropped_notes:,}"
+        )
 
     if self._profile_code() == "raw":
         if plan.skipped_notes:

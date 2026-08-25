@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 import mido
-
 
 PlaybackMode = Literal["stable", "full", "ensemble"]
 MappingMethod = Literal["octave", "nearest", "transpose", "skip"]
@@ -20,6 +20,9 @@ STABLE_MIN_PITCH = 36  # C2, middle page + Ctrl
 STABLE_MAX_PITCH = 95  # B6, middle page + Shift
 BASE_KEYBOARD_MIN = 48  # C3
 BASE_KEYBOARD_MAX = 83  # B5
+CHORD_ONSET_WINDOW_SECONDS = 0.015
+MIN_PHYSICAL_PRESS_SECONDS = 0.020
+TRANSITION_AFTER_ONSET_GAP_SECONDS = 0.005
 
 PITCH_TO_KEY: dict[int, str] = {
     # C3-B3
@@ -223,6 +226,8 @@ class MidiPlan:
     remapped_notes: int
     skipped_notes: int
     merged_notes: int
+    retrigger_merged_notes: int
+    retrigger_dropped_notes: int
     filtered_notes: int
     transposed_semitones: int
     added_delay: float
@@ -238,6 +243,7 @@ class MidiPlan:
     source_percussion_notes: int
     max_source_chord: int
     max_planned_chord: int
+    max_simultaneous_keys: int
     chord_removed_notes: int
 
 
@@ -438,6 +444,22 @@ def _group_notes_by_start(notes: Iterable[SourceNote]) -> list[list[SourceNote]]
     return groups
 
 
+def _group_notes_by_onset_window(notes: Iterable[SourceNote]) -> list[list[SourceNote]]:
+    """Cluster lightly-humanized chord attacks without chaining arpeggios.
+
+    Each cluster is anchored to its first onset, so notes at 0, 10 and 20 ms
+    cannot all become one chord through a rolling-window chain.
+    """
+    groups: list[list[SourceNote]] = []
+    cluster_start: float | None = None
+    for note in sorted(notes, key=lambda item: (item.start, item.serial)):
+        if cluster_start is None or note.start - cluster_start > CHORD_ONSET_WINDOW_SECONDS:
+            groups.append([])
+            cluster_start = note.start
+        groups[-1].append(note)
+    return groups
+
+
 def _limit_notes_per_chord(
     notes: list[SourceNote],
     maximum: int,
@@ -449,7 +471,7 @@ def _limit_notes_per_chord(
 
     kept: list[SourceNote] = []
     removed = 0
-    for group in _group_notes_by_start(notes):
+    for group in _group_notes_by_onset_window(notes):
         if len(group) <= maximum:
             kept.extend(group)
             continue
@@ -821,14 +843,19 @@ def _transition_cost(
     page_steps = abs(target.page - previous.page)
     octave_change = target.octave != previous.octave
 
-    if options.mode == "ensemble" and page_steps and group_index > 0:
-        required = page_steps * options.page_switch_delay_ms / 1000.0
-        if octave_change:
+    if group_index > 0:
+        required = 0.0
+        if options.mode == "ensemble" and page_steps:
+            required += page_steps * options.page_switch_delay_ms / 1000.0
+        if options.mode in {"stable", "ensemble"} and octave_change:
             required += options.octave_switch_lead_ms / 1000.0
-        # Ensemble-safe mode only changes page when the source already contains
-        # enough space. Otherwise the DP must choose a fold on the current page.
-        if group_gap + 1e-9 < required:
-            return float("inf")
+        # Timeline-preserving modes may only change physical keyboard state
+        # when the authored gap already contains the required switch lead.
+        # Otherwise the DP must remain in the current state and fold locally.
+        if required:
+            required += TRANSITION_AFTER_ONSET_GAP_SECONDS
+            if group_gap + 1e-9 < required:
+                return float("inf")
 
     page_weight = 12.0 if options.mode == "full" else 25.0
     cost = page_steps * page_weight
@@ -982,8 +1009,14 @@ def _build_notes_and_transitions(
         total_lead = page_lead + state_lead
 
         group_start = source_start + timeline_offset
-        earliest_transition = previous_group_start + (0.005 if index else 0.0)
-        missing_lead = max(0.0, earliest_transition - (group_start - total_lead))
+        earliest_transition = previous_group_start + (
+            TRANSITION_AFTER_ONSET_GAP_SECONDS if index else 0.0
+        )
+        missing_lead = (
+            max(0.0, earliest_transition - (group_start - total_lead))
+            if total_lead
+            else 0.0
+        )
 
         if missing_lead > 0:
             if options.mode == "full" or index == 0:
@@ -991,9 +1024,10 @@ def _build_notes_and_transitions(
                 added_delay += missing_lead
                 group_start += missing_lead
                 offset_markers.append((source_start, timeline_offset))
-            # Stable/ensemble modes do not accumulate mid-song delay. Their
-            # transition is placed immediately after the previous onset, even
-            # when that leaves less than the preferred Ctrl/Shift lead time.
+            else:
+                raise RuntimeError(
+                    "Planner produced an unsafe mid-song keyboard-state transition."
+                )
 
         transition_start = max(
             0.0,
@@ -1100,14 +1134,11 @@ def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[
     Advanced users can still intentionally scale durations with
     ``note_length_percent``.
 
-    The one exception is a retrigger conflict: the same pitch or physical
-    game key needs a brief released state before its next Note On. In that
-    case the earlier note is released just before the retrigger.
+    Physical-key retrigger conflicts are resolved separately after stretching,
+    so this function cannot create a mathematically valid but unplayable attack.
     """
     length_ratio = options.note_length_percent / 100.0
     minimum_duration = options.minimum_note_ms / 1000.0
-    repeated_gap = options.repeated_release_gap_ms / 1000.0
-
     stretched: list[PlannedNote] = []
     for note in notes:
         original_duration = max(0.001, note.end - note.start)
@@ -1127,52 +1158,84 @@ def _apply_note_lengths(notes: list[PlannedNote], options: PlanOptions) -> list[
             )
         )
 
-    starts_by_pitch: dict[int, list[float]] = defaultdict(list)
-    starts_by_key: dict[str, list[float]] = defaultdict(list)
-    for note in stretched:
-        starts_by_pitch[note.pitch].append(note.start)
-        starts_by_key[note.key].append(note.start)
-    for values in starts_by_pitch.values():
-        values.sort()
-    for values in starts_by_key.values():
-        values.sort()
+    stretched.sort(key=lambda note: (note.start, note.serial))
+    return stretched
 
-    corrected: list[PlannedNote] = []
-    for note in stretched:
-        end = note.end
-        next_conflicts: list[float] = []
 
-        for values in (starts_by_pitch[note.pitch], starts_by_key[note.key]):
-            index = bisect_right(values, note.start + 1e-9)
-            if index < len(values):
-                next_conflicts.append(values[index])
+def _resolve_retrigger_conflicts(
+    notes: list[PlannedNote],
+    options: PlanOptions,
+) -> tuple[list[PlannedNote], int, int]:
+    """Make every retained physical-key attack representable in BPSR.
 
-        if next_conflicts:
-            next_conflict = min(next_conflicts)
-            latest_reliable_end = next_conflict - repeated_gap
-            if end > latest_reliable_end:
-                # When notes are impossibly close, prefer a small real press
-                # over a mathematically perfect gap that the game may miss.
-                end = max(note.start + 0.020, latest_reliable_end)
-                end = min(end, next_conflict - 0.001)
+    Same-pitch attacks that arrive before a press+release cycle can complete
+    become one sustained note. A different pitch mapped onto the same physical
+    key is dropped rather than falsely counted as an attack that Windows will
+    never send. No note timing is shifted.
+    """
+    release_gap = options.repeated_release_gap_ms / 1000.0
+    minimum_cycle = MIN_PHYSICAL_PRESS_SECONDS + release_gap
+    by_key: dict[str, list[PlannedNote]] = defaultdict(list)
+    for note in notes:
+        by_key[note.key].append(note)
 
-        corrected.append(
-            PlannedNote(
-                source_start=note.source_start,
-                source_end=note.source_end,
-                start=note.start,
-                end=max(note.start + 0.010, end),
-                pitch=note.pitch,
-                page=note.page,
-                octave=note.octave,
-                key=note.key,
-                velocity=note.velocity,
-                serial=note.serial,
-            )
-        )
+    resolved: list[PlannedNote] = []
+    merged = 0
+    dropped = 0
+    for key_notes in by_key.values():
+        kept: list[PlannedNote] = []
+        for current in sorted(key_notes, key=lambda note: (note.start, note.serial)):
+            if not kept:
+                kept.append(current)
+                continue
 
-    corrected.sort(key=lambda note: (note.start, note.serial))
-    return corrected
+            previous = kept[-1]
+            if current.start - previous.start + 1e-9 < minimum_cycle:
+                if (
+                    current.pitch == previous.pitch
+                    and current.page == previous.page
+                    and current.octave == previous.octave
+                ):
+                    kept[-1] = replace(
+                        previous,
+                        source_end=max(previous.source_end, current.source_end),
+                        end=max(previous.end, current.end),
+                        velocity=max(previous.velocity, current.velocity),
+                    )
+                    merged += 1
+                else:
+                    dropped += 1
+                continue
+
+            latest_end = current.start - release_gap
+            if previous.end > latest_end:
+                kept[-1] = replace(
+                    previous,
+                    end=max(previous.start + MIN_PHYSICAL_PRESS_SECONDS, latest_end),
+                )
+            kept.append(current)
+        resolved.extend(kept)
+
+    resolved.sort(key=lambda note: (note.start, note.serial))
+    return resolved, merged, dropped
+
+
+def _maximum_simultaneous_keys(notes: list[PlannedNote]) -> int:
+    events: list[tuple[float, int, str]] = []
+    for note in notes:
+        events.append((note.start, 1, note.key))
+        events.append((note.end, 0, note.key))
+    events.sort(key=lambda item: (item[0], item[1]))  # release before attack
+
+    held: dict[str, int] = defaultdict(int)
+    maximum = 0
+    for _time, is_attack, key in events:
+        if is_attack:
+            held[key] += 1
+        else:
+            held[key] = max(0, held[key] - 1)
+        maximum = max(maximum, sum(count > 0 for count in held.values()))
+    return maximum
 
 def _offset_for_source_time(markers: list[tuple[float, float]], source_time: float) -> float:
     times = [marker[0] for marker in markers]
@@ -1209,7 +1272,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
     source_max = max(note.pitch for note in source_notes)
     source_note_count = len(source_notes)
     original_pitch_by_serial = {note.serial: note.pitch for note in source_notes}
-    source_groups = _group_notes_by_start(source_notes)
+    source_groups = _group_notes_by_onset_window(source_notes)
     max_source_chord = max((len(group) for group in source_groups), default=0)
 
     chord_limit = 1 if options.melody_only else options.max_notes_per_chord
@@ -1252,18 +1315,26 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         _build_notes_and_transitions(groups, mapped_groups, options)
     )
     planned_notes, merged_count = _merge_simultaneous_duplicates(planned_notes)
+    planned_notes = _apply_note_lengths(planned_notes, options)
+    planned_notes, retrigger_merged, retrigger_dropped = _resolve_retrigger_conflicts(
+        planned_notes,
+        options,
+    )
+    merged_count += retrigger_merged
+    filtered_count += retrigger_dropped
     remapped_count = sum(
         1
         for note in planned_notes
         if original_pitch_by_serial.get(note.serial) != note.pitch
     )
-    max_planned_chord = max(
+    max_onset_chord = max(
         (len(group) for group in _group_notes_by_start(planned_notes)),
         default=0,
     )
+    max_simultaneous_keys = _maximum_simultaneous_keys(planned_notes)
+    max_planned_chord = max(max_onset_chord, max_simultaneous_keys)
     if not planned_notes:
         raise ValueError("The selected mapping method skipped every playable note.")
-    planned_notes = _apply_note_lengths(planned_notes, options)
 
     events: list[PlannedEvent] = list(transitions)
     for note in planned_notes:
@@ -1327,6 +1398,8 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         remapped_notes=remapped_count,
         skipped_notes=skipped_count,
         merged_notes=merged_count,
+        retrigger_merged_notes=retrigger_merged,
+        retrigger_dropped_notes=retrigger_dropped,
         filtered_notes=filtered_count,
         transposed_semitones=transposed_semitones,
         added_delay=added_delay,
@@ -1342,6 +1415,7 @@ def build_plan(path: str | Path, options: PlanOptions | None = None) -> MidiPlan
         source_percussion_notes=source_percussion_notes,
         max_source_chord=max_source_chord,
         max_planned_chord=max_planned_chord,
+        max_simultaneous_keys=max_simultaneous_keys,
         chord_removed_notes=chord_removed,
     )
 

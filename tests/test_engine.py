@@ -588,3 +588,100 @@ def test_bass_contour_optimizer_preserves_descending_direction() -> None:
     assert changed == len(source)
     assert pitches == [48, 47, 45, 43, 41, 40, 38, 36]
     assert all(later <= earlier for earlier, later in zip(pitches, pitches[1:]))
+
+
+def test_fast_extreme_notes_never_schedule_under_led_octave_switches(tmp_path: Path) -> None:
+    midi_path = tmp_path / "fast_octaves.mid"
+    make_test_midi(
+        midi_path,
+        [36, 84] * 8,
+        gap_ticks=0,
+        duration_ticks=5,
+    )
+    lead_ms = 55
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            unlock_tier="tier4",
+            mapping_method="octave",
+            speed_percent=100,
+            minimum_note_ms=20,
+            octave_switch_lead_ms=lead_ms,
+        ),
+    )
+
+    note_on_times = [event.time for event in plan.events if event.kind == "note_on"]
+    for state_event in (event for event in plan.events if event.kind == "state"):
+        next_note = next(time for time in note_on_times if time + 1e-9 >= state_event.time)
+        assert next_note - state_event.time >= lead_ms / 1000.0 - 1e-9
+
+
+def test_impossibly_close_repeat_is_merged_and_reported(tmp_path: Path) -> None:
+    midi_path = tmp_path / "close_repeat.mid"
+    make_test_midi(
+        midi_path,
+        [60, 60],
+        gap_ticks=0,
+        duration_ticks=5,
+    )
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            mode="stable",
+            speed_percent=100,
+            minimum_note_ms=20,
+            repeated_release_gap_ms=16,
+        ),
+    )
+
+    assert plan.note_count == 1
+    assert plan.retrigger_merged_notes == 1
+    assert plan.retrigger_dropped_notes == 0
+    assert len([event for event in plan.events if event.kind == "note_on"]) == 1
+
+
+def test_bass_chord_limit_catches_small_humanized_onset_jitter(tmp_path: Path) -> None:
+    midi_path = tmp_path / "jittered_bass_chord.mid"
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    track.append(mido.Message("note_on", note=40, velocity=80, time=0))
+    track.append(mido.Message("note_on", note=28, velocity=80, time=10))
+    track.append(mido.Message("note_off", note=40, velocity=0, time=200))
+    track.append(mido.Message("note_off", note=28, velocity=0, time=0))
+    midi.tracks.append(track)
+    midi.save(midi_path)
+
+    plan = build_plan(
+        midi_path,
+        PlanOptions(
+            instrument="bass",
+            mode="stable",
+            unlock_tier="tier1",
+            mapping_method="transpose",
+            max_notes_per_chord=1,
+        ),
+    )
+
+    assert plan.note_count == 1
+    assert plan.chord_removed_notes == 1
+    assert plan.max_source_chord == 2
+
+
+def test_song_check_reports_peak_held_keys_not_only_equal_onsets(tmp_path: Path) -> None:
+    midi_path = tmp_path / "overlapping_voices.mid"
+    midi = mido.MidiFile(type=1, ticks_per_beat=480)
+    track = mido.MidiTrack()
+    track.append(mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(120), time=0))
+    track.append(mido.Message("note_on", note=60, velocity=80, time=0))
+    track.append(mido.Message("note_on", note=64, velocity=80, time=96))
+    track.append(mido.Message("note_off", note=60, velocity=0, time=384))
+    track.append(mido.Message("note_off", note=64, velocity=0, time=96))
+    midi.tracks.append(track)
+    midi.save(midi_path)
+
+    plan = build_plan(midi_path, PlanOptions(mode="stable", speed_percent=100))
+
+    assert plan.max_simultaneous_keys == 2
+    assert plan.max_planned_chord == 2
