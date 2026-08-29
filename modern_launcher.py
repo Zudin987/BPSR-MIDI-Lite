@@ -12,9 +12,9 @@ from playback_advanced_ui import install_advanced_playback_profile
 from playback_overhaul import install_playback_overhaul
 
 
-# v3.1 keeps the proven BPSR MIDI planner/input engine and replaces only the
-# presentation/search layers with the 2026 single-window experience.
-app.APP_VERSION = "3.1.2"
+# v3.2 keeps the proven MIDI parser/range model and installs the BPSR-aware
+# articulation, state-planning, input batching and timing-telemetry layer.
+app.APP_VERSION = "3.2.0"
 
 install_online_search_bridge()
 install_modern_ui(app)
