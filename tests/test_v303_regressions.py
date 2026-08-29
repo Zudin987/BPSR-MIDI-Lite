@@ -25,13 +25,13 @@ def test_legacy_ui_has_no_online_browser_action() -> None:
 
 def test_windows_builder_uses_patch_version() -> None:
     source = Path("build_exe.bat").read_text(encoding="utf-8")
-    assert "set VERSION=3.1.2" in source
+    assert "set VERSION=3.2.0" in source
 
 
 def test_direct_link_still_loads_while_legacy_core_rejects_title_text() -> None:
-    # online_sequencer remains the stable direct-ID core. v3.1 layers title
-    # search in online_search_bridge at launcher runtime rather than weakening
-    # the direct loader's network contract.
+    # online_sequencer remains the stable direct-ID core. The launcher layers
+    # title search in online_search_bridge rather than weakening the direct
+    # loader's network contract.
     result = osq.search_sequences("https://onlinesequencer.net/2553987")
     assert [item.sequence_id for item in result] == [2553987]
 
