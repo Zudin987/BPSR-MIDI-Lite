@@ -128,11 +128,11 @@ def test_impossible_different_pitch_collision_on_same_physical_key_is_dropped() 
 
 def test_chord_reduction_keeps_bass_top_melody_and_strong_harmony() -> None:
     group = [
-        _source(start=0.0, end=0.4, pitch=48, serial=0),  # C bass
-        _source(start=0.0, end=0.4, pitch=52, serial=1),  # E
-        _source(start=0.0, end=0.4, pitch=55, serial=2),  # G fifth
-        _source(start=0.0, end=0.4, pitch=59, serial=3),  # B
-        _source(start=0.0, end=0.4, pitch=72, serial=4),  # top melody C
+        _source(start=0.0, end=0.4, pitch=48, serial=0),
+        _source(start=0.0, end=0.4, pitch=52, serial=1),
+        _source(start=0.0, end=0.4, pitch=55, serial=2),
+        _source(start=0.0, end=0.4, pitch=59, serial=3),
+        _source(start=0.0, end=0.4, pitch=72, serial=4),
     ]
     kept, removed = _enhanced_limit_notes_per_chord(group, 3, "keyboard")
     pitches = {note.pitch for note in kept}
@@ -151,7 +151,7 @@ def test_simulated_sustain_extends_release_to_cc64_off() -> None:
     assert sustained[0].end == 1.00
 
 
-def test_state_planner_does_not_switch_octave_while_previous_note_tail_is_active() -> None:
+def test_state_planner_preselects_one_state_instead_of_switching_during_active_tail() -> None:
     groups = [
         [_source(start=0.0, end=1.0, pitch=60, serial=0)],
         [_source(start=0.2, end=0.3, pitch=84, serial=1)],
@@ -167,7 +167,8 @@ def test_state_planner_does_not_switch_octave_while_previous_note_tail_is_active
     )
     mapped = _enhanced_choose_group_states(groups, options)
     assert mapped[0].state == mapped[1].state
-    assert mapped[1].pitches == [72]
+    assert mapped[0].state.octave == 1
+    assert mapped[1].pitches == [84]
 
 
 class _FakeSender:
@@ -226,4 +227,12 @@ def test_launchers_install_overhaul_after_pause_aware_gaming_runtime() -> None:
     for filename in ("modern_launcher.py", "studio_launcher.py"):
         source = Path(filename).read_text(encoding="utf-8")
         assert "from playback_overhaul import install_playback_overhaul" in source
+        assert "from playback_advanced_ui import install_advanced_playback_profile" in source
         assert source.index("install_gaming_runtime_2026(app)") < source.index("install_playback_overhaul(app)")
+        assert source.index("install_playback_overhaul(app)") < source.index("install_advanced_playback_profile(app)")
+
+
+def test_advanced_custom_profile_is_reachable() -> None:
+    source = Path("playback_advanced_ui.py").read_text(encoding="utf-8")
+    assert 'CUSTOM_PROFILE_LABEL = "Custom — Advanced timing & mapping"' in source
+    assert 'labels[CUSTOM_PROFILE_LABEL] = "custom"' in source
