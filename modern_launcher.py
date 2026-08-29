@@ -8,6 +8,7 @@ from modern_ui import install_modern_ui
 from online_integration import install_online_integration
 from online_search_bridge import install_online_search_bridge
 from online_search_ui_2026 import install_online_search_ui_2026
+from playback_overhaul import install_playback_overhaul
 
 
 # v3.1 keeps the proven BPSR MIDI planner/input engine and replaces only the
@@ -21,6 +22,7 @@ install_online_integration(app)
 install_online_search_ui_2026()
 install_local_search_integration(app)
 install_gaming_runtime_2026(app)
+install_playback_overhaul(app)
 
 
 if __name__ == "__main__":
