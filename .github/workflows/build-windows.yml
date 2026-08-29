@@ -70,7 +70,7 @@ jobs:
           New-Item -ItemType Directory -Force portable/BPSR-MIDI-Lite | Out-Null
           Copy-Item dist/BPSR-MIDI-Lite.exe portable/BPSR-MIDI-Lite/BPSR-MIDI-Lite.exe
           Copy-Item README.md portable/BPSR-MIDI-Lite/README.md
-          Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE.md
+          Copy-Item LICENSE portable/BPSR-MIDI-Lite/LICENSE
           Copy-Item THIRD_PARTY_NOTICES.md portable/BPSR-MIDI-Lite/THIRD_PARTY_NOTICES.md
 
           Compress-Archive -Path portable/BPSR-MIDI-Lite -DestinationPath release/BPSR-MIDI-Lite-Windows-x64.zip -Force
