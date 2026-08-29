@@ -8,6 +8,7 @@ from modern_ui import install_modern_ui
 from online_integration import install_online_integration
 from online_search_bridge import install_online_search_bridge
 from online_search_ui_2026 import install_online_search_ui_2026
+from playback_overhaul import install_playback_overhaul
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
@@ -26,6 +27,7 @@ install_local_search_integration(app)
 install_studio_integration(app)
 install_studio_polish(app)
 install_gaming_runtime_2026(app)
+install_playback_overhaul(app)
 
 
 if __name__ == "__main__":
