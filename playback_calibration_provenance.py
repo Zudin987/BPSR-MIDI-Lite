@@ -44,7 +44,7 @@ def load_measurement_flags(instrument: str) -> dict[str, bool]:
     return flags
 
 
-def mark_measurement(instrument: str, field: str) -> None:
+def set_measurement(instrument: str, field: str, verified: bool) -> None:
     if field not in MEASUREMENT_FIELDS:
         raise ValueError(f"Unknown calibration measurement field: {field}")
     path = provenance_path()
@@ -61,21 +61,58 @@ def mark_measurement(instrument: str, field: str) -> None:
     if isinstance(current, dict):
         for name in values:
             values[name] = bool(current.get(name, False))
-    values[field] = True
+    values[field] = bool(verified)
     payload[instrument] = values
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(path)
 
 
+def mark_measurement(instrument: str, field: str) -> None:
+    set_measurement(instrument, field, True)
+
+
 def measurement_state_label(instrument: str) -> str:
     flags = load_measurement_flags(instrument)
     measured = [field for field, value in flags.items() if value]
     if not measured:
-        return "safe defaults"
+        return "safe defaults active"
     if len(measured) == len(MEASUREMENT_FIELDS):
-        return "fully measured"
-    return "measured: " + ", ".join(measured)
+        return "fully verified"
+    return "verified: " + ", ".join(measured)
+
+
+def _effective_profile(
+    instrument: str,
+    saved: adaptive.CalibrationProfile,
+    flags: dict[str, bool],
+) -> adaptive.CalibrationProfile:
+    """Return only values that have earned per-parameter verification.
+
+    Calibration UI stores exploratory values after every sample so the guided
+    search can continue across tests. Normal Auto playback must not consume an
+    exploratory value until that specific parameter has been verified.
+    """
+    defaults = adaptive._default_calibration(instrument)
+    return replace(
+        defaults,
+        minimum_clean_hold_ms=(
+            saved.minimum_clean_hold_ms if flags["hold"] else defaults.minimum_clean_hold_ms
+        ),
+        hard_floor_ms=saved.hard_floor_ms if flags["hold"] else defaults.hard_floor_ms,
+        retrigger_gap_ms=(
+            saved.retrigger_gap_ms if flags["repeat"] else defaults.retrigger_gap_ms
+        ),
+        chord_stagger_ms=(
+            saved.chord_stagger_ms if flags["chord"] else defaults.chord_stagger_ms
+        ),
+        modifier_settle_ms=(
+            saved.modifier_settle_ms if flags["modifier"] else defaults.modifier_settle_ms
+        ),
+        max_polyphony=saved.max_polyphony if flags["polyphony"] else defaults.max_polyphony,
+        calibrated=any(flags.values()),
+        updated_at=saved.updated_at,
+    )
 
 
 def _provenance_auto_tune(
@@ -87,23 +124,25 @@ def _provenance_auto_tune(
     if not options.adaptive_auto or options.mapping_method == "skip":
         return options
 
-    # Always start from the conservative path. The old aggregate `calibrated`
-    # flag only means at least one value was saved; it must never authorize an
-    # unrelated destructive setting such as chord thinning.
-    tuned = _original_auto_tune(options, analysis, replace(profile, calibrated=False))
     flags = load_measurement_flags(options.instrument)
+    effective = _effective_profile(options.instrument, profile, flags)
+
+    # Run the conservative auto-tuner with aggregate calibration disabled so
+    # destructive settings cannot be authorized by an unrelated measurement.
+    # Verified hold/repeat values are still supplied through `effective`.
+    tuned = _original_auto_tune(options, analysis, replace(effective, calibrated=False))
 
     if flags["polyphony"]:
-        limit = options.adaptive_chord_limit or profile.max_polyphony
+        limit = options.adaptive_chord_limit or effective.max_polyphony
         tuned = replace(tuned, adaptive_chord_limit=limit)
         if limit > 0 and tuned.max_notes_per_chord <= 0 and analysis.max_chord > limit:
             tuned = replace(tuned, max_notes_per_chord=limit)
     if flags["chord"] and options.chord_stagger_ms < 0:
-        tuned = replace(tuned, chord_stagger_ms=profile.chord_stagger_ms)
+        tuned = replace(tuned, chord_stagger_ms=effective.chord_stagger_ms)
     if flags["modifier"]:
         tuned = replace(
             tuned,
-            octave_switch_lead_ms=max(tuned.octave_switch_lead_ms, profile.modifier_settle_ms),
+            octave_switch_lead_ms=max(tuned.octave_switch_lead_ms, effective.modifier_settle_ms),
         )
     return tuned
 
@@ -117,10 +156,24 @@ def _provenance_to_adaptive_plan(*args: Any, **kwargs: Any):
     if measured == 0:
         result.calibration_source = "defaults"
     elif measured == len(MEASUREMENT_FIELDS):
-        result.calibration_source = "fully measured"
+        result.calibration_source = "fully verified"
     else:
-        result.calibration_source = f"partial {measured}/{len(MEASUREMENT_FIELDS)}"
+        result.calibration_source = f"verified {measured}/{len(MEASUREMENT_FIELDS)}"
     return result
+
+
+def _guided_search_converged(app: Any, instrument: str, test_code: str) -> bool:
+    state = getattr(app, "_calibration_guide_bounds", None)
+    if not isinstance(state, dict):
+        # Provenance is installed after guided calibration in production. Keep
+        # this fallback useful for focused tests or future alternate UIs.
+        return True
+    bounds = state.get((instrument, test_code))
+    if not isinstance(bounds, tuple) or len(bounds) != 2:
+        return False
+    low, high = int(bounds[0]), int(bounds[1])
+    tolerances = {"hold": 4, "repeat": 2, "chord": 1, "modifier": 4}
+    return high - low <= tolerances.get(test_code, 0)
 
 
 def _record_feedback_with_provenance(app: Any, feedback: str) -> None:
@@ -128,9 +181,16 @@ def _record_feedback_with_provenance(app: Any, feedback: str) -> None:
     instrument = app._instrument_code()
     test_code = calibration.TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     _original_record_feedback(app, feedback)
-    mark_measurement(instrument, test_code)
+
+    # Failed/muddy samples are useful search evidence, but are not permission
+    # for Auto to consume the newly explored value. A Clean sample only becomes
+    # verified once the guided range has converged near the threshold.
+    verified = feedback == "clean" and _guided_search_converged(app, instrument, test_code)
+    set_measurement(instrument, test_code, verified)
     if hasattr(app, "_calibration_summary_var"):
-        app._calibration_summary_var.set(calibration._profile_summary(adaptive.get_calibration_profile(instrument)))
+        app._calibration_summary_var.set(
+            calibration._profile_summary(adaptive.get_calibration_profile(instrument))
+        )
 
 
 def _save_polyphony_with_provenance(app: Any) -> None:
@@ -139,16 +199,18 @@ def _save_polyphony_with_provenance(app: Any) -> None:
     _original_save_polyphony(app)
     mark_measurement(instrument, "polyphony")
     if hasattr(app, "_calibration_summary_var"):
-        app._calibration_summary_var.set(calibration._profile_summary(adaptive.get_calibration_profile(instrument)))
+        app._calibration_summary_var.set(
+            calibration._profile_summary(adaptive.get_calibration_profile(instrument))
+        )
 
 
 def _profile_summary_with_provenance(profile: adaptive.CalibrationProfile) -> str:
     state = measurement_state_label(profile.instrument)
     return (
-        f"{profile.instrument.title()} ({state}) • clean hold {profile.minimum_clean_hold_ms} ms • "
+        f"{profile.instrument.title()} ({state}) • working hold {profile.minimum_clean_hold_ms} ms • "
         f"hard floor {profile.hard_floor_ms} ms • repeat gap {profile.retrigger_gap_ms} ms • "
         f"chord stagger {profile.chord_stagger_ms} ms • modifier settle {profile.modifier_settle_ms} ms • "
-        f"reliable polyphony {profile.max_polyphony}"
+        f"polyphony {profile.max_polyphony}. Unverified working values are not used by Auto."
     )
 
 
