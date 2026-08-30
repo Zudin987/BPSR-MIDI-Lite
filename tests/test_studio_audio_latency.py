@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ import studio_audio_latency as latency
 from studio_audio_latency import (
     AudioLatencySample,
     AudioLatencySummary,
+    MeasurementCancelled,
     detect_audio_onset,
     load_audio_latency_summary,
     save_audio_latency_summary,
@@ -76,6 +78,68 @@ def test_audio_latency_summary_round_trip(tmp_path: Path, monkeypatch: pytest.Mo
     save_audio_latency_summary(summary)
     loaded = load_audio_latency_summary("guitar")
     assert loaded == summary
+
+
+def test_cancelled_frame_collection_exits_before_touching_recorder() -> None:
+    class Recorder:
+        def record(self, **_kwargs):
+            raise AssertionError("cancelled collection must not read the recorder")
+
+    cancelled = threading.Event()
+    cancelled.set()
+    with pytest.raises(MeasurementCancelled):
+        latency._collect_frames(Recorder(), 256, cancelled)
+
+
+def test_measure_trial_releases_key_when_cancelled_during_hold(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Recorder:
+        def record(self, numframes=None):
+            frames = 256 if numframes is None else int(numframes)
+            return np.zeros((frames, 2), dtype=np.float64)
+
+    class Sender:
+        def __init__(self) -> None:
+            self.down = False
+            self.released = False
+
+        def key_down(self, _key: str) -> None:
+            self.down = True
+
+        def key_up(self, _key: str) -> None:
+            self.down = False
+            self.released = True
+
+    sender = Sender()
+    cancelled = threading.Event()
+
+    def cancel_on_wait(_timeout: float) -> bool:
+        cancelled.set()
+        return True
+
+    monkeypatch.setattr(cancelled, "wait", cancel_on_wait)
+    with pytest.raises(MeasurementCancelled):
+        latency._measure_trial(Recorder(), sender, "a", 120, 48_000, cancelled)
+    assert sender.down is False
+    assert sender.released is True
+
+
+def test_studio_worker_captures_tk_input_backend_before_thread_body() -> None:
+    source = Path("studio_audio_latency.py").read_text(encoding="utf-8")
+    start = source.index("def start_measurement")
+    worker = source.index("def worker()", start)
+    capture = source.index("input_backend = self._input_backend_code()", start)
+    assert capture < worker
+    worker_source = source[worker:]
+    assert "input_backend=input_backend" in worker_source
+    assert "self._input_backend_code()" not in worker_source
+
+
+def test_studio_latency_ui_wires_f10_and_close_cancellation() -> None:
+    source = Path("studio_audio_latency.py").read_text(encoding="utf-8")
+    assert "def poll_f10" in source
+    assert "_studio_latency_cancel_event.set()" in source
+    assert "def on_close" in source
+    assert "thread.join(timeout=1.5)" in source
 
 
 def test_studio_launcher_installs_audio_latency_after_calibration_lab() -> None:
