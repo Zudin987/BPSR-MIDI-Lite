@@ -9,6 +9,7 @@ from online_integration import install_online_integration
 from online_search_bridge import install_online_search_bridge
 from online_search_ui_2026 import install_online_search_ui_2026
 from playback_adaptive import install_adaptive_arranger
+from playback_adaptive_pressure import install_adaptive_pressure_model
 from playback_advanced_ui import install_advanced_playback_profile
 from playback_calibration_ui import install_calibration_lab
 from playback_overhaul import install_playback_overhaul
@@ -29,6 +30,7 @@ install_gaming_runtime_2026(app)
 install_playback_overhaul(app)
 install_advanced_playback_profile(app)
 install_adaptive_arranger(app)
+install_adaptive_pressure_model(app)
 install_calibration_lab(app)
 
 
