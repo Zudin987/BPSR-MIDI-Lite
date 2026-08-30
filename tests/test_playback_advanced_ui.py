@@ -86,8 +86,9 @@ try:
     assert hasattr(root, "articulation_var")
     assert hasattr(root, "sustain_mode_var")
     assert root._profile_code() == "custom"
+    assert root._mode_code() == "stable"
+    assert len(root.mode_combo.cget("values")) == 1
     assert "no-page" in root.profile_summary_var.get().lower()
-    assert root.mode_combo.cget("state") == "disabled"
 finally:
     root.destroy()
 '''
