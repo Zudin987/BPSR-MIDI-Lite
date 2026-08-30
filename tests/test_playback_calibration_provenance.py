@@ -5,6 +5,7 @@ from pathlib import Path
 
 import playback_adaptive as adaptive
 import playback_calibration_provenance as provenance
+import playback_calibration_ui as calibration
 
 
 def _saved_profile() -> adaptive.CalibrationProfile:
@@ -150,6 +151,66 @@ def test_guided_clean_requires_convergence_before_verification() -> None:
     assert provenance._guided_search_converged(app, "keyboard", "hold") is False
     app._calibration_guide_bounds[("keyboard", "hold")] = (64, 68)
     assert provenance._guided_search_converged(app, "keyboard", "hold") is True
+
+
+class _Var:
+    def __init__(self, value):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
+
+
+class _FeedbackApp:
+    def __init__(self, bounds: tuple[int, int]) -> None:
+        self._calibration_guide_bounds = {("keyboard", "hold"): bounds}
+        self._calibration_test_var = _Var("Minimum clean hold")
+        self._calibration_value_var = _Var(66)
+        self.status_var = _Var("")
+
+    def _instrument_code(self) -> str:
+        return "keyboard"
+
+
+def test_clean_that_causes_convergence_still_requires_final_confirmation(monkeypatch) -> None:
+    app = _FeedbackApp((40, 90))
+    recorded: list[tuple[str, str, bool]] = []
+
+    monkeypatch.setattr(calibration, "_feedback_sample_matches", lambda _app: True)
+    monkeypatch.setattr(
+        provenance,
+        "_original_record_feedback",
+        lambda target, _feedback: target._calibration_guide_bounds.__setitem__(
+            ("keyboard", "hold"), (64, 68)
+        ),
+    )
+    monkeypatch.setattr(
+        provenance,
+        "set_measurement",
+        lambda instrument, field, verified: recorded.append((instrument, field, verified)),
+    )
+
+    provenance._record_feedback_with_provenance(app, "clean")
+    assert recorded == [("keyboard", "hold", False)]
+
+
+def test_clean_after_search_was_already_converged_earns_provenance(monkeypatch) -> None:
+    app = _FeedbackApp((64, 68))
+    recorded: list[tuple[str, str, bool]] = []
+
+    monkeypatch.setattr(calibration, "_feedback_sample_matches", lambda _app: True)
+    monkeypatch.setattr(provenance, "_original_record_feedback", lambda _app, _feedback: None)
+    monkeypatch.setattr(
+        provenance,
+        "set_measurement",
+        lambda instrument, field, verified: recorded.append((instrument, field, verified)),
+    )
+
+    provenance._record_feedback_with_provenance(app, "clean")
+    assert recorded == [("keyboard", "hold", True)]
 
 
 def test_reset_removes_only_selected_instrument(tmp_path: Path, monkeypatch) -> None:
