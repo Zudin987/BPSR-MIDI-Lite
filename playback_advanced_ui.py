@@ -61,20 +61,19 @@ def _prepare_custom_panel(app: Any, app_module: Any) -> None:
     app._build_custom_settings(panel)
 
     # The product intentionally stays on the safe middle/no-page layout. Keep
-    # the legacy page-delay widgets available to controller code, but hide them
-    # from the Custom UI because no user-facing mode can use them. Song speed
-    # already has a permanent control in the gaming toolbar, so do not duplicate
-    # it here; move Note length into that freed space instead.
+    # the legacy safety-mode/page-delay widgets available to controller code,
+    # but hide them because every user-facing Custom configuration is Stable.
+    # Song speed already has a permanent control in the gaming toolbar, so do
+    # not duplicate it here; move Note length into that freed space instead.
     for child in panel.winfo_children():
         try:
             info = child.grid_info()
             row = int(info.get("row", -1))
             column = int(info.get("column", -1))
-            text = str(child.cget("text")) if "text" in child.keys() else ""
             variable = str(child.cget("textvariable")) if "textvariable" in child.keys() else ""
 
-            if text == "Playback style":
-                child.configure(text="Playback safety")
+            if row == 0:
+                child.grid_remove()
             if row == 1 and column >= 2:
                 child.grid_remove()
             if row == 4 and column <= 1:
@@ -108,21 +107,12 @@ def _prepare_custom_panel(app: Any, app_module: Any) -> None:
         justify="left",
     ).grid(row=8, column=0, columnspan=4, sticky="w", pady=(10, 0))
 
-    try:
-        app.mode_combo.configure(state="disabled")
-    except Exception:
-        pass
     _show_custom_panel(app, False)
 
 
 def _sync_custom_controls(app: Any) -> None:
     if not hasattr(app, "_advanced_hint_var"):
         return
-
-    try:
-        app.mode_combo.configure(state="disabled")
-    except Exception:
-        pass
 
     sustain_enabled = bool(getattr(app, "pedal_var", None) and app.pedal_var.get())
     sustain_combo = getattr(app, "_advanced_sustain_combo", None)
@@ -162,7 +152,8 @@ def _sync_custom_controls(app: Any) -> None:
             f"retrigger gap {timing.retrigger_gap_ms} ms. Set Minimum note or Retrigger gap to 0 to use Auto."
         )
     app._advanced_hint_var.set(
-        f"Song speed stays in the bottom toolbar. {articulation_help} {sustain_help}{auto_help}"
+        f"Stable/no-page safety is always on. Song speed stays in the bottom toolbar. "
+        f"{articulation_help} {sustain_help}{auto_help}"
     )
 
 
