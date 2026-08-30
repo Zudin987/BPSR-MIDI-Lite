@@ -121,6 +121,10 @@ def _refined_apply_note_lengths(
     tuned = adaptive._coerce_adaptive_options(options)
     if not notes:
         return []
+    if not tuned.adaptive_auto:
+        # Custom and Raw remain manual: keep v3.2's explicit articulation and
+        # hard-floor behavior instead of adding register/density/phrase shaping.
+        return po._enhanced_apply_note_lengths(notes, tuned)
 
     ordered = sorted(notes, key=lambda note: (note.start, note.serial))
     starts = [note.start for note in ordered]
