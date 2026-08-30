@@ -12,6 +12,7 @@ from playback_adaptive import install_adaptive_arranger
 from playback_adaptive_pressure import install_adaptive_pressure_model
 from playback_adaptive_ui import install_adaptive_arranger_ui
 from playback_advanced_ui import install_advanced_playback_profile
+from playback_arranger_refinements import install_arranger_refinements
 from playback_calibration_ui import install_calibration_lab
 from playback_overhaul import install_playback_overhaul
 from studio_audio_latency import install_studio_audio_latency
@@ -38,6 +39,7 @@ install_gaming_runtime_2026(app)
 install_playback_overhaul(app)
 install_advanced_playback_profile(app)
 install_adaptive_arranger(app)
+install_arranger_refinements(app)
 install_adaptive_pressure_model(app)
 install_adaptive_arranger_ui(app)
 install_calibration_lab(app)
