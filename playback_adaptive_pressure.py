@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import math
+import sys
 from bisect import bisect_left, bisect_right
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,7 @@ _attack_metrics_context: contextvars.ContextVar[tuple[float, float]] = contextva
 )
 _original_preanalyse: Any = None
 _original_to_adaptive_plan: Any = None
+_original_evaluate: Any = None
 
 
 def _attack_anchors(starts: list[float], window: float = 0.015) -> list[float]:
@@ -253,19 +255,51 @@ def _refined_to_adaptive_plan(*args: Any, **kwargs: Any):
     # size is already represented separately by max_source_chord/max_planned_chord.
     result.local_peak_nps = float(peak)
     result.p95_window_nps = float(p95)
+
+    parts = [part for part in str(result.arranger_summary).split(" • ") if part]
+    tail = [part for part in parts if not part.startswith("peak ") and not part.startswith("p95 ")]
+    result.arranger_summary = " • ".join(
+        [f"peak {peak:.1f} attacks/s", f"p95 {p95:.1f} attacks/s", *tail]
+    )
     return result
 
 
+def _refined_evaluate_song_suitability(plan: Any):
+    assert _original_evaluate is not None
+    result = _original_evaluate(plan)
+    if not getattr(plan, "adaptive_enabled", False):
+        return result
+    rewritten: list[str] = []
+    for reason in result.reasons:
+        if reason.startswith("short burst reaches ") and reason.endswith(" notes/sec"):
+            rewritten.append(reason[:-10] + "attacks/sec")
+        elif reason.startswith("95th-percentile local density is ") and reason.endswith(" notes/sec"):
+            prefix = reason[: -len(" notes/sec")]
+            rewritten.append(prefix.replace("local density", "local attack density") + " attacks/sec")
+        else:
+            rewritten.append(reason)
+    return replace(result, reasons=tuple(rewritten))
+
+
 def install_adaptive_pressure_model(app_module: Any) -> None:
-    global _original_preanalyse, _original_to_adaptive_plan
+    global _original_preanalyse, _original_to_adaptive_plan, _original_evaluate
     if getattr(app_module, "_adaptive_pressure_model_installed", False):
         return
     _original_preanalyse = adaptive._preanalyse
     _original_to_adaptive_plan = adaptive._to_adaptive_plan
+    _original_evaluate = app_module.evaluate_song_suitability
     adaptive._preanalyse = _refined_preanalyse
     adaptive._auto_tune_options = _refined_auto_tune
     adaptive._adaptive_apply_note_lengths = _refined_apply_note_lengths
     adaptive._to_adaptive_plan = _refined_to_adaptive_plan
     me._limit_notes_per_chord = _refined_limit_notes_per_chord
     me._apply_note_lengths = _refined_apply_note_lengths
+
+    adaptive.suitability_module.evaluate_song_suitability = _refined_evaluate_song_suitability
+    app_module.evaluate_song_suitability = _refined_evaluate_song_suitability
+    for name in ("online_ui", "online_integration", "online_search_bridge"):
+        module = sys.modules.get(name)
+        if module is not None and hasattr(module, "evaluate_song_suitability"):
+            module.evaluate_song_suitability = _refined_evaluate_song_suitability
+
     app_module._adaptive_pressure_model_installed = True
