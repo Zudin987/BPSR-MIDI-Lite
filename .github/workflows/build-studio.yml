@@ -50,7 +50,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional existing Lite release tag, for example v3.1.2. Leave blank to build only."
+        description: "Optional existing Lite release tag, for example v3.3.0. Leave blank to build only."
         required: false
         type: string
 
@@ -172,7 +172,7 @@ jobs:
           name: BPSR-MIDI-Studio-Experimental-Beta-Windows
           path: release-studio
 
-      - name: Attach Studio experimental beta to requested Lite release
+      - name: Attach and verify Studio experimental beta
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -209,3 +209,27 @@ jobs:
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
             release-studio/FFMPEG_BUILD_INFO.txt `
             --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Studio release asset upload failed" }
+
+          $verifyDir = Join-Path $env:RUNNER_TEMP "bpsr-studio-release-verify"
+          if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
+          New-Item -ItemType Directory -Force $verifyDir | Out-Null
+          gh release download $tag `
+            --dir $verifyDir `
+            --pattern "BPSR-MIDI-Studio-Experimental-Beta.exe" `
+            --pattern "SHA256SUMS-STUDIO.txt" `
+            --pattern "STUDIO_THIRD_PARTY_NOTICES.md" `
+            --pattern "FFMPEG_BUILD_INFO.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Could not download published Studio assets for verification" }
+
+          foreach ($name in @("BPSR-MIDI-Studio-Experimental-Beta.exe", "SHA256SUMS-STUDIO.txt", "STUDIO_THIRD_PARTY_NOTICES.md", "FFMPEG_BUILD_INFO.txt")) {
+            $local = Join-Path "release-studio" $name
+            $remote = Join-Path $verifyDir $name
+            if (-not (Test-Path $remote)) { throw "Published release is missing Studio asset $name" }
+            $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
+            $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
+            if ($localHash -ne $remoteHash) {
+              throw "Published Studio asset hash mismatch for $name"
+            }
+          }
+          Write-Host "Published Studio release assets match the validated workflow outputs byte-for-byte."
