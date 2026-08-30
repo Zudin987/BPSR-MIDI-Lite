@@ -6,12 +6,14 @@ on:
       - main
     paths:
       - "studio_*.py"
+      - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/test_playback*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -26,12 +28,14 @@ on:
   pull_request:
     paths:
       - "studio_*.py"
+      - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/test_playback*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -81,6 +85,8 @@ jobs:
           python -c "from basic_pitch import ICASSP_2022_MODEL_PATH; from basic_pitch.inference import Model; m=Model(ICASSP_2022_MODEL_PATH); print('Basic Pitch model:', ICASSP_2022_MODEL_PATH)"
           python -c "import onnxruntime as ort; print('ONNX providers:', ort.get_available_providers())"
           python -c "from imageio_ffmpeg import get_ffmpeg_exe; import os; p=get_ffmpeg_exe(); print('FFmpeg:', p); assert os.path.exists(p)"
+          python -c "import soundcard as sc; print('SoundCard WASAPI loopback API:', hasattr(sc, 'all_microphones'), hasattr(sc, 'get_microphone'))"
+          python -c "import studio_audio_latency as s; print('Studio audio detector:', s.SAMPLE_RATE, 'Hz')"
 
       - name: Record bundled FFmpeg build information
         shell: pwsh
@@ -117,8 +123,10 @@ jobs:
           $listing = (& pyi-archive_viewer -l "dist/BPSR-MIDI-Studio.exe" | Out-String)
           if ($listing -notmatch '(?i)\.onnx') { throw "Basic Pitch ONNX model was not embedded in the EXE" }
           if ($listing -notmatch '(?i)ffmpeg.*\.exe') { throw "FFmpeg executable was not embedded in the EXE" }
+          if ($listing -notmatch '(?i)soundcard') { throw "SoundCard WASAPI loopback runtime was not embedded in the EXE" }
           $analysis = Get-Content "build/BPSR-MIDI-Studio/Analysis-00.toc" -Raw
           if ($analysis -notmatch 'studio_core_transcription') { throw "PyInstaller did not discover the Studio core transcription module" }
+          if ($analysis -notmatch 'studio_audio_latency') { throw "PyInstaller did not discover the Studio audio-latency module" }
           $size = (Get-Item "dist/BPSR-MIDI-Studio.exe").Length
           if ($size -lt 50000000) { throw "Studio EXE is unexpectedly small; bundled runtime may be missing" }
           Write-Host "Studio single EXE size: $size bytes"
