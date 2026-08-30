@@ -21,7 +21,7 @@ def _saved_profile() -> adaptive.CalibrationProfile:
     )
 
 
-def test_effective_profile_uses_only_verified_fields() -> None:
+def test_effective_profile_uses_only_verified_timing_fields() -> None:
     profile = provenance._effective_profile(
         "keyboard",
         _saved_profile(),
@@ -30,7 +30,6 @@ def test_effective_profile_uses_only_verified_fields() -> None:
             "repeat": False,
             "chord": False,
             "modifier": True,
-            "polyphony": False,
         },
     )
     defaults = adaptive._default_calibration("keyboard")
@@ -42,6 +41,35 @@ def test_effective_profile_uses_only_verified_fields() -> None:
     assert profile.max_polyphony == defaults.max_polyphony
 
 
+def test_legacy_polyphony_verified_flag_is_ignored(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "provenance.json"
+    path.write_text(
+        json.dumps(
+            {
+                "keyboard": {
+                    "hold": True,
+                    "repeat": True,
+                    "chord": True,
+                    "modifier": True,
+                    "polyphony": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(provenance, "provenance_path", lambda: path)
+
+    flags = provenance.load_measurement_flags("keyboard")
+    assert flags == {
+        "hold": True,
+        "repeat": True,
+        "chord": True,
+        "modifier": True,
+    }
+    assert "polyphony" not in provenance.MEASUREMENT_FIELDS
+    assert provenance.measurement_state_label("keyboard") == "timing fully verified"
+
+
 def test_provenance_flags_can_be_revoked_after_failed_exploration(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "provenance.json"
     monkeypatch.setattr(provenance, "provenance_path", lambda: path)
@@ -49,6 +77,15 @@ def test_provenance_flags_can_be_revoked_after_failed_exploration(tmp_path: Path
     assert provenance.load_measurement_flags("keyboard")["hold"] is True
     provenance.set_measurement("keyboard", "hold", False)
     assert provenance.load_measurement_flags("keyboard")["hold"] is False
+
+
+def test_polyphony_cannot_be_marked_as_verified() -> None:
+    try:
+        provenance.mark_measurement("keyboard", "polyphony")
+    except ValueError as exc:
+        assert "Unknown calibration measurement field" in str(exc)
+    else:
+        raise AssertionError("polyphony must not be accepted as verified without a real N-key test")
 
 
 def test_guided_clean_requires_convergence_before_verification() -> None:
