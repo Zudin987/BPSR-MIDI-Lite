@@ -206,6 +206,30 @@ def test_positive_chord_stagger_is_skipped_if_it_would_cross_modifier_transition
     assert max(event.time for event in adjusted if event.kind == "note_off") == 0.100
 
 
+def test_attack_snap_is_skipped_if_it_would_cross_control_state() -> None:
+    events = [
+        me.PlannedEvent(0.100, 20, "note_on", key="a", serial=0),
+        me.PlannedEvent(0.108, -20, "state", state=1, serial=10),
+        me.PlannedEvent(0.114, 20, "note_on", key="s", serial=1),
+        me.PlannedEvent(0.114, 20, "note_on", key="d", serial=2),
+        me.PlannedEvent(0.200, 0, "note_off", key="a", serial=0),
+        me.PlannedEvent(0.214, 0, "note_off", key="s", serial=1),
+        me.PlannedEvent(0.214, 0, "note_off", key="d", serial=2),
+    ]
+    metadata = {
+        0: SourceMeta(0, 0.100, 60, 90, 0, "Piano", 0, 0, "harmony"),
+        1: SourceMeta(1, 0.114, 67, 90, 0, "Piano", 0, 0, "harmony"),
+        2: SourceMeta(2, 0.114, 64, 90, 0, "Piano", 0, 0, "harmony"),
+    }
+    adjusted, normalized, _ = _refined_normalize_chord_attacks(
+        _plan(events),
+        AdaptivePlanOptions(instrument="keyboard", chord_stagger_ms=0),
+        metadata,
+    )
+    assert normalized == 0
+    assert [event.time for event in adjusted if event.kind == "note_on"] == [0.100, 0.114, 0.114]
+
+
 def test_positive_chord_stagger_remains_allowed_when_transition_has_safe_headroom() -> None:
     events = [
         me.PlannedEvent(0.000, 20, "note_on", key="a", serial=0),
@@ -238,9 +262,6 @@ def test_positive_stagger_is_skipped_if_it_would_break_next_same_key_release_gap
         me.PlannedEvent(0.100, 0, "note_off", key="s", serial=1),
         me.PlannedEvent(0.100, 0, "note_off", key="d", serial=2),
         me.PlannedEvent(0.100, 0, "note_off", key="f", serial=3),
-        # The planner already left 35 ms before reusing physical key f. A 6 ms
-        # four-note stagger would move f's release to 118 ms and leave only
-        # 17 ms, below the keyboard's 24 ms safe release gap.
         me.PlannedEvent(0.135, 20, "note_on", key="f", serial=10),
         me.PlannedEvent(0.235, 0, "note_off", key="f", serial=10),
     ]
@@ -262,9 +283,6 @@ def test_snapping_attack_earlier_is_skipped_if_it_would_break_previous_same_key_
     events = [
         me.PlannedEvent(0.000, 20, "note_on", key="s", serial=20),
         me.PlannedEvent(0.090, 0, "note_off", key="s", serial=20),
-        # This is a humanized three-note block chord. Moving serial 1 from
-        # 114 ms to the 100 ms chord anchor would leave only 10 ms after the
-        # previous s release, below the configured 24 ms release gap.
         me.PlannedEvent(0.100, 20, "note_on", key="a", serial=0),
         me.PlannedEvent(0.114, 20, "note_on", key="s", serial=1),
         me.PlannedEvent(0.114, 20, "note_on", key="d", serial=2),
