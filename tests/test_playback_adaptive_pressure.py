@@ -3,6 +3,7 @@ from __future__ import annotations
 import midi_engine as me
 from playback_adaptive import AdaptivePlanOptions, CalibrationProfile, SourceAnalysis
 from playback_adaptive_pressure import (
+    _attack_pressure_metrics,
     _attack_rate_context,
     _attack_rate_for_starts,
     _refined_apply_note_lengths,
@@ -40,6 +41,7 @@ def _calibration(*, calibrated: bool) -> CalibrationProfile:
 
 def test_isolated_humanized_four_note_chord_is_one_attack_not_fast_run() -> None:
     assert _attack_rate_for_starts([0.000, 0.004, 0.009, 0.013]) == 4.0
+    assert _attack_pressure_metrics([0.000, 0.004, 0.009, 0.013]) == (4.0, 2.0)
 
 
 def test_fast_distinct_attacks_still_trigger_dense_auto_articulation() -> None:
@@ -73,7 +75,7 @@ def test_uncalibrated_auto_does_not_invent_new_polyphony_cap_or_stagger() -> Non
     assert tuned.octave_switch_lead_ms == 55
 
 
-def test_calibrated_auto_can_apply_measured_polyphony_stagger_and_modifier_settle() -> None:
+def test_calibrated_auto_can_apply_authorized_polyphony_stagger_and_modifier_settle() -> None:
     tuned = _refined_auto_tune(
         AdaptivePlanOptions(
             instrument="keyboard",
@@ -128,3 +130,46 @@ def test_large_slow_chord_does_not_shorten_gate_as_if_it_were_rapid_notes() -> N
     )
     durations = [note.end - note.start for note in tuned]
     assert min(durations) >= 0.09
+
+
+def test_notes_in_same_chord_use_same_next_musical_attack_for_gate_context() -> None:
+    notes = [
+        _planned(0.000, 60, "a", 0),
+        _planned(0.000, 64, "d", 1),
+        _planned(0.000, 67, "g", 2),
+        _planned(0.500, 72, "q", 3),
+    ]
+    tuned = _refined_apply_note_lengths(
+        notes,
+        AdaptivePlanOptions(
+            instrument="keyboard",
+            minimum_note_ms=90,
+            hard_press_floor_ms=40,
+            repeated_release_gap_ms=24,
+            short_note_tail_ms=20,
+            attack_cluster_ms=15,
+        ),
+    )
+    chord_durations = [note.end - note.start for note in tuned[:3]]
+    assert max(chord_durations) - min(chord_durations) < 1e-9
+
+
+def test_chord_cluster_does_not_gain_phrase_tail_only_on_last_serial() -> None:
+    notes = [
+        _planned(0.000, 60, "a", 0),
+        _planned(0.000, 64, "d", 1),
+        _planned(0.000, 67, "g", 2),
+    ]
+    tuned = _refined_apply_note_lengths(
+        notes,
+        AdaptivePlanOptions(
+            instrument="keyboard",
+            minimum_note_ms=90,
+            hard_press_floor_ms=40,
+            repeated_release_gap_ms=24,
+            short_note_tail_ms=20,
+            attack_cluster_ms=15,
+        ),
+    )
+    durations = [note.end - note.start for note in tuned]
+    assert max(durations) - min(durations) < 1e-9
