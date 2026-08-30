@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from collections import defaultdict
+import threading
+from bisect import bisect_right
+from collections import OrderedDict, defaultdict
 from dataclasses import replace
+from pathlib import Path
 from statistics import median
 from typing import Any
 
@@ -11,6 +14,10 @@ import playback_overhaul as po
 
 _original_collect_candidates: Any = None
 _original_voice_continuity: Any = None
+
+_CANDIDATE_CACHE_LIMIT = 8
+_candidate_cache: OrderedDict[tuple[str, int, int], tuple[adaptive._CandidateMeta, ...]] = OrderedDict()
+_candidate_cache_lock = threading.RLock()
 
 
 def _name_role(track_name: str) -> adaptive.Role | None:
@@ -42,11 +49,14 @@ def _refined_role_from_source(track_name: str, channel: int, program: int) -> ad
 def _refine_candidate_roles(
     candidates: list[adaptive._CandidateMeta],
 ) -> list[adaptive._CandidateMeta]:
-    by_stream: dict[tuple[int, int], list[adaptive._CandidateMeta]] = defaultdict(list)
+    # Program changes can legitimately split one MIDI channel into different
+    # musical roles. Keep those streams independent instead of allowing the
+    # first/majority program on a channel to classify every later note.
+    by_stream: dict[tuple[int, int, int], list[adaptive._CandidateMeta]] = defaultdict(list)
     for candidate in candidates:
-        by_stream[(candidate.track_index, candidate.channel)].append(candidate)
+        by_stream[(candidate.track_index, candidate.channel, candidate.program)].append(candidate)
 
-    role_by_stream: dict[tuple[int, int], adaptive.Role] = {}
+    role_by_stream: dict[tuple[int, int, int], adaptive.Role] = {}
     for stream, notes in by_stream.items():
         explicit = next((_name_role(note.track_name) for note in notes if _name_role(note.track_name)), None)
         if explicit is not None:
@@ -83,14 +93,47 @@ def _refine_candidate_roles(
             role_by_stream[stream] = "unknown"
 
     return [
-        replace(candidate, role=role_by_stream[(candidate.track_index, candidate.channel)])
+        replace(
+            candidate,
+            role=role_by_stream[(candidate.track_index, candidate.channel, candidate.program)],
+        )
         for candidate in candidates
     ]
 
 
+def _candidate_cache_key(path: Any) -> tuple[str, int, int] | None:
+    try:
+        resolved = Path(path).resolve()
+        stat = resolved.stat()
+        return str(resolved), int(stat.st_mtime_ns), int(stat.st_size)
+    except OSError:
+        return None
+
+
 def _refined_collect_candidates(path: Any) -> list[adaptive._CandidateMeta]:
     assert _original_collect_candidates is not None
-    return _refine_candidate_roles(_original_collect_candidates(path))
+    key = _candidate_cache_key(path)
+    if key is not None:
+        with _candidate_cache_lock:
+            cached = _candidate_cache.get(key)
+            if cached is not None:
+                _candidate_cache.move_to_end(key)
+                return list(cached)
+
+    refined = _refine_candidate_roles(_original_collect_candidates(path))
+    if key is not None:
+        with _candidate_cache_lock:
+            # Drop stale versions of the same path before inserting the newest
+            # file identity. This keeps repeated UI previews cheap while still
+            # invalidating immediately when the MIDI changes on disk.
+            for old_key in tuple(_candidate_cache):
+                if old_key[0] == key[0] and old_key != key:
+                    _candidate_cache.pop(old_key, None)
+            _candidate_cache[key] = tuple(refined)
+            _candidate_cache.move_to_end(key)
+            while len(_candidate_cache) > _CANDIDATE_CACHE_LIMIT:
+                _candidate_cache.popitem(last=False)
+    return list(refined)
 
 
 def _mapped_pitch_for_note(
@@ -169,6 +212,38 @@ def _refined_voice_continuity_cost(
     )
 
 
+def _would_cross_control_transition(
+    group: list[me.PlannedEvent],
+    proposed_delta: dict[int, float],
+    note_off_by_serial: dict[int, float],
+    control_times: list[float],
+) -> bool:
+    """Return True when post-plan staggering would invalidate state safety.
+
+    The v3.2 planner proves that Ctrl/Shift/page transitions happen after active
+    note tails. v3.3 attack normalization runs later, so a positive stagger can
+    extend a note past an already-scheduled transition. In that case the safest
+    behavior is to leave this chord's authored/planned attack times untouched.
+    """
+    if not control_times:
+        return False
+    margin = 0.002
+    for event in group:
+        delta = proposed_delta.get(event.serial, 0.0)
+        if delta <= 1e-9:
+            continue
+        original_off = note_off_by_serial.get(event.serial)
+        if original_off is None:
+            continue
+        index = bisect_right(control_times, event.time + 1e-9)
+        if index >= len(control_times):
+            continue
+        next_control = control_times[index]
+        if original_off + delta > next_control - margin:
+            return True
+    return False
+
+
 def _refined_normalize_chord_attacks(
     plan: po.EnhancedMidiPlan,
     options: adaptive.AdaptivePlanOptions,
@@ -186,6 +261,15 @@ def _refined_normalize_chord_attacks(
     )
     if len(note_ons) < 2:
         return list(plan.events), 0, 0
+
+    note_off_by_serial = {
+        event.serial: event.time
+        for event in plan.events
+        if event.kind == "note_off" and event.key
+    }
+    control_times = sorted(
+        event.time for event in plan.events if event.kind in {"state", "page"}
+    )
 
     window = max(0.005, options.attack_cluster_ms / 1000.0)
     groups: list[list[me.PlannedEvent]] = []
@@ -225,9 +309,19 @@ def _refined_normalize_chord_attacks(
             )
         else:
             placement = sorted(group, key=lambda event: event.serial)
-        for index, event in enumerate(placement):
-            target = base + index * stagger
-            delta_by_serial[event.serial] = target - event.time
+
+        proposed = {
+            event.serial: (base + index * stagger) - event.time
+            for index, event in enumerate(placement)
+        }
+        if _would_cross_control_transition(
+            group,
+            proposed,
+            note_off_by_serial,
+            control_times,
+        ):
+            continue
+        delta_by_serial.update(proposed)
         normalized += 1
 
     if not delta_by_serial:
