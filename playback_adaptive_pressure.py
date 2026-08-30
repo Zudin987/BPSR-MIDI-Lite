@@ -295,6 +295,27 @@ def _adaptive_score_label(score: int) -> tuple[str, str, str]:
     )
 
 
+def _independent_forced_complexity(plan: Any, result: Any) -> bool:
+    """Preserve non-density reasons that independently make a plan very complex."""
+    source_count = max(1, int(getattr(plan, "source_note_count", 1)))
+    retrigger_changes = (
+        max(0, int(getattr(plan, "retrigger_compressed_notes", 0)))
+        + max(0, int(getattr(plan, "retrigger_merged_notes", 0)))
+        + max(0, int(getattr(plan, "retrigger_dropped_notes", 0)))
+    )
+    retrigger_ratio = retrigger_changes / source_count
+    max_chord = max(
+        int(getattr(plan, "max_source_chord", 0)),
+        int(getattr(plan, "max_planned_chord", 0)),
+        int(getattr(plan, "max_simultaneous_keys", 0)),
+    )
+    return (
+        retrigger_ratio >= 0.25
+        or max_chord >= 14
+        or float(getattr(result, "changed_ratio", 0.0)) >= 0.60
+    )
+
+
 def _refined_evaluate_song_suitability(plan: Any):
     assert _original_evaluate is not None
     result = _original_evaluate(plan)
@@ -331,7 +352,14 @@ def _refined_evaluate_song_suitability(plan: Any):
         else:
             rewritten.append(text)
 
-    code, label, summary = _adaptive_score_label(score)
+    if _independent_forced_complexity(plan, result):
+        code, label, summary = (
+            "complex",
+            "Very complex",
+            "Adaptive arranger can simplify it, but the busiest passages may still exceed BPSR input limits.",
+        )
+    else:
+        code, label, summary = _adaptive_score_label(score)
     return replace(
         result,
         code=code,
