@@ -271,7 +271,13 @@ def install_calibration_provenance(app_module: Any) -> None:
             text="Reset this instrument",
             command=lambda: _reset_from_ui(self, app_module),
         )
-        self._calibration_reset_button.grid(row=1, column=7, padx=(8, 0), pady=(8, 0))
+        self._calibration_reset_button.grid(
+            row=7,
+            column=0,
+            columnspan=2,
+            sticky="w",
+            pady=(8, 0),
+        )
 
     app_class._build_ui = build_ui
     app_module._calibration_provenance_installed = True
