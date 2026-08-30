@@ -25,6 +25,19 @@ def _planned(start: float, pitch: int, key: str, serial: int) -> me.PlannedNote:
     )
 
 
+def _calibration(*, calibrated: bool) -> CalibrationProfile:
+    return CalibrationProfile(
+        instrument="keyboard",
+        minimum_clean_hold_ms=90,
+        hard_floor_ms=40,
+        retrigger_gap_ms=24,
+        chord_stagger_ms=2,
+        modifier_settle_ms=67,
+        max_polyphony=4,
+        calibrated=calibrated,
+    )
+
+
 def test_isolated_humanized_four_note_chord_is_one_attack_not_fast_run() -> None:
     assert _attack_rate_for_starts([0.000, 0.004, 0.009, 0.013]) == 4.0
 
@@ -35,19 +48,47 @@ def test_fast_distinct_attacks_still_trigger_dense_auto_articulation() -> None:
         tuned = _refined_auto_tune(
             AdaptivePlanOptions(instrument="keyboard", articulation_mode="balanced"),
             SourceAnalysis(max_chord=1, peak_250ms_nps=16.0, fast_repeat_ratio=0.0),
-            CalibrationProfile(
-                instrument="keyboard",
-                minimum_clean_hold_ms=90,
-                hard_floor_ms=40,
-                retrigger_gap_ms=24,
-                chord_stagger_ms=0,
-                modifier_settle_ms=55,
-                max_polyphony=4,
-            ),
+            _calibration(calibrated=False),
         )
     finally:
         _attack_rate_context.reset(token)
     assert tuned.articulation_mode == "dense"
+
+
+def test_uncalibrated_auto_does_not_invent_new_polyphony_cap_or_stagger() -> None:
+    tuned = _refined_auto_tune(
+        AdaptivePlanOptions(
+            instrument="keyboard",
+            max_notes_per_chord=0,
+            adaptive_chord_limit=0,
+            chord_stagger_ms=-1,
+            octave_switch_lead_ms=55,
+        ),
+        SourceAnalysis(max_chord=9),
+        _calibration(calibrated=False),
+    )
+    assert tuned.max_notes_per_chord == 0
+    assert tuned.adaptive_chord_limit == 0
+    assert tuned.chord_stagger_ms == 0
+    assert tuned.octave_switch_lead_ms == 55
+
+
+def test_calibrated_auto_can_apply_measured_polyphony_stagger_and_modifier_settle() -> None:
+    tuned = _refined_auto_tune(
+        AdaptivePlanOptions(
+            instrument="keyboard",
+            max_notes_per_chord=0,
+            adaptive_chord_limit=0,
+            chord_stagger_ms=-1,
+            octave_switch_lead_ms=55,
+        ),
+        SourceAnalysis(max_chord=9),
+        _calibration(calibrated=True),
+    )
+    assert tuned.max_notes_per_chord == 4
+    assert tuned.adaptive_chord_limit == 4
+    assert tuned.chord_stagger_ms == 2
+    assert tuned.octave_switch_lead_ms == 67
 
 
 def test_large_slow_chord_does_not_shorten_gate_as_if_it_were_rapid_notes() -> None:
