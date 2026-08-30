@@ -264,21 +264,82 @@ def _refined_to_adaptive_plan(*args: Any, **kwargs: Any):
     return result
 
 
+def _legacy_density_penalty(notes_per_second: float) -> int:
+    """Return the v3.2 suitability points assigned to raw note density."""
+    if notes_per_second >= 10.0:
+        return 3
+    if notes_per_second >= 6.0:
+        return 2
+    if notes_per_second >= 3.5:
+        return 1
+    return 0
+
+
+def _adaptive_score_label(score: int) -> tuple[str, str, str]:
+    if score >= 7:
+        return (
+            "complex",
+            "Very complex",
+            "Adaptive arranger can simplify it, but the busiest passages may still exceed BPSR input limits.",
+        )
+    if score >= 3:
+        return (
+            "busy",
+            "Busy",
+            "Adaptive arranger will thin/reshape the busiest passages while protecting melody and bass roles.",
+        )
+    return (
+        "good",
+        "Good fit",
+        "Adaptive arranger should translate this cleanly with the selected BPSR instrument.",
+    )
+
+
 def _refined_evaluate_song_suitability(plan: Any):
     assert _original_evaluate is not None
     result = _original_evaluate(plan)
     if not getattr(plan, "adaptive_enabled", False):
         return result
+
+    # The legacy score treats every simultaneous chord tone as another note per
+    # second. Adaptive playback already models chord size separately and models
+    # timing pressure using distinct attack clusters, so keeping the legacy raw
+    # density points would double-penalize block chords. Remove only that known
+    # legacy component; retain chord/remap/retrigger/track/control penalties.
+    raw_density_prefixes = (
+        "very fast note density (",
+        "fast note density (",
+        "moderate note density (",
+    )
+    had_raw_density_reason = any(
+        str(reason).startswith(raw_density_prefixes) for reason in result.reasons
+    )
+    score = int(result.score)
+    if had_raw_density_reason:
+        score = max(0, score - _legacy_density_penalty(float(result.notes_per_second)))
+
     rewritten: list[str] = []
     for reason in result.reasons:
-        if reason.startswith("short burst reaches ") and reason.endswith(" notes/sec"):
-            rewritten.append(reason[:-10] + "attacks/sec")
-        elif reason.startswith("95th-percentile local density is ") and reason.endswith(" notes/sec"):
-            prefix = reason[: -len(" notes/sec")]
+        text = str(reason)
+        if text.startswith(raw_density_prefixes):
+            continue
+        if text.startswith("short burst reaches ") and text.endswith(" notes/sec"):
+            rewritten.append(text[: -len(" notes/sec")] + " attacks/sec")
+        elif text.startswith("95th-percentile local density is ") and text.endswith(" notes/sec"):
+            prefix = text[: -len(" notes/sec")]
             rewritten.append(prefix.replace("local density", "local attack density") + " attacks/sec")
         else:
-            rewritten.append(reason)
-    return replace(result, reasons=tuple(rewritten))
+            rewritten.append(text)
+
+    code, label, summary = _adaptive_score_label(score)
+    return replace(
+        result,
+        code=code,
+        label=label,
+        summary=summary,
+        score=score,
+        reasons=tuple(rewritten),
+    )
 
 
 def install_adaptive_pressure_model(app_module: Any) -> None:
