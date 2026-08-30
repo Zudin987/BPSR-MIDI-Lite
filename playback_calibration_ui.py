@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import queue
 from dataclasses import replace
 from typing import Any
 
@@ -140,7 +141,7 @@ def _profile_summary(profile: CalibrationProfile) -> str:
         f"{profile.instrument.title()} ({source}) • clean hold {profile.minimum_clean_hold_ms} ms • "
         f"hard floor {profile.hard_floor_ms} ms • repeat gap {profile.retrigger_gap_ms} ms • "
         f"chord stagger {profile.chord_stagger_ms} ms • modifier settle {profile.modifier_settle_ms} ms • "
-        f"reliable polyphony {profile.max_polyphony}"
+        f"working polyphony {profile.max_polyphony}"
     )
 
 
@@ -155,6 +156,30 @@ def _show_panel(app: Any, visible: bool) -> None:
     app._calibration_visible = visible
 
 
+def _feedback_signature(app: Any) -> tuple[str, str, int]:
+    return (
+        app._instrument_code(),
+        TEST_LABELS.get(app._calibration_test_var.get(), "hold"),
+        max(0, int(app._calibration_value_var.get())),
+    )
+
+
+def _feedback_sample_matches(app: Any) -> bool:
+    return getattr(app, "_calibration_completed_sample", None) == _feedback_signature(app)
+
+
+def _set_feedback_ready(app: Any, ready: bool) -> None:
+    buttons = getattr(app, "_calibration_feedback_buttons", ())
+    state = "normal" if ready else "disabled"
+    for button in buttons:
+        try:
+            button.configure(state=state)
+        except Exception:
+            pass
+    if not ready:
+        app._calibration_completed_sample = None
+
+
 def _sync_from_profile(app: Any) -> None:
     instrument = app._instrument_code()
     profile = get_calibration_profile(instrument)
@@ -163,12 +188,53 @@ def _sync_from_profile(app: Any) -> None:
     test_code = TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     app._calibration_value_var.set(_test_default_value(profile, test_code))
     app._calibration_summary_var.set(_profile_summary(profile))
+    _set_feedback_ready(app, False)
 
 
 def _test_changed(app: Any) -> None:
     profile = get_calibration_profile(app._instrument_code())
     test_code = TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     app._calibration_value_var.set(_test_default_value(profile, test_code))
+    _set_feedback_ready(app, False)
+
+
+def _handle_finished_sample(
+    app: Any,
+    error: str | None,
+    stopped: bool,
+    sample_signature: tuple[str, str, int],
+) -> None:
+    app._calibration_play_button.configure(state="normal")
+    if error:
+        _set_feedback_ready(app, False)
+        app.status_var.set(f"Calibration playback error: {error}")
+    elif stopped:
+        _set_feedback_ready(app, False)
+        app.status_var.set("Calibration stopped. No result was recorded.")
+    else:
+        app._calibration_completed_sample = sample_signature
+        _set_feedback_ready(app, True)
+        app.status_var.set(
+            "Calibration sample finished. Rate this exact sample once: Clean, Missed / too short, or Too muddy."
+        )
+
+
+def _pump_calibration_ui(app: Any) -> None:
+    messages = getattr(app, "_calibration_ui_messages", None)
+    if messages is None:
+        return
+    try:
+        while True:
+            kind, payload = messages.get_nowait()
+            if kind == "finished":
+                error, stopped, sample_signature = payload
+                _handle_finished_sample(app, error, bool(stopped), sample_signature)
+    except queue.Empty:
+        pass
+    try:
+        app.after(80, lambda: _pump_calibration_ui(app))
+    except Exception:
+        pass
 
 
 def _play_test(app: Any) -> None:
@@ -177,8 +243,10 @@ def _play_test(app: Any) -> None:
         return
     instrument = app._instrument_code()
     test_code = TEST_LABELS.get(app._calibration_test_var.get(), "hold")
-    value = int(app._calibration_value_var.get())
+    value = max(0, int(app._calibration_value_var.get()))
+    sample_signature = (instrument, test_code, value)
     plan = build_calibration_test_plan(instrument, test_code, value)
+    _set_feedback_ready(app, False)
     app._calibration_play_button.configure(state="disabled")
     app.status_var.set(
         f"Calibration {test_code}: {value} ms. Switch to BPSR during the 2-second countdown."
@@ -188,17 +256,14 @@ def _play_test(app: Any) -> None:
         app.ui_queue.put(("status", (f"Calibration • {text}", progress)))
 
     def finished(error: str | None) -> None:
-        def restore() -> None:
-            app._calibration_play_button.configure(state="normal")
-            if error:
-                app.status_var.set(f"Calibration playback error: {error}")
-            elif app.player.stop_event.is_set():
-                app.status_var.set("Calibration stopped. No result was recorded.")
-            else:
-                app.status_var.set(
-                    "Calibration sample finished. Mark Clean, Missed / too short, or Too muddy."
-                )
-        app.after(0, restore)
+        # This callback runs on the player's worker thread. Do not touch Tk or
+        # Tk variables here; carry only thread-safe data back to the main loop.
+        app._calibration_ui_messages.put(
+            (
+                "finished",
+                (error, app.player.stop_event.is_set(), sample_signature),
+            )
+        )
 
     app.player.start(
         plan,
@@ -210,11 +275,21 @@ def _play_test(app: Any) -> None:
 
 
 def _record_feedback(app: Any, feedback: str) -> None:
+    if not _feedback_sample_matches(app):
+        _set_feedback_ready(app, False)
+        app.status_var.set(
+            "Play and finish this exact calibration value before recording feedback."
+        )
+        return
+
     instrument = app._instrument_code()
     profile = get_calibration_profile(instrument)
     test_code = TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     value = max(0, int(app._calibration_value_var.get()))
     polyphony = max(1, min(12, int(app._calibration_polyphony_var.get())))
+    # Consume the sample before writing anything so one playback can only earn
+    # one calibration judgment/provenance update.
+    _set_feedback_ready(app, False)
 
     if test_code == "hold":
         if feedback == "clean":
@@ -260,7 +335,7 @@ def _record_feedback(app: Any, feedback: str) -> None:
     updated = get_calibration_profile(instrument)
     app._calibration_summary_var.set(_profile_summary(updated))
     app.status_var.set(
-        f"Saved {instrument.title()} calibration feedback. New adaptive plans will use it automatically."
+        f"Saved {instrument.title()} calibration feedback. New adaptive plans will use verified timing values automatically."
     )
     app._schedule_analysis()
 
@@ -271,6 +346,9 @@ def _save_polyphony(app: Any) -> None:
     polyphony = max(1, min(12, int(app._calibration_polyphony_var.get())))
     save_calibration_profile(replace(profile, max_polyphony=polyphony))
     _sync_from_profile(app)
+    app.status_var.set(
+        f"Saved {instrument.title()} working polyphony {polyphony}. It is not Auto-verified without an in-game N-key test."
+    )
     app._schedule_analysis()
 
 
@@ -300,6 +378,8 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
     panel.columnconfigure(3, weight=1)
     app._calibration_panel = panel
     app._calibration_visible = False
+    app._calibration_completed_sample = None
+    app._calibration_ui_messages: queue.Queue[tuple[str, object]] = queue.Queue()
 
     app._calibration_instrument_var = app_module.tk.StringVar(master=app)
     app._calibration_test_var = app_module.tk.StringVar(master=app, value=next(iter(TEST_LABELS)))
@@ -333,7 +413,7 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
     ).grid(row=0, column=5, sticky="w", padx=(6, 4))
     app_module.ttk.Label(panel, text="ms").grid(row=0, column=6, sticky="w")
 
-    app_module.ttk.Label(panel, text="Reliable chord keys").grid(
+    app_module.ttk.Label(panel, text="Working chord keys (not verified)").grid(
         row=1, column=0, sticky="w", pady=(8, 0)
     )
     app_module.ttk.Spinbox(
@@ -344,7 +424,7 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
         textvariable=app._calibration_polyphony_var,
         width=5,
     ).grid(row=1, column=1, sticky="w", padx=(6, 16), pady=(8, 0))
-    app_module.ttk.Button(panel, text="Save polyphony", command=lambda: _save_polyphony(app)).grid(
+    app_module.ttk.Button(panel, text="Save working value", command=lambda: _save_polyphony(app)).grid(
         row=1, column=2, sticky="w", pady=(8, 0)
     )
 
@@ -354,15 +434,20 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
         command=lambda: _play_test(app),
     )
     app._calibration_play_button.grid(row=1, column=3, sticky="w", padx=(8, 0), pady=(8, 0))
-    app_module.ttk.Button(
-        panel, text="Clean", command=lambda: _record_feedback(app, "clean")
-    ).grid(row=1, column=4, padx=(8, 0), pady=(8, 0))
-    app_module.ttk.Button(
-        panel, text="Missed / too short", command=lambda: _record_feedback(app, "missed")
-    ).grid(row=1, column=5, padx=(8, 0), pady=(8, 0))
-    app_module.ttk.Button(
-        panel, text="Too muddy", command=lambda: _record_feedback(app, "muddy")
-    ).grid(row=1, column=6, padx=(8, 0), pady=(8, 0))
+    feedback_buttons = [
+        app_module.ttk.Button(panel, text="Clean", command=lambda: _record_feedback(app, "clean")),
+        app_module.ttk.Button(
+            panel,
+            text="Missed / too short",
+            command=lambda: _record_feedback(app, "missed"),
+        ),
+        app_module.ttk.Button(panel, text="Too muddy", command=lambda: _record_feedback(app, "muddy")),
+    ]
+    feedback_buttons[0].grid(row=1, column=4, padx=(8, 0), pady=(8, 0))
+    feedback_buttons[1].grid(row=1, column=5, padx=(8, 0), pady=(8, 0))
+    feedback_buttons[2].grid(row=1, column=6, padx=(8, 0), pady=(8, 0))
+    app._calibration_feedback_buttons = tuple(feedback_buttons)
+    _set_feedback_ready(app, False)
 
     app_module.ttk.Label(
         panel,
@@ -374,8 +459,9 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
     app_module.ttk.Label(
         panel,
         text=(
-            "Run one test at a time in the real BPSR instrument. Calibration stores only timing/polyphony "
-            "results locally and never reads game memory. Adaptive playback automatically uses saved values."
+            "Run one test at a time in the real BPSR instrument. A rating is accepted only after that exact "
+            "sample finishes. Timing results are stored locally. Working polyphony is not trusted by Auto "
+            "until a dedicated N-key verification test exists."
         ),
         style="Hint.TLabel",
         wraplength=1050,
@@ -384,6 +470,7 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
 
     _sync_from_profile(app)
     _show_panel(app, False)
+    app.after(80, lambda: _pump_calibration_ui(app))
 
 
 def install_calibration_lab(app_module: Any) -> None:

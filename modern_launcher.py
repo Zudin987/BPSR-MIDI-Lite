@@ -21,7 +21,7 @@ from playback_overhaul import install_playback_overhaul
 
 # v3.3 keeps the released v3.2 BPSR timing/safety layer and adds the adaptive
 # musical arranger plus verified per-instrument in-game calibration on top.
-app.APP_VERSION = "3.3.0"
+app.APP_VERSION = "3.3.1"
 
 install_online_search_bridge()
 install_modern_ui(app)

@@ -25,7 +25,7 @@ def test_legacy_ui_has_no_online_browser_action() -> None:
 
 def test_windows_builder_uses_release_candidate_version() -> None:
     source = Path("build_exe.bat").read_text(encoding="utf-8")
-    assert "set VERSION=3.3.0" in source
+    assert "set VERSION=3.3.1" in source
 
 
 def test_direct_link_still_loads_while_legacy_core_rejects_title_text() -> None:
