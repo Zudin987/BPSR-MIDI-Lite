@@ -13,6 +13,7 @@ from playback_adaptive_pressure import install_adaptive_pressure_model
 from playback_advanced_ui import install_advanced_playback_profile
 from playback_calibration_ui import install_calibration_lab
 from playback_overhaul import install_playback_overhaul
+from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
@@ -38,6 +39,7 @@ install_advanced_playback_profile(app)
 install_adaptive_arranger(app)
 install_adaptive_pressure_model(app)
 install_calibration_lab(app)
+install_studio_audio_latency(app)
 
 
 if __name__ == "__main__":
