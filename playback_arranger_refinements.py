@@ -218,13 +218,6 @@ def _would_cross_control_transition(
     note_off_by_serial: dict[int, float],
     control_times: list[float],
 ) -> bool:
-    """Return True when post-plan staggering would invalidate state safety.
-
-    The v3.2 planner proves that Ctrl/Shift/page transitions happen after active
-    note tails. v3.3 attack normalization runs later, so a positive stagger can
-    extend a note past an already-scheduled transition. In that case the safest
-    behavior is to leave this chord's authored/planned attack times untouched.
-    """
     if not control_times:
         return False
     margin = 0.002
@@ -242,6 +235,82 @@ def _would_cross_control_transition(
         if original_off + delta > next_control - margin:
             return True
     return False
+
+
+def _would_break_same_key_gap(
+    group: list[me.PlannedEvent],
+    proposed_delta: dict[int, float],
+    note_off_by_serial: dict[int, float],
+    note_ons_by_key: dict[str, list[me.PlannedEvent]],
+    release_gap: float,
+) -> bool:
+    epsilon = 1e-9
+    group_serials = set(proposed_delta)
+    adjusted_on = {
+        event.serial: event.time + proposed_delta.get(event.serial, 0.0)
+        for event in group
+    }
+    adjusted_off = {
+        event.serial: note_off_by_serial[event.serial] + proposed_delta.get(event.serial, 0.0)
+        for event in group
+        if event.serial in note_off_by_serial
+    }
+
+    for event in group:
+        if not event.key or event.serial not in adjusted_off:
+            continue
+        key_events = note_ons_by_key.get(event.key, [])
+        position = next((index for index, item in enumerate(key_events) if item.serial == event.serial), None)
+        if position is None:
+            continue
+        current_on = adjusted_on[event.serial]
+        current_off = adjusted_off[event.serial]
+
+        if position > 0:
+            previous = key_events[position - 1]
+            previous_off = note_off_by_serial.get(previous.serial)
+            if previous_off is not None:
+                if previous.serial in group_serials:
+                    previous_off += proposed_delta.get(previous.serial, 0.0)
+                if current_on - previous_off + epsilon < release_gap:
+                    return True
+
+        if position + 1 < len(key_events):
+            following = key_events[position + 1]
+            following_on = following.time
+            if following.serial in group_serials:
+                following_on += proposed_delta.get(following.serial, 0.0)
+            if following_on - current_off + epsilon < release_gap:
+                return True
+    return False
+
+
+def _would_violate_post_plan_safety(
+    group: list[me.PlannedEvent],
+    proposed_delta: dict[int, float],
+    note_off_by_serial: dict[int, float],
+    control_times: list[float],
+    note_ons_by_key: dict[str, list[me.PlannedEvent]],
+    release_gap: float,
+) -> bool:
+    """Protect safety decisions already made by the physical planner.
+
+    Attack normalization is intentionally post-plan. It may improve chord feel,
+    but it must never invalidate state/page tail safety or same-key retrigger
+    release gaps that were already solved on the original event timeline.
+    """
+    return _would_cross_control_transition(
+        group,
+        proposed_delta,
+        note_off_by_serial,
+        control_times,
+    ) or _would_break_same_key_gap(
+        group,
+        proposed_delta,
+        note_off_by_serial,
+        note_ons_by_key,
+        release_gap,
+    )
 
 
 def _refined_normalize_chord_attacks(
@@ -270,6 +339,11 @@ def _refined_normalize_chord_attacks(
     control_times = sorted(
         event.time for event in plan.events if event.kind in {"state", "page"}
     )
+    note_ons_by_key: dict[str, list[me.PlannedEvent]] = defaultdict(list)
+    for event in note_ons:
+        if event.key:
+            note_ons_by_key[event.key].append(event)
+    release_gap = max(0.001, options.resolved_release_gap_ms / 1000.0)
 
     window = max(0.005, options.attack_cluster_ms / 1000.0)
     groups: list[list[me.PlannedEvent]] = []
@@ -314,11 +388,13 @@ def _refined_normalize_chord_attacks(
             event.serial: (base + index * stagger) - event.time
             for index, event in enumerate(placement)
         }
-        if _would_cross_control_transition(
+        if _would_violate_post_plan_safety(
             group,
             proposed,
             note_off_by_serial,
             control_times,
+            note_ons_by_key,
+            release_gap,
         ):
             continue
         delta_by_serial.update(proposed)
