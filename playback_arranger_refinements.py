@@ -174,6 +174,12 @@ def _refined_normalize_chord_attacks(
     options: adaptive.AdaptivePlanOptions,
     metadata: dict[int, adaptive.SourceMeta],
 ) -> tuple[list[me.PlannedEvent], int, int]:
+    # Custom and Raw are explicitly manual modes. They still use physical-key
+    # safety/retrigger handling, but the arranger must not rewrite authored
+    # attack placement unless Adaptive Auto is enabled.
+    if not options.adaptive_auto:
+        return list(plan.events), 0, max(0, options.chord_stagger_ms)
+
     note_ons = sorted(
         (event for event in plan.events if event.kind == "note_on" and event.key),
         key=lambda event: (event.time, event.serial),
