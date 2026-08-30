@@ -70,11 +70,22 @@ def _guided_test_changed(app: Any) -> None:
     default = int(app._calibration_value_var.get())
     if not low <= default <= high:
         app._calibration_value_var.set((low + high) // 2)
+    calibration._set_feedback_ready(app, False)
     _refresh_guide(app)
 
 
 def _guided_record_feedback(app: Any, feedback: str) -> None:
     assert _original_record_feedback is not None
+    # Check the completed-sample token before mutating the guided bounds. This
+    # prevents button clicks (or a changed value/test) from converging a search
+    # that was never actually played in BPSR.
+    if not calibration._feedback_sample_matches(app):
+        calibration._set_feedback_ready(app, False)
+        app.status_var.set(
+            "Play and finish this exact calibration value before recording feedback."
+        )
+        return
+
     instrument = app._instrument_code()
     test_code = _current_test(app)
     value = max(0, int(app._calibration_value_var.get()))
@@ -99,6 +110,7 @@ def _guided_record_feedback(app: Any, feedback: str) -> None:
     if span <= tolerance:
         suggested = high
         app._calibration_value_var.set(suggested)
+        calibration._set_feedback_ready(app, False)
         app._calibration_guide_var.set(
             f"Guided search converged near {suggested} ms for {instrument.title()} / {test_code}. "
             "Run one final sample at this value and mark Clean before treating it as confirmed."
@@ -106,6 +118,7 @@ def _guided_record_feedback(app: Any, feedback: str) -> None:
     else:
         suggested = (low + high) // 2
         app._calibration_value_var.set(suggested)
+        calibration._set_feedback_ready(app, False)
         app._calibration_guide_var.set(
             f"Next suggested test: {suggested} ms. Remaining plausible threshold: {low}–{high} ms. "
             "Press Play test, listen in BPSR, then rate it again."
@@ -142,6 +155,7 @@ def install_guided_calibration(app_module: Any) -> None:
 
     def instrument_changed(self: Any) -> None:
         original_instrument_changed(self)
+        calibration._set_feedback_ready(self, False)
         _refresh_guide(self)
 
     app_class._build_ui = build_ui
