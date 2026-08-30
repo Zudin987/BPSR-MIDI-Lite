@@ -220,20 +220,35 @@ def _would_cross_control_transition(
 ) -> bool:
     if not control_times:
         return False
-    margin = 0.002
+    epsilon = 1e-9
+    tail_margin = 0.002
     for event in group:
         delta = proposed_delta.get(event.serial, 0.0)
-        if delta <= 1e-9:
+        if abs(delta) <= epsilon:
             continue
-        original_off = note_off_by_serial.get(event.serial)
-        if original_off is None:
-            continue
-        index = bisect_right(control_times, event.time + 1e-9)
-        if index >= len(control_times):
-            continue
-        next_control = control_times[index]
-        if original_off + delta > next_control - margin:
+
+        adjusted_on = event.time + delta
+        low = min(event.time, adjusted_on)
+        high = max(event.time, adjusted_on)
+        # State/page events execute before note attacks at an equal timestamp.
+        # Moving an attack across a control in either direction can therefore
+        # play the note in the wrong physical octave/page even when its tail is
+        # otherwise short enough.
+        crossing_index = bisect_right(control_times, low + epsilon)
+        if crossing_index < len(control_times) and control_times[crossing_index] <= high + epsilon:
             return True
+
+        # Positive staggering can also extend a previously safe tail into the
+        # next control transition without the attack itself crossing it.
+        if delta > 0:
+            original_off = note_off_by_serial.get(event.serial)
+            if original_off is None:
+                continue
+            next_index = bisect_right(control_times, event.time + epsilon)
+            if next_index < len(control_times):
+                next_control = control_times[next_index]
+                if original_off + delta > next_control - tail_margin:
+                    return True
     return False
 
 
@@ -296,8 +311,8 @@ def _would_violate_post_plan_safety(
     """Protect safety decisions already made by the physical planner.
 
     Attack normalization is intentionally post-plan. It may improve chord feel,
-    but it must never invalidate state/page tail safety or same-key retrigger
-    release gaps that were already solved on the original event timeline.
+    but it must never invalidate state/page timing or same-key retrigger release
+    gaps that were already solved on the original event timeline.
     """
     return _would_cross_control_transition(
         group,
