@@ -9,7 +9,10 @@ from typing import Any
 import playback_adaptive as adaptive
 import playback_calibration_ui as calibration
 
-MEASUREMENT_FIELDS = ("hold", "repeat", "chord", "modifier", "polyphony")
+# Only measurements that have a real playback test may authorize Auto. v3.3
+# stored a manual polyphony number as if it were verified; v3.3.1 deliberately
+# ignores that legacy flag until a dedicated N-key in-game test exists.
+MEASUREMENT_FIELDS = ("hold", "repeat", "chord", "modifier")
 
 _original_auto_tune: Any = None
 _original_to_adaptive_plan: Any = None
@@ -88,8 +91,8 @@ def measurement_state_label(instrument: str) -> str:
     if not measured:
         return "safe defaults active"
     if len(measured) == len(MEASUREMENT_FIELDS):
-        return "fully verified"
-    return "verified: " + ", ".join(measured)
+        return "timing fully verified"
+    return "verified timing: " + ", ".join(measured)
 
 
 def _effective_profile(
@@ -114,7 +117,9 @@ def _effective_profile(
         modifier_settle_ms=(
             saved.modifier_settle_ms if flags["modifier"] else defaults.modifier_settle_ms
         ),
-        max_polyphony=saved.max_polyphony if flags["polyphony"] else defaults.max_polyphony,
+        # There is no dedicated N-key playback test yet. Never authorize a
+        # destructive Auto chord cap from the manually saved working number.
+        max_polyphony=defaults.max_polyphony,
         calibrated=any(flags.values()),
         updated_at=saved.updated_at,
     )
@@ -136,11 +141,6 @@ def _provenance_auto_tune(
     # destructive settings cannot be authorized by an unrelated measurement.
     tuned = _original_auto_tune(options, analysis, replace(effective, calibrated=False))
 
-    if flags["polyphony"]:
-        limit = options.adaptive_chord_limit or effective.max_polyphony
-        tuned = replace(tuned, adaptive_chord_limit=limit)
-        if limit > 0 and tuned.max_notes_per_chord <= 0 and analysis.max_chord > limit:
-            tuned = replace(tuned, max_notes_per_chord=limit)
     if flags["chord"] and options.chord_stagger_ms < 0:
         tuned = replace(tuned, chord_stagger_ms=effective.chord_stagger_ms)
     if flags["modifier"]:
@@ -160,9 +160,9 @@ def _provenance_to_adaptive_plan(*args: Any, **kwargs: Any):
     if measured == 0:
         result.calibration_source = "defaults"
     elif measured == len(MEASUREMENT_FIELDS):
-        result.calibration_source = "fully verified"
+        result.calibration_source = "timing fully verified"
     else:
-        result.calibration_source = f"verified {measured}/{len(MEASUREMENT_FIELDS)}"
+        result.calibration_source = f"timing verified {measured}/{len(MEASUREMENT_FIELDS)}"
     return result
 
 
@@ -180,6 +180,15 @@ def _guided_search_converged(app: Any, instrument: str, test_code: str) -> bool:
 
 def _record_feedback_with_provenance(app: Any, feedback: str) -> None:
     assert _original_record_feedback is not None
+    # Provenance is the outermost calibration wrapper at runtime. Reject an
+    # unplayed/stale rating here before guided calibration can mutate bounds.
+    if not calibration._feedback_sample_matches(app):
+        calibration._set_feedback_ready(app, False)
+        app.status_var.set(
+            "Play and finish this exact calibration value before recording feedback."
+        )
+        return
+
     instrument = app._instrument_code()
     test_code = calibration.TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     _original_record_feedback(app, feedback)
@@ -198,7 +207,9 @@ def _save_polyphony_with_provenance(app: Any) -> None:
     assert _original_save_polyphony is not None
     instrument = app._instrument_code()
     _original_save_polyphony(app)
-    mark_measurement(instrument, "polyphony")
+    # Intentionally do not create a verification flag. v3.3's old `polyphony`
+    # flag is ignored by MEASUREMENT_FIELDS, so upgrading immediately returns
+    # Auto to the non-destructive/default chord policy.
     if hasattr(app, "_calibration_summary_var"):
         app._calibration_summary_var.set(
             calibration._profile_summary(adaptive.get_calibration_profile(instrument))
@@ -211,7 +222,8 @@ def _profile_summary_with_provenance(profile: adaptive.CalibrationProfile) -> st
         f"{profile.instrument.title()} ({state}) • working hold {profile.minimum_clean_hold_ms} ms • "
         f"hard floor {profile.hard_floor_ms} ms • repeat gap {profile.retrigger_gap_ms} ms • "
         f"chord stagger {profile.chord_stagger_ms} ms • modifier settle {profile.modifier_settle_ms} ms • "
-        f"polyphony {profile.max_polyphony}. Unverified working values are not used by Auto."
+        f"working polyphony {profile.max_polyphony} (not Auto-verified). "
+        "Unverified values are not used by Auto."
     )
 
 
