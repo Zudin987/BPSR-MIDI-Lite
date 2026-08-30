@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import playback_adaptive as adaptive
@@ -58,6 +59,30 @@ def test_guided_clean_requires_convergence_before_verification() -> None:
     assert provenance._guided_search_converged(app, "keyboard", "hold") is False
     app._calibration_guide_bounds[("keyboard", "hold")] = (64, 68)
     assert provenance._guided_search_converged(app, "keyboard", "hold") is True
+
+
+def test_reset_removes_only_selected_instrument(tmp_path: Path, monkeypatch) -> None:
+    calibration_path = tmp_path / "calibration.json"
+    provenance_path = tmp_path / "provenance.json"
+    calibration_path.write_text(
+        json.dumps({"keyboard": {"minimum_clean_hold_ms": 150}, "guitar": {"minimum_clean_hold_ms": 120}}),
+        encoding="utf-8",
+    )
+    provenance_path.write_text(
+        json.dumps({"keyboard": {"hold": True}, "guitar": {"repeat": True}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(adaptive, "calibration_path", lambda: calibration_path)
+    monkeypatch.setattr(provenance, "provenance_path", lambda: provenance_path)
+
+    provenance.reset_instrument_calibration("keyboard")
+
+    calibration_payload = json.loads(calibration_path.read_text(encoding="utf-8"))
+    provenance_payload = json.loads(provenance_path.read_text(encoding="utf-8"))
+    assert "keyboard" not in calibration_payload
+    assert "keyboard" not in provenance_payload
+    assert "guitar" in calibration_payload
+    assert "guitar" in provenance_payload
 
 
 def test_launchers_install_provenance_after_guidance() -> None:
