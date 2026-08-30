@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import queue
 from dataclasses import replace
 from typing import Any
 
@@ -197,6 +198,45 @@ def _test_changed(app: Any) -> None:
     _set_feedback_ready(app, False)
 
 
+def _handle_finished_sample(
+    app: Any,
+    error: str | None,
+    stopped: bool,
+    sample_signature: tuple[str, str, int],
+) -> None:
+    app._calibration_play_button.configure(state="normal")
+    if error:
+        _set_feedback_ready(app, False)
+        app.status_var.set(f"Calibration playback error: {error}")
+    elif stopped:
+        _set_feedback_ready(app, False)
+        app.status_var.set("Calibration stopped. No result was recorded.")
+    else:
+        app._calibration_completed_sample = sample_signature
+        _set_feedback_ready(app, True)
+        app.status_var.set(
+            "Calibration sample finished. Rate this exact sample once: Clean, Missed / too short, or Too muddy."
+        )
+
+
+def _pump_calibration_ui(app: Any) -> None:
+    messages = getattr(app, "_calibration_ui_messages", None)
+    if messages is None:
+        return
+    try:
+        while True:
+            kind, payload = messages.get_nowait()
+            if kind == "finished":
+                error, stopped, sample_signature = payload
+                _handle_finished_sample(app, error, bool(stopped), sample_signature)
+    except queue.Empty:
+        pass
+    try:
+        app.after(80, lambda: _pump_calibration_ui(app))
+    except Exception:
+        pass
+
+
 def _play_test(app: Any) -> None:
     if app.player.is_playing:
         app.status_var.set("Stop the current playback before running calibration.")
@@ -216,21 +256,14 @@ def _play_test(app: Any) -> None:
         app.ui_queue.put(("status", (f"Calibration • {text}", progress)))
 
     def finished(error: str | None) -> None:
-        def restore() -> None:
-            app._calibration_play_button.configure(state="normal")
-            if error:
-                _set_feedback_ready(app, False)
-                app.status_var.set(f"Calibration playback error: {error}")
-            elif app.player.stop_event.is_set():
-                _set_feedback_ready(app, False)
-                app.status_var.set("Calibration stopped. No result was recorded.")
-            else:
-                app._calibration_completed_sample = sample_signature
-                _set_feedback_ready(app, True)
-                app.status_var.set(
-                    "Calibration sample finished. Rate this exact sample once: Clean, Missed / too short, or Too muddy."
-                )
-        app.after(0, restore)
+        # This callback runs on the player's worker thread. Do not touch Tk or
+        # Tk variables here; carry only thread-safe data back to the main loop.
+        app._calibration_ui_messages.put(
+            (
+                "finished",
+                (error, app.player.stop_event.is_set(), sample_signature),
+            )
+        )
 
     app.player.start(
         plan,
@@ -346,6 +379,7 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
     app._calibration_panel = panel
     app._calibration_visible = False
     app._calibration_completed_sample = None
+    app._calibration_ui_messages: queue.Queue[tuple[str, object]] = queue.Queue()
 
     app._calibration_instrument_var = app_module.tk.StringVar(master=app)
     app._calibration_test_var = app_module.tk.StringVar(master=app, value=next(iter(TEST_LABELS)))
@@ -436,6 +470,7 @@ def _build_calibration_panel(app: Any, app_module: Any) -> None:
 
     _sync_from_profile(app)
     _show_panel(app, False)
+    app.after(80, lambda: _pump_calibration_ui(app))
 
 
 def install_calibration_lab(app_module: Any) -> None:
