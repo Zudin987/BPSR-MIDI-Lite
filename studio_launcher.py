@@ -25,7 +25,7 @@ from studio_polish import install_studio_polish
 
 # Studio remains a separate experimental build target and inherits the v3.3
 # adaptive arranger/calibration layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.4.0-experimental-beta"
+app.APP_VERSION = "Studio 0.4.1-experimental-beta"
 
 install_core_transcription()
 install_online_search_bridge()
