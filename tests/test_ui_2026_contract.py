@@ -48,9 +48,11 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_gaming_runtime_2026(app)" in launcher
         assert "install_playback_overhaul(app)" in launcher
         assert "install_advanced_playback_profile(app)" in launcher
+        assert "install_adaptive_arranger(app)" in launcher
+        assert "install_calibration_provenance(app)" in launcher
 
-    assert 'app.APP_VERSION = "3.2.0"' in lite
-    assert 'app.APP_VERSION = "Studio 0.3.0-experimental-beta"' in studio
+    assert 'app.APP_VERSION = "3.3.0"' in lite
+    assert 'app.APP_VERSION = "Studio 0.4.0-experimental-beta"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:

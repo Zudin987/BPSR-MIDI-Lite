@@ -1,5 +1,19 @@
 # BPSR MIDI Studio changelog
 
+## 0.4.0-experimental-beta
+
+- Inherits Lite v3.3.0's adaptive BPSR arranger, role-aware remapping, phrase/density-aware note gates, safer collision handling, chord attack normalization, and verified per-instrument Calibration Lab.
+- Adds optional Windows WASAPI loopback measurement for observed input-to-audible-game response p50/p95/jitter. Results are diagnostic only and are never blindly subtracted from MIDI timing.
+- Adds SoundCard to the Studio-only runtime and verifies that the WASAPI/audio-latency modules are embedded in the single-file EXE.
+- Adds Source → BPSR arrangement diagnostics so users can see remapping/thinning/normalization impact before playback.
+- Keeps normal playback Stable/no-page and keeps Custom/Raw timing manual rather than applying adaptive phrase shaping.
+- Adds byte-for-byte verification of Studio assets after they are attached to the GitHub release.
+
+## 0.3.0-experimental-beta
+
+- Inherited Lite v3.2.0's BPSR-aware timing overhaul, non-blocking control taps, batched Win32 chord input, retrigger hard-floor protection, active-tail-safe state planning, sustain simulation, scheduler telemetry, and advanced Custom tuning UI.
+- Kept YouTube download, Basic Pitch transcription, core arrangement cleanup, FFmpeg/ONNX packaging, and temporary-audio workflow unchanged.
+
 ## 0.2.2-experimental-beta
 
 - Inherited Lite 3.1.2's Category-safe defaults, modifier timing protection, retrigger handling, true held-key metrics, hard no-page guard, focus safety, and lower-overhead continuous 30 FPS visualizer.

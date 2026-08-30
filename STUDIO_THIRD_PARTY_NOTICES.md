@@ -30,6 +30,16 @@ Platform wheels include an FFmpeg executable. FFmpeg itself is distributed under
 
 See the imageio-ffmpeg and FFmpeg upstream projects for the license texts and source/compliance information applicable to that build.
 
+## SoundCard
+
+Project: `bastibe/SoundCard`
+
+Purpose: optional Windows WASAPI loopback recording used by Studio's local input-to-game-audio timing diagnostic.
+
+License: BSD 3-Clause.
+
+Studio uses SoundCard 0.4.6. The latency diagnostic records the user's normal Windows output mix only while the user explicitly runs the test. It does not inspect BPSR memory or network traffic.
+
 ## yt-dlp
 
 Project: `yt-dlp/yt-dlp`

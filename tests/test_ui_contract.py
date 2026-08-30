@@ -69,7 +69,7 @@ def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
 
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
-    assert 'app.APP_VERSION = "3.2.0"' in launcher
+    assert 'app.APP_VERSION = "3.3.0"' in launcher
     assert "install_gaming_ui_2026(app)" in launcher
     assert "install_online_search_bridge()" in launcher
     assert "install_playback_overhaul(app)" in launcher

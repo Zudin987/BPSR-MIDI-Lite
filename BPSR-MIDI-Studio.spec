@@ -12,13 +12,14 @@ project = Path(SPECPATH)
 
 basic_pitch_datas = collect_data_files("basic_pitch")
 imageio_datas = collect_data_files("imageio_ffmpeg")
+soundcard_datas = collect_data_files("soundcard")
 imageio_binaries = collect_dynamic_libs("imageio_ffmpeg")
 
 a = Analysis(
     [str(project / "studio_launcher.py")],
     pathex=[str(project)],
     binaries=imageio_binaries,
-    datas=basic_pitch_datas + imageio_datas,
+    datas=basic_pitch_datas + imageio_datas + soundcard_datas,
     hiddenimports=[
         "pynput.keyboard._win32",
         "pynput._util.win32",
@@ -29,6 +30,10 @@ a = Analysis(
         "imageio_ffmpeg",
         "onnxruntime",
         "onnxruntime.capi._pybind_state",
+        "soundcard",
+        "soundcard.mediafoundation",
+        "cffi",
+        "_cffi_backend",
     ],
     hookspath=[],
     hooksconfig={},

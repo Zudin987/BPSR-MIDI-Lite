@@ -8,13 +8,20 @@ from modern_ui import install_modern_ui
 from online_integration import install_online_integration
 from online_search_bridge import install_online_search_bridge
 from online_search_ui_2026 import install_online_search_ui_2026
+from playback_adaptive import install_adaptive_arranger
+from playback_adaptive_pressure import install_adaptive_pressure_model
+from playback_adaptive_ui import install_adaptive_arranger_ui
 from playback_advanced_ui import install_advanced_playback_profile
+from playback_arranger_refinements import install_arranger_refinements
+from playback_calibration_guidance import install_guided_calibration
+from playback_calibration_provenance import install_calibration_provenance
+from playback_calibration_ui import install_calibration_lab
 from playback_overhaul import install_playback_overhaul
 
 
-# v3.2 keeps the proven MIDI parser/range model and installs the BPSR-aware
-# articulation, state-planning, input batching and timing-telemetry layer.
-app.APP_VERSION = "3.2.0"
+# v3.3 keeps the released v3.2 BPSR timing/safety layer and adds the adaptive
+# musical arranger plus verified per-instrument in-game calibration on top.
+app.APP_VERSION = "3.3.0"
 
 install_online_search_bridge()
 install_modern_ui(app)
@@ -25,6 +32,13 @@ install_local_search_integration(app)
 install_gaming_runtime_2026(app)
 install_playback_overhaul(app)
 install_advanced_playback_profile(app)
+install_adaptive_arranger(app)
+install_arranger_refinements(app)
+install_adaptive_pressure_model(app)
+install_adaptive_arranger_ui(app)
+install_calibration_lab(app)
+install_guided_calibration(app)
+install_calibration_provenance(app)
 
 
 if __name__ == "__main__":
