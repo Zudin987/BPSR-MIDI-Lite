@@ -10,8 +10,9 @@ import playback_adaptive as adaptive
 import playback_calibration_ui as calibration
 
 # Only measurements that have a real playback test may authorize Auto. v3.3
-# stored a manual polyphony number as if it were verified; v3.3.1 deliberately
-# ignores that legacy flag until a dedicated N-key in-game test exists.
+# stored ratings without proving the corresponding sample actually completed,
+# so the schema bump intentionally invalidates every legacy verification flag.
+PROVENANCE_SCHEMA_VERSION = 2
 MEASUREMENT_FIELDS = ("hold", "repeat", "chord", "modifier")
 
 _original_auto_tune: Any = None
@@ -47,9 +48,34 @@ def _write_json_object(path: Path, payload: dict[str, object]) -> None:
     temporary.replace(path)
 
 
+def _schema_version(payload: dict[str, object]) -> int:
+    try:
+        return int(payload.get("_schema_version", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _migrate_for_write(payload: dict[str, object]) -> dict[str, object]:
+    if _schema_version(payload) >= PROVENANCE_SCHEMA_VERSION:
+        payload["_schema_version"] = PROVENANCE_SCHEMA_VERSION
+        return payload
+
+    # v3.3 feedback was not bound to completed playback, so none of its flags
+    # can establish provenance. Preserve instrument entries only as empty flag
+    # sets; working calibration numbers live in the separate calibration file.
+    migrated: dict[str, object] = {"_schema_version": PROVENANCE_SCHEMA_VERSION}
+    for instrument in adaptive.ADAPTIVE_DEFAULTS:
+        if instrument in payload:
+            migrated[instrument] = {field: False for field in MEASUREMENT_FIELDS}
+    return migrated
+
+
 def load_measurement_flags(instrument: str) -> dict[str, bool]:
     flags = {field: False for field in MEASUREMENT_FIELDS}
-    item = _read_json_object(provenance_path()).get(instrument)
+    payload = _read_json_object(provenance_path())
+    if _schema_version(payload) < PROVENANCE_SCHEMA_VERSION:
+        return flags
+    item = payload.get(instrument)
     if isinstance(item, dict):
         for field in flags:
             flags[field] = bool(item.get(field, False))
@@ -60,7 +86,7 @@ def set_measurement(instrument: str, field: str, verified: bool) -> None:
     if field not in MEASUREMENT_FIELDS:
         raise ValueError(f"Unknown calibration measurement field: {field}")
     path = provenance_path()
-    payload = _read_json_object(path)
+    payload = _migrate_for_write(_read_json_object(path))
     current = payload.get(instrument)
     values = {name: False for name in MEASUREMENT_FIELDS}
     if isinstance(current, dict):
@@ -78,11 +104,17 @@ def mark_measurement(instrument: str, field: str) -> None:
 def reset_instrument_calibration(instrument: str) -> None:
     if instrument not in adaptive.ADAPTIVE_DEFAULTS:
         raise ValueError(f"Unknown calibration instrument: {instrument}")
-    for path in (adaptive.calibration_path(), provenance_path()):
-        payload = _read_json_object(path)
-        if instrument in payload:
-            payload.pop(instrument, None)
-            _write_json_object(path, payload)
+    calibration_file = adaptive.calibration_path()
+    calibration_payload = _read_json_object(calibration_file)
+    if instrument in calibration_payload:
+        calibration_payload.pop(instrument, None)
+        _write_json_object(calibration_file, calibration_payload)
+
+    provenance_file = provenance_path()
+    provenance_payload = _migrate_for_write(_read_json_object(provenance_file))
+    if instrument in provenance_payload:
+        provenance_payload.pop(instrument, None)
+    _write_json_object(provenance_file, provenance_payload)
 
 
 def measurement_state_label(instrument: str) -> str:
@@ -208,8 +240,8 @@ def _save_polyphony_with_provenance(app: Any) -> None:
     instrument = app._instrument_code()
     _original_save_polyphony(app)
     # Intentionally do not create a verification flag. v3.3's old `polyphony`
-    # flag is ignored by MEASUREMENT_FIELDS, so upgrading immediately returns
-    # Auto to the non-destructive/default chord policy.
+    # flag is ignored, so upgrading immediately returns Auto to the
+    # non-destructive/default chord policy.
     if hasattr(app, "_calibration_summary_var"):
         app._calibration_summary_var.set(
             calibration._profile_summary(adaptive.get_calibration_profile(instrument))
