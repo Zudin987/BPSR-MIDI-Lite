@@ -90,6 +90,17 @@ def test_changing_value_invalidates_completed_sample(monkeypatch) -> None:
     assert "Play and finish this exact calibration value" in app.status_var.get()
 
 
+def test_calibration_player_completion_does_not_touch_tk_from_worker_callback() -> None:
+    source = Path("playback_calibration_ui.py").read_text(encoding="utf-8")
+    start = source.index("    def finished(error: str | None) -> None:")
+    end = source.index("    app.player.start(", start)
+    callback = source[start:end]
+    assert "_calibration_ui_messages.put" in callback
+    assert "app.after(" not in callback
+    assert "configure(" not in callback
+    assert "status_var.set" not in callback
+
+
 def test_launchers_install_guidance_after_calibration_lab() -> None:
     for filename in ("modern_launcher.py", "studio_launcher.py"):
         source = Path(filename).read_text(encoding="utf-8")
