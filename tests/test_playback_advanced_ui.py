@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import importlib.util
+import os
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from playback_advanced_ui import (
     CUSTOM_PROFILE_LABEL,
@@ -63,3 +69,47 @@ def test_song_check_exposes_v32_timing_adjustments_without_duplication() -> None
     assert "sustain Simulated" in first
     _append_timing_preview(app)
     assert analysis.get() == first
+
+
+def _run_ui_smoke(module_name: str) -> None:
+    code = f'''
+import {module_name} as launcher
+from playback_advanced_ui import CUSTOM_PROFILE_LABEL
+root = launcher.app.App()
+try:
+    root.withdraw()
+    root.profile_var.set(CUSTOM_PROFILE_LABEL)
+    root._profile_changed()
+    root.update_idletasks()
+    assert hasattr(root, "custom_settings_frame")
+    assert hasattr(root, "release_gap_var")
+    assert hasattr(root, "articulation_var")
+    assert hasattr(root, "sustain_mode_var")
+    assert root._profile_code() == "custom"
+    assert "no-page" in root.profile_summary_var.get().lower()
+    assert root.mode_combo.cget("state") == "disabled"
+finally:
+    root.destroy()
+'''
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + "\n" + completed.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Tk/Windows launcher smoke test")
+def test_lite_launcher_can_open_and_select_custom_profile() -> None:
+    _run_ui_smoke("modern_launcher")
+
+
+@pytest.mark.skipif(
+    os.name != "nt" or importlib.util.find_spec("basic_pitch") is None,
+    reason="Studio dependencies are available only in the Studio build job",
+)
+def test_studio_launcher_can_open_and_select_custom_profile() -> None:
+    _run_ui_smoke("studio_launcher")
