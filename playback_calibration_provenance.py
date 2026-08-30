@@ -223,11 +223,16 @@ def _record_feedback_with_provenance(app: Any, feedback: str) -> None:
 
     instrument = app._instrument_code()
     test_code = calibration.TEST_LABELS.get(app._calibration_test_var.get(), "hold")
+    # The guidance layer deliberately asks for one final Clean sample after its
+    # threshold search has converged. Capture the pre-feedback state so the
+    # exploratory Clean result that *causes* convergence cannot grant provenance.
+    was_converged = _guided_search_converged(app, instrument, test_code)
     _original_record_feedback(app, feedback)
 
     # Negative samples guide the search but revoke permission for Auto to use
-    # the exploratory value. Clean becomes active only near convergence.
-    verified = feedback == "clean" and _guided_search_converged(app, instrument, test_code)
+    # the exploratory value. Verification requires the explicit final Clean
+    # sample requested by the guidance UI, after convergence was already known.
+    verified = feedback == "clean" and was_converged
     set_measurement(instrument, test_code, verified)
     if hasattr(app, "_calibration_summary_var"):
         app._calibration_summary_var.set(
