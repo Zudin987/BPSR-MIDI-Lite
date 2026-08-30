@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextvars
+import math
 from bisect import bisect_left, bisect_right
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,11 @@ import playback_overhaul as po
 _attack_rate_context: contextvars.ContextVar[float] = contextvars.ContextVar(
     "bpsr_adaptive_attack_rate", default=0.0
 )
+_attack_metrics_context: contextvars.ContextVar[tuple[float, float]] = contextvars.ContextVar(
+    "bpsr_adaptive_attack_metrics", default=(0.0, 0.0)
+)
 _original_preanalyse: Any = None
+_original_to_adaptive_plan: Any = None
 
 
 def _attack_anchors(starts: list[float], window: float = 0.015) -> list[float]:
@@ -32,6 +37,16 @@ def _attack_rate_for_starts(starts: list[float], window: float = 0.250) -> float
     return adaptive._window_peak(anchors, window) if anchors else 0.0
 
 
+def _attack_pressure_metrics(starts: list[float]) -> tuple[float, float]:
+    anchors = _attack_anchors(starts)
+    if not anchors:
+        return 0.0, 0.0
+    peak = adaptive._window_peak(anchors, 0.250)
+    rates = sorted(adaptive._window_rates(anchors, 0.500))
+    p95 = rates[max(0, math.ceil(len(rates) * 0.95) - 1)] if rates else 0.0
+    return peak, p95
+
+
 def _refined_preanalyse(path: Path) -> adaptive.SourceAnalysis:
     assert _original_preanalyse is not None
     analysis = _original_preanalyse(path)
@@ -41,9 +56,12 @@ def _refined_preanalyse(path: Path) -> adaptive.SourceAnalysis:
             for candidate in adaptive._collect_candidates(Path(path))
             if candidate.channel != 9
         ]
-        _attack_rate_context.set(_attack_rate_for_starts(starts))
+        peak, p95 = _attack_pressure_metrics(starts)
+        _attack_rate_context.set(peak)
+        _attack_metrics_context.set((peak, p95))
     except Exception:
         _attack_rate_context.set(0.0)
+        _attack_metrics_context.set((0.0, 0.0))
     return analysis
 
 
@@ -57,8 +75,7 @@ def _refined_auto_tune(
 
     # Timing defaults are inherited from v3.2 and are intentionally conservative.
     # A new polyphony cap is different: dropping chord tones is destructive, so
-    # only a real Calibration Lab result may introduce one beyond the profile's
-    # existing v3.2 chord policy.
+    # only an explicitly authorized calibration layer may introduce one.
     measured_limit = (
         options.adaptive_chord_limit
         or (calibration.max_polyphony if calibration.calibrated else 0)
@@ -114,6 +131,18 @@ def _refined_limit_notes_per_chord(
     return adaptive._adaptive_limit_notes_per_chord(notes, maximum, instrument)
 
 
+def _next_attack_by_note(
+    anchors: list[float],
+    anchor_for_note: list[float],
+) -> list[float | None]:
+    index_by_anchor = {value: index for index, value in enumerate(anchors)}
+    result: list[float | None] = []
+    for anchor in anchor_for_note:
+        index = index_by_anchor[anchor]
+        result.append(anchors[index + 1] if index + 1 < len(anchors) else None)
+    return result
+
+
 def _refined_apply_note_lengths(
     notes: list[me.PlannedNote],
     options: Any,
@@ -139,6 +168,7 @@ def _refined_apply_note_lengths(
             attack_anchors.append(value)
         anchor_for_note.append(anchor)
 
+    next_attack_for_note = _next_attack_by_note(attack_anchors, anchor_for_note)
     attack_densities = [
         (
             bisect_right(attack_anchors, value + 0.250)
@@ -163,10 +193,11 @@ def _refined_apply_note_lengths(
         source_duration = max(0.001, note.end - note.start)
         base = po._desired_note_duration(source_duration, tuned)
         target = base * adaptive._register_scale(tuned.instrument, note.pitch)
-        following = ordered[index + 1].start if index + 1 < len(ordered) else None
+        attack_anchor = anchor_for_note[index]
+        following_attack = next_attack_for_note[index]
 
-        if following is not None:
-            onset_gap = max(0.001, following - note.start)
+        if following_attack is not None:
+            onset_gap = max(0.001, following_attack - attack_anchor)
             gate_ratio = source_duration / onset_gap
             if gate_ratio < 0.45:
                 target = min(
@@ -176,21 +207,26 @@ def _refined_apply_note_lengths(
                         source_duration + tuned.resolved_short_tail_ms / 2000.0,
                     ),
                 )
-            elif gate_ratio > 0.92 and note.key != ordered[index + 1].key:
-                target = max(
-                    target,
-                    min(onset_gap + 0.030, base + 0.050),
+            elif gate_ratio > 0.92:
+                same_key_next = next_same_key[index]
+                same_key_at_next_attack = (
+                    same_key_next is not None
+                    and abs(same_key_next - following_attack) <= cluster_window
                 )
+                if not same_key_at_next_attack:
+                    target = max(
+                        target,
+                        min(onset_gap + 0.030, base + 0.050),
+                    )
 
-        attack_density = attack_densities[index]
-        if attack_density >= 12.0:
+        if attack_densities[index] >= 12.0:
             target *= 0.70
-        elif attack_density >= 8.0:
+        elif attack_densities[index] >= 8.0:
             target *= 0.80
-        elif attack_density >= 5.0:
+        elif attack_densities[index] >= 5.0:
             target *= 0.90
 
-        if following is None or following - note.start > 0.35:
+        if following_attack is None or following_attack - attack_anchor > 0.35:
             target += min(0.045, tuned.resolved_short_tail_ms / 1000.0)
 
         if next_same_key[index] is not None:
@@ -209,14 +245,27 @@ def _refined_apply_note_lengths(
     return result
 
 
+def _refined_to_adaptive_plan(*args: Any, **kwargs: Any):
+    assert _original_to_adaptive_plan is not None
+    result = _original_to_adaptive_plan(*args, **kwargs)
+    peak, p95 = _attack_metrics_context.get()
+    # Timing pressure should count distinct attacks, not every chord tone. Chord
+    # size is already represented separately by max_source_chord/max_planned_chord.
+    result.local_peak_nps = float(peak)
+    result.p95_window_nps = float(p95)
+    return result
+
+
 def install_adaptive_pressure_model(app_module: Any) -> None:
-    global _original_preanalyse
+    global _original_preanalyse, _original_to_adaptive_plan
     if getattr(app_module, "_adaptive_pressure_model_installed", False):
         return
     _original_preanalyse = adaptive._preanalyse
+    _original_to_adaptive_plan = adaptive._to_adaptive_plan
     adaptive._preanalyse = _refined_preanalyse
     adaptive._auto_tune_options = _refined_auto_tune
     adaptive._adaptive_apply_note_lengths = _refined_apply_note_lengths
+    adaptive._to_adaptive_plan = _refined_to_adaptive_plan
     me._limit_notes_per_chord = _refined_limit_notes_per_chord
     me._apply_note_lengths = _refined_apply_note_lengths
     app_module._adaptive_pressure_model_installed = True
