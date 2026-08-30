@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import playback_adaptive as adaptive
-import playback_adaptive_pressure as pressure
 import playback_calibration_ui as calibration
 
 MEASUREMENT_FIELDS = ("hold", "repeat", "chord", "modifier", "polyphony")
@@ -28,19 +27,29 @@ def provenance_path() -> Path:
     return base / "bpsr_calibration_provenance.json"
 
 
-def load_measurement_flags(instrument: str) -> dict[str, bool]:
-    flags = {field: False for field in MEASUREMENT_FIELDS}
-    path = provenance_path()
+def _read_json_object(path: Path) -> dict[str, object]:
     if not path.exists():
-        return flags
+        return {}
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
-        item = raw.get(instrument) if isinstance(raw, dict) else None
-        if isinstance(item, dict):
-            for field in flags:
-                flags[field] = bool(item.get(field, False))
+        return raw if isinstance(raw, dict) else {}
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
-        pass
+        return {}
+
+
+def _write_json_object(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    temporary.replace(path)
+
+
+def load_measurement_flags(instrument: str) -> dict[str, bool]:
+    flags = {field: False for field in MEASUREMENT_FIELDS}
+    item = _read_json_object(provenance_path()).get(instrument)
+    if isinstance(item, dict):
+        for field in flags:
+            flags[field] = bool(item.get(field, False))
     return flags
 
 
@@ -48,14 +57,7 @@ def set_measurement(instrument: str, field: str, verified: bool) -> None:
     if field not in MEASUREMENT_FIELDS:
         raise ValueError(f"Unknown calibration measurement field: {field}")
     path = provenance_path()
-    payload: dict[str, object] = {}
-    if path.exists():
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(raw, dict):
-                payload = raw
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            payload = {}
+    payload = _read_json_object(path)
     current = payload.get(instrument)
     values = {name: False for name in MEASUREMENT_FIELDS}
     if isinstance(current, dict):
@@ -63,13 +65,21 @@ def set_measurement(instrument: str, field: str, verified: bool) -> None:
             values[name] = bool(current.get(name, False))
     values[field] = bool(verified)
     payload[instrument] = values
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    temporary.replace(path)
+    _write_json_object(path, payload)
 
 
 def mark_measurement(instrument: str, field: str) -> None:
     set_measurement(instrument, field, True)
+
+
+def reset_instrument_calibration(instrument: str) -> None:
+    if instrument not in adaptive.ADAPTIVE_DEFAULTS:
+        raise ValueError(f"Unknown calibration instrument: {instrument}")
+    for path in (adaptive.calibration_path(), provenance_path()):
+        payload = _read_json_object(path)
+        if instrument in payload:
+            payload.pop(instrument, None)
+            _write_json_object(path, payload)
 
 
 def measurement_state_label(instrument: str) -> str:
@@ -87,12 +97,7 @@ def _effective_profile(
     saved: adaptive.CalibrationProfile,
     flags: dict[str, bool],
 ) -> adaptive.CalibrationProfile:
-    """Return only values that have earned per-parameter verification.
-
-    Calibration UI stores exploratory values after every sample so the guided
-    search can continue across tests. Normal Auto playback must not consume an
-    exploratory value until that specific parameter has been verified.
-    """
+    """Return only values that have earned per-parameter verification."""
     defaults = adaptive._default_calibration(instrument)
     return replace(
         defaults,
@@ -129,7 +134,6 @@ def _provenance_auto_tune(
 
     # Run the conservative auto-tuner with aggregate calibration disabled so
     # destructive settings cannot be authorized by an unrelated measurement.
-    # Verified hold/repeat values are still supplied through `effective`.
     tuned = _original_auto_tune(options, analysis, replace(effective, calibrated=False))
 
     if flags["polyphony"]:
@@ -165,8 +169,6 @@ def _provenance_to_adaptive_plan(*args: Any, **kwargs: Any):
 def _guided_search_converged(app: Any, instrument: str, test_code: str) -> bool:
     state = getattr(app, "_calibration_guide_bounds", None)
     if not isinstance(state, dict):
-        # Provenance is installed after guided calibration in production. Keep
-        # this fallback useful for focused tests or future alternate UIs.
         return True
     bounds = state.get((instrument, test_code))
     if not isinstance(bounds, tuple) or len(bounds) != 2:
@@ -182,9 +184,8 @@ def _record_feedback_with_provenance(app: Any, feedback: str) -> None:
     test_code = calibration.TEST_LABELS.get(app._calibration_test_var.get(), "hold")
     _original_record_feedback(app, feedback)
 
-    # Failed/muddy samples are useful search evidence, but are not permission
-    # for Auto to consume the newly explored value. A Clean sample only becomes
-    # verified once the guided range has converged near the threshold.
+    # Negative samples guide the search but revoke permission for Auto to use
+    # the exploratory value. Clean becomes active only near convergence.
     verified = feedback == "clean" and _guided_search_converged(app, instrument, test_code)
     set_measurement(instrument, test_code, verified)
     if hasattr(app, "_calibration_summary_var"):
@@ -214,6 +215,31 @@ def _profile_summary_with_provenance(profile: adaptive.CalibrationProfile) -> st
     )
 
 
+def _reset_from_ui(app: Any, app_module: Any) -> None:
+    instrument = app._instrument_code()
+    if not app_module.messagebox.askyesno(
+        "Reset BPSR calibration",
+        f"Reset {instrument.title()} calibration to conservative defaults?",
+        parent=app,
+    ):
+        return
+    reset_instrument_calibration(instrument)
+    bounds = getattr(app, "_calibration_guide_bounds", None)
+    if isinstance(bounds, dict):
+        for key in tuple(bounds):
+            if isinstance(key, tuple) and key and key[0] == instrument:
+                bounds.pop(key, None)
+    calibration._sync_from_profile(app)
+    if hasattr(app, "_calibration_guide_var"):
+        try:
+            import playback_calibration_guidance as guidance
+            guidance._refresh_guide(app)
+        except Exception:
+            pass
+    app.status_var.set(f"{instrument.title()} calibration reset. Auto is using safe defaults again.")
+    app._schedule_analysis()
+
+
 def install_calibration_provenance(app_module: Any) -> None:
     global _original_auto_tune, _original_to_adaptive_plan
     global _original_record_feedback, _original_save_polyphony, _original_profile_summary
@@ -231,4 +257,21 @@ def install_calibration_provenance(app_module: Any) -> None:
     calibration._record_feedback = _record_feedback_with_provenance
     calibration._save_polyphony = _save_polyphony_with_provenance
     calibration._profile_summary = _profile_summary_with_provenance
+
+    app_class = app_module.App
+    original_build_ui = app_class._build_ui
+
+    def build_ui(self: Any) -> None:
+        original_build_ui(self)
+        panel = getattr(self, "_calibration_panel", None)
+        if panel is None or hasattr(self, "_calibration_reset_button"):
+            return
+        self._calibration_reset_button = app_module.ttk.Button(
+            panel,
+            text="Reset this instrument",
+            command=lambda: _reset_from_ui(self, app_module),
+        )
+        self._calibration_reset_button.grid(row=1, column=7, padx=(8, 0), pady=(8, 0))
+
+    app_class._build_ui = build_ui
     app_module._calibration_provenance_installed = True
