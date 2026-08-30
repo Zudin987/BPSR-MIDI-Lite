@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v3.1.2. Leave blank to build only."
+        description: "Optional version to publish, for example v3.3.0. Leave blank to build only."
         required: false
         type: string
 
@@ -111,7 +111,7 @@ jobs:
           name: BPSR-MIDI-Lite-Windows
           path: release
 
-      - name: Publish requested GitHub Release
+      - name: Publish and verify requested GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -146,3 +146,26 @@ jobs:
               --title "BPSR MIDI Lite $tag" `
               --generate-notes
           }
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release publish failed" }
+
+          $verifyDir = Join-Path $env:RUNNER_TEMP "bpsr-lite-release-verify"
+          if (Test-Path $verifyDir) { Remove-Item $verifyDir -Recurse -Force }
+          New-Item -ItemType Directory -Force $verifyDir | Out-Null
+          gh release download $tag `
+            --dir $verifyDir `
+            --pattern "BPSR-MIDI-Lite.exe" `
+            --pattern "BPSR-MIDI-Lite-Windows-x64.zip" `
+            --pattern "SHA256SUMS.txt"
+          if ($LASTEXITCODE -ne 0) { throw "Could not download published Lite assets for verification" }
+
+          foreach ($name in @("BPSR-MIDI-Lite.exe", "BPSR-MIDI-Lite-Windows-x64.zip", "SHA256SUMS.txt")) {
+            $local = Join-Path "release" $name
+            $remote = Join-Path $verifyDir $name
+            if (-not (Test-Path $remote)) { throw "Published release is missing $name" }
+            $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
+            $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
+            if ($localHash -ne $remoteHash) {
+              throw "Published asset hash mismatch for $name"
+            }
+          }
+          Write-Host "Published Lite release assets match the validated workflow outputs byte-for-byte."
