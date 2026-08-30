@@ -62,7 +62,9 @@ def _prepare_custom_panel(app: Any, app_module: Any) -> None:
 
     # The product intentionally stays on the safe middle/no-page layout. Keep
     # the legacy page-delay widgets available to controller code, but hide them
-    # from the Custom UI because no user-facing mode can use them.
+    # from the Custom UI because no user-facing mode can use them. Song speed
+    # already has a permanent control in the gaming toolbar, so do not duplicate
+    # it here; move Note length into that freed space instead.
     for child in panel.winfo_children():
         try:
             info = child.grid_info()
@@ -75,6 +77,13 @@ def _prepare_custom_panel(app: Any, app_module: Any) -> None:
                 child.configure(text="Playback safety")
             if row == 1 and column >= 2:
                 child.grid_remove()
+            if row == 4 and column <= 1:
+                child.grid_remove()
+            elif row == 4 and column == 2:
+                child.grid_configure(column=0, padx=(0, 8))
+            elif row == 4 and column == 3:
+                child.grid_configure(column=1)
+
             if variable == str(app.minimum_note_var):
                 try:
                     child.configure(from_=0)
@@ -152,7 +161,9 @@ def _sync_custom_controls(app: Any) -> None:
             f" Auto {instrument.title()} timing: minimum {timing.musical_min_ms} ms, "
             f"retrigger gap {timing.retrigger_gap_ms} ms. Set Minimum note or Retrigger gap to 0 to use Auto."
         )
-    app._advanced_hint_var.set(f"{articulation_help} {sustain_help}{auto_help}")
+    app._advanced_hint_var.set(
+        f"Song speed stays in the bottom toolbar. {articulation_help} {sustain_help}{auto_help}"
+    )
 
 
 def _custom_profile_summary(app: Any) -> tuple[str, str]:
