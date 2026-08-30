@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import midi_engine as me
+import playback_adaptive_pressure as pressure
 from playback_adaptive import AdaptivePlanOptions, CalibrationProfile, SourceAnalysis
 from playback_adaptive_pressure import (
     _attack_pressure_metrics,
@@ -9,6 +10,7 @@ from playback_adaptive_pressure import (
     _refined_apply_note_lengths,
     _refined_auto_tune,
 )
+from suitability import SuitabilityResult
 
 
 def _planned(start: float, pitch: int, key: str, serial: int) -> me.PlannedNote:
@@ -173,3 +175,54 @@ def test_chord_cluster_does_not_gain_phrase_tail_only_on_last_serial() -> None:
     )
     durations = [note.end - note.start for note in tuned]
     assert max(durations) - min(durations) < 1e-9
+
+
+class _AdaptivePlan:
+    adaptive_enabled = True
+
+
+def test_adaptive_suitability_removes_legacy_raw_note_density_double_penalty(monkeypatch) -> None:
+    # Imagine slow four-note block chords: raw notes/sec can look high even when
+    # the actual rhythmic attack rate is modest. Chord size already carries its
+    # own suitability point, so adaptive scoring must not count raw density too.
+    legacy = SuitabilityResult(
+        code="busy",
+        label="Busy",
+        summary="legacy",
+        score=4,
+        notes_per_second=12.0,
+        changed_ratio=0.0,
+        reasons=(
+            "very fast note density (12.0 notes/sec)",
+            "some 4-note chords",
+        ),
+    )
+    monkeypatch.setattr(pressure, "_original_evaluate", lambda _plan: legacy)
+
+    refined = pressure._refined_evaluate_song_suitability(_AdaptivePlan())
+
+    assert refined.score == 1
+    assert refined.code == "good"
+    assert "some 4-note chords" in refined.reasons
+    assert all("note density" not in reason for reason in refined.reasons)
+
+
+def test_adaptive_suitability_labels_local_pressure_as_attacks_with_spacing(monkeypatch) -> None:
+    legacy = SuitabilityResult(
+        code="busy",
+        label="Busy",
+        summary="legacy",
+        score=2,
+        notes_per_second=2.0,
+        changed_ratio=0.0,
+        reasons=(
+            "short burst reaches 16.0 notes/sec",
+            "95th-percentile local density is 10.0 notes/sec",
+        ),
+    )
+    monkeypatch.setattr(pressure, "_original_evaluate", lambda _plan: legacy)
+
+    refined = pressure._refined_evaluate_song_suitability(_AdaptivePlan())
+
+    assert "short burst reaches 16.0 attacks/sec" in refined.reasons
+    assert "95th-percentile local attack density is 10.0 attacks/sec" in refined.reasons
