@@ -91,6 +91,23 @@ def test_calibrated_auto_can_apply_measured_polyphony_stagger_and_modifier_settl
     assert tuned.octave_switch_lead_ms == 67
 
 
+def test_manual_custom_gate_uses_v32_duration_without_adaptive_register_shaping() -> None:
+    note = _planned(0.0, 76, "q", 0)
+    tuned = _refined_apply_note_lengths(
+        [note],
+        AdaptivePlanOptions(
+            instrument="keyboard",
+            adaptive_auto=False,
+            articulation_mode="raw",
+            minimum_note_ms=90,
+            hard_press_floor_ms=40,
+            repeated_release_gap_ms=24,
+            short_note_tail_ms=20,
+        ),
+    )
+    assert abs((tuned[0].end - tuned[0].start) - 0.10) < 1e-9
+
+
 def test_large_slow_chord_does_not_shorten_gate_as_if_it_were_rapid_notes() -> None:
     notes = [
         _planned(0.000, 60, "a", 0),
