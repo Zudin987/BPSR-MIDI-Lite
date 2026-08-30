@@ -41,7 +41,7 @@ def test_effective_profile_uses_only_verified_timing_fields() -> None:
     assert profile.max_polyphony == defaults.max_polyphony
 
 
-def test_legacy_polyphony_verified_flag_is_ignored(tmp_path: Path, monkeypatch) -> None:
+def test_legacy_v33_provenance_is_entirely_untrusted(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "provenance.json"
     path.write_text(
         json.dumps(
@@ -61,13 +61,67 @@ def test_legacy_polyphony_verified_flag_is_ignored(tmp_path: Path, monkeypatch) 
 
     flags = provenance.load_measurement_flags("keyboard")
     assert flags == {
-        "hold": True,
-        "repeat": True,
-        "chord": True,
-        "modifier": True,
+        "hold": False,
+        "repeat": False,
+        "chord": False,
+        "modifier": False,
     }
     assert "polyphony" not in provenance.MEASUREMENT_FIELDS
+    assert provenance.measurement_state_label("keyboard") == "safe defaults active"
+
+
+def test_schema_v2_provenance_flags_are_trusted(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "provenance.json"
+    path.write_text(
+        json.dumps(
+            {
+                "_schema_version": provenance.PROVENANCE_SCHEMA_VERSION,
+                "keyboard": {
+                    "hold": True,
+                    "repeat": True,
+                    "chord": True,
+                    "modifier": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(provenance, "provenance_path", lambda: path)
+    assert all(provenance.load_measurement_flags("keyboard").values())
     assert provenance.measurement_state_label("keyboard") == "timing fully verified"
+
+
+def test_first_new_measurement_migrates_and_invalidates_other_legacy_flags(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "provenance.json"
+    path.write_text(
+        json.dumps(
+            {
+                "keyboard": {"hold": True, "repeat": True},
+                "guitar": {"chord": True, "modifier": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(provenance, "provenance_path", lambda: path)
+
+    provenance.set_measurement("keyboard", "hold", True)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["_schema_version"] == provenance.PROVENANCE_SCHEMA_VERSION
+    assert payload["keyboard"] == {
+        "hold": True,
+        "repeat": False,
+        "chord": False,
+        "modifier": False,
+    }
+    assert payload["guitar"] == {
+        "hold": False,
+        "repeat": False,
+        "chord": False,
+        "modifier": False,
+    }
 
 
 def test_provenance_flags_can_be_revoked_after_failed_exploration(tmp_path: Path, monkeypatch) -> None:
@@ -120,6 +174,7 @@ def test_reset_removes_only_selected_instrument(tmp_path: Path, monkeypatch) -> 
     assert "keyboard" not in provenance_payload
     assert "guitar" in calibration_payload
     assert "guitar" in provenance_payload
+    assert provenance_payload["_schema_version"] == provenance.PROVENANCE_SCHEMA_VERSION
 
 
 def test_launchers_install_provenance_after_guidance() -> None:
