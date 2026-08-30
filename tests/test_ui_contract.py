@@ -69,15 +69,17 @@ def test_v3_layers_online_library_without_replacing_stable_modern_ui() -> None:
 
     assert "install_modern_ui(app)" in launcher
     assert "install_online_integration(app)" in launcher
-    assert 'app.APP_VERSION = "3.1.2"' in launcher
+    assert 'app.APP_VERSION = "3.2.0"' in launcher
     assert "install_gaming_ui_2026(app)" in launcher
     assert "install_online_search_bridge()" in launcher
+    assert "install_playback_overhaul(app)" in launcher
+    assert "install_advanced_playback_profile(app)" in launcher
     assert "_online_original_build_ui" in integration
     assert "online_ui.build_song_source_ui" in integration
     assert 'text="Online Sequencer"' in online
     assert 'text="Bookmarks"' in online
-    # The stable source layer still carries its legacy labels; v3.1 relabels
-    # those controls at runtime to Search / Verify once.
+    # The stable source layer still carries its legacy labels; the launcher
+    # relabels those controls at runtime to Search / Verify once.
     assert 'text="Load link / ID"' in online
     assert 'text="Find online MIDI ID"' in online
     assert 'text="Find in browser"' not in online
