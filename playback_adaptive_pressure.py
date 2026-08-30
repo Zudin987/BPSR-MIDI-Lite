@@ -54,25 +54,38 @@ def _refined_auto_tune(
 ) -> adaptive.AdaptivePlanOptions:
     if not options.adaptive_auto or options.mapping_method == "skip":
         return options
+
+    # Timing defaults are inherited from v3.2 and are intentionally conservative.
+    # A new polyphony cap is different: dropping chord tones is destructive, so
+    # only a real Calibration Lab result may introduce one beyond the profile's
+    # existing v3.2 chord policy.
+    measured_limit = (
+        options.adaptive_chord_limit
+        or (calibration.max_polyphony if calibration.calibrated else 0)
+    )
     tuned = replace(
         options,
         minimum_note_ms=calibration.minimum_clean_hold_ms,
         hard_press_floor_ms=calibration.hard_floor_ms,
         repeated_release_gap_ms=calibration.retrigger_gap_ms,
-        adaptive_chord_limit=options.adaptive_chord_limit or calibration.max_polyphony,
+        adaptive_chord_limit=measured_limit,
         chord_stagger_ms=(
             calibration.chord_stagger_ms
-            if options.chord_stagger_ms < 0
-            else options.chord_stagger_ms
+            if calibration.calibrated and options.chord_stagger_ms < 0
+            else (0 if options.chord_stagger_ms < 0 else options.chord_stagger_ms)
         ),
-        octave_switch_lead_ms=max(
-            options.octave_switch_lead_ms,
-            calibration.modifier_settle_ms,
+        octave_switch_lead_ms=(
+            max(options.octave_switch_lead_ms, calibration.modifier_settle_ms)
+            if calibration.calibrated
+            else options.octave_switch_lead_ms
         ),
     )
-    limit = tuned.adaptive_chord_limit or adaptive.ADAPTIVE_DEFAULTS[options.instrument].max_polyphony
-    if tuned.max_notes_per_chord <= 0 and analysis.max_chord > limit:
-        tuned.max_notes_per_chord = limit
+    if (
+        measured_limit > 0
+        and tuned.max_notes_per_chord <= 0
+        and analysis.max_chord > measured_limit
+    ):
+        tuned.max_notes_per_chord = measured_limit
 
     attack_rate = _attack_rate_context.get()
     if attack_rate >= 12.0 or analysis.fast_repeat_ratio >= 0.20:
@@ -80,6 +93,25 @@ def _refined_auto_tune(
     elif attack_rate >= 8.0 and tuned.articulation_mode == "musical":
         tuned.articulation_mode = "balanced"
     return tuned
+
+
+def _refined_limit_notes_per_chord(
+    notes: list[me.SourceNote],
+    maximum: int,
+    instrument: me.InstrumentCode = "keyboard",
+) -> tuple[list[me.SourceNote], int]:
+    options = adaptive._options_context.get()
+    if options is None:
+        return adaptive._adaptive_limit_notes_per_chord(notes, maximum, instrument)
+    if options.adaptive_auto and options.adaptive_chord_limit <= 0:
+        # Preserve root/role-aware scoring for an existing fixed-profile limit,
+        # but do not invent a new limit from unmeasured fallback polyphony.
+        token = adaptive._options_context.set(replace(options, adaptive_auto=False))
+        try:
+            return adaptive._adaptive_limit_notes_per_chord(notes, maximum, instrument)
+        finally:
+            adaptive._options_context.reset(token)
+    return adaptive._adaptive_limit_notes_per_chord(notes, maximum, instrument)
 
 
 def _refined_apply_note_lengths(
@@ -181,5 +213,6 @@ def install_adaptive_pressure_model(app_module: Any) -> None:
     adaptive._preanalyse = _refined_preanalyse
     adaptive._auto_tune_options = _refined_auto_tune
     adaptive._adaptive_apply_note_lengths = _refined_apply_note_lengths
+    me._limit_notes_per_chord = _refined_limit_notes_per_chord
     me._apply_note_lengths = _refined_apply_note_lengths
     app_module._adaptive_pressure_model_installed = True
