@@ -226,3 +226,35 @@ def test_adaptive_suitability_labels_local_pressure_as_attacks_with_spacing(monk
 
     assert "short burst reaches 16.0 attacks/sec" in refined.reasons
     assert "95th-percentile local attack density is 10.0 attacks/sec" in refined.reasons
+
+
+def test_raw_density_removal_does_not_hide_extreme_retrigger_pressure(monkeypatch) -> None:
+    class ForcedPlan:
+        adaptive_enabled = True
+        source_note_count = 100
+        retrigger_compressed_notes = 25
+        retrigger_merged_notes = 0
+        retrigger_dropped_notes = 0
+        max_source_chord = 1
+        max_planned_chord = 1
+        max_simultaneous_keys = 1
+
+    legacy = SuitabilityResult(
+        code="busy",
+        label="Busy",
+        summary="legacy",
+        score=6,
+        notes_per_second=12.0,
+        changed_ratio=0.0,
+        reasons=(
+            "very fast note density (12.0 notes/sec)",
+            "high rapid-note pressure (25% compressed/merged/dropped)",
+        ),
+    )
+    monkeypatch.setattr(pressure, "_original_evaluate", lambda _plan: legacy)
+
+    refined = pressure._refined_evaluate_song_suitability(ForcedPlan())
+
+    assert refined.score == 3
+    assert refined.code == "complex"
+    assert "high rapid-note pressure (25% compressed/merged/dropped)" in refined.reasons
