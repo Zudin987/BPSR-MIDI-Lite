@@ -45,7 +45,7 @@ def _safe_current_midi_hash(app: Any) -> str:
 
 
 def _band_compatibility_version(_app: Any) -> str:
-    """Shared Lite/Studio compatibility token for deterministic Band clients."""
+    """Shared Lite/Studio token for deterministic Band clients."""
     return (
         f"band-proto-{band_sync.BAND_PROTOCOL_VERSION}"
         f"-arr-{band_arranger.BAND_ARRANGEMENT_VERSION}"
@@ -60,14 +60,7 @@ def _deadline_preserving_player_run(
     on_finished: Any,
     input_backend: str = "scan",
 ) -> None:
-    """Convert the Band deadline back to delay inside the worker thread.
-
-    MidiPlayer normally computes ``perf_counter() + delay`` after its worker
-    thread has started. For an online ensemble that small thread-start gap is
-    avoidable jitter. Band Mode stores an absolute perf-counter deadline before
-    spawning the worker; this wrapper converts it to the exact remaining delay
-    immediately before the established player loop takes over.
-    """
+    """Convert the Band deadline back to delay inside the worker thread."""
     assert _original_player_run is not None
     deadline = getattr(self, "_band_start_deadline_perf", None)
     if deadline is not None:
@@ -94,28 +87,29 @@ def _hardened_schedule_synchronized_playback(app: Any, payload: dict[str, Any]) 
         _original_schedule_synchronized_playback(app, payload)
         return
 
-    # ntfy delivers published messages to the publisher too. The host already
-    # arms itself locally before its own streamed Start message comes back, and
-    # reconnects may redeliver a control message. Never start the player twice.
+    # ntfy delivers published messages to the publisher too, and Start is sent
+    # redundantly. Never arm the same client twice for one absolute deadline.
     if getattr(getattr(app, "player", None), "is_playing", False):
         return
     if int(getattr(app, "_band_last_start_utc_ms", 0)) == start_utc_ms:
         return
 
-    # Preserve all existing validation/status messages. Only install an
-    # absolute local deadline when the same preconditions are known to pass.
     try:
         compatible = band_ui._start_payload_is_compatible(app, payload)
-        part = band_ui._band_part(app)
         sample = getattr(app, "_band_clock_sample", None)
-        delay = band_sync.delay_until_utc_ms(start_utc_ms, sample) if sample is not None else 0.0
+        delay = (
+            band_sync.delay_until_utc_ms(start_utc_ms, sample)
+            if sample is not None
+            else 0.0
+        )
     except Exception:
         compatible = False
-        part = "drums"
         sample = None
         delay = 0.0
 
-    if compatible and part != "drums" and sample is not None and delay >= 0.75:
+    # Piano/Guitar/Bass/Drums all use the same absolute local deadline. Drum
+    # mapping is now verified C4-B5 and therefore no longer needs an exception.
+    if compatible and sample is not None and delay >= 0.75:
         app.player._band_start_deadline_perf = time.perf_counter() + delay
 
     _original_schedule_synchronized_playback(app, payload)
@@ -123,7 +117,6 @@ def _hardened_schedule_synchronized_playback(app: Any, payload: dict[str, Any]) 
     if getattr(getattr(app, "player", None), "is_playing", False):
         app._band_last_start_utc_ms = start_utc_ms
     else:
-        # Validation may have rejected the command before MidiPlayer.start.
         try:
             delattr(app.player, "_band_start_deadline_perf")
         except (AttributeError, TypeError):
@@ -143,6 +136,17 @@ def _sync_part_after_manual_instrument_change(app: Any) -> None:
         return
     if instrument not in {"keyboard", "guitar", "bass"}:
         return
+
+    active_parts = band_arranger._active_parts_from_app(app)
+    if instrument not in active_parts:
+        try:
+            app._band_room_status_var.set(
+                f"{instrument.title()} is not enabled in the current Band lineup"
+            )
+        except (AttributeError, tk.TclError):
+            pass
+        return
+
     expected = band_arranger.part_label(instrument)  # type: ignore[arg-type]
     try:
         if str(role_var.get()) == expected:
@@ -162,7 +166,7 @@ def _sync_part_after_manual_instrument_change(app: Any) -> None:
 
 
 def _prepare_local_band_practice(app: Any) -> bool:
-    """Return False when local Play must be blocked by Band safety rules."""
+    """Withdraw Ready before local practice; all verified Band parts may play."""
     enabled_var = getattr(app, "_band_enabled_var", None)
     if enabled_var is None:
         return True
@@ -172,16 +176,16 @@ def _prepare_local_band_practice(app: Any) -> bool:
     except tk.TclError:
         return True
 
-    if band_ui._band_part(app) == "drums":
-        status_var = getattr(app, "_band_room_status_var", None)
-        if status_var is not None:
-            status_var.set(
-                "Drum playback is disabled until the real BPSR drum key mapping is verified."
+    current_part = band_ui._band_part(app)
+    if current_part not in band_arranger._active_parts_from_app(app):
+        try:
+            app._band_room_status_var.set(
+                "Practice blocked: your selected part is disabled in the Band lineup"
             )
+        except (AttributeError, tk.TclError):
+            pass
         return False
 
-    # Local practice while marked Ready would let the host believe this client
-    # is waiting for a synchronized launch. Automatically withdraw Ready first.
     if bool(getattr(app, "_band_ready", False)):
         app._band_ready = False
         try:
@@ -201,8 +205,15 @@ def _hardened_toggle_ready(app: Any) -> None:
         return
     if not getattr(app, "_band_connected", False):
         return
-    if band_ui._band_part(app) == "drums":
-        _original_toggle_ready(app)
+
+    current_part = band_ui._band_part(app)
+    if current_part not in band_arranger._active_parts_from_app(app):
+        try:
+            app._band_room_status_var.set(
+                "Cannot Ready: your selected part is disabled in the current lineup"
+            )
+        except tk.TclError:
+            pass
         return
 
     try:
@@ -211,7 +222,6 @@ def _hardened_toggle_ready(app: Any) -> None:
         pass
     plan = getattr(app, "current_plan", None)
     info = band_arranger.plan_info(plan)
-    current_part = band_ui._band_part(app)
     if (
         plan is None
         or info is None
@@ -227,16 +237,29 @@ def _hardened_toggle_ready(app: Any) -> None:
         }.get(current_part, current_part)
         try:
             app._band_room_status_var.set(
-                f"Cannot Ready: this MIDI has no usable {label} part in the current Band split"
+                f"Cannot Ready: this MIDI has no usable {label} part in the current Band lineup"
             )
         except tk.TclError:
             pass
         return
+
+    if current_part == "drums" and (
+        int(getattr(plan, "octave_switches", 0))
+        or any(event.kind == "state" for event in getattr(plan, "events", ()))
+    ):
+        try:
+            app._band_room_status_var.set(
+                "Cannot Ready: Drum plan unexpectedly requested High/Low Octave"
+            )
+        except tk.TclError:
+            pass
+        return
+
     _original_toggle_ready(app)
 
 
 def install_band_runtime_hardening(app_module: Any) -> None:
-    """Install timing/dedup guards after Band Mode has installed its UI hooks."""
+    """Install timing/dedup/Ready guards after Band UI and lineup hooks."""
     global _original_player_run, _original_schedule_synchronized_playback, _original_toggle_ready
     if getattr(app_module, "_band_runtime_hardening_installed", False):
         return
@@ -256,7 +279,31 @@ def install_band_runtime_hardening(app_module: Any) -> None:
     original_start = app_class._start
 
     def instrument_changed(self: Any) -> None:
+        previous_part = (
+            band_ui._band_part(self)
+            if hasattr(self, "_band_role_var")
+            else "keyboard"
+        )
         original_instrument_changed(self)
+        enabled_var = getattr(self, "_band_enabled_var", None)
+        try:
+            enabled = bool(enabled_var.get()) if enabled_var is not None else False
+        except tk.TclError:
+            enabled = False
+        if enabled:
+            instrument = str(self._instrument_code())
+            active_parts = band_arranger._active_parts_from_app(self)
+            if instrument not in active_parts and previous_part in {"keyboard", "guitar", "bass"}:
+                restore_label = {
+                    "keyboard": "Keyboard",
+                    "guitar": "Guitar",
+                    "bass": "Bass",
+                }[previous_part]
+                try:
+                    self.instrument_var.set(restore_label)
+                    original_instrument_changed(self)
+                except (tk.TclError, AttributeError):
+                    pass
         _sync_part_after_manual_instrument_change(self)
 
     def start(self: Any) -> None:
