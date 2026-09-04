@@ -22,6 +22,7 @@ from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
+from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
 # Studio remains a separate experimental build target and inherits the v3.3
@@ -49,6 +50,7 @@ install_calibration_lab(app)
 install_guided_calibration(app)
 install_calibration_provenance(app)
 install_studio_audio_latency(app)
+install_product_ui_overhaul(app)
 
 
 if __name__ == "__main__":
