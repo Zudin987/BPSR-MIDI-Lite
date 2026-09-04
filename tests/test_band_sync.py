@@ -11,10 +11,11 @@ def _state(
     *,
     ready: bool = True,
     midi_hash: str = "abc",
-    version: str = "3.4.0",
+    version: str = "band-proto-2-arr-2",
     speed: int = 100,
     synced: bool = True,
     host: bool = False,
+    active_parts: tuple[str, ...] = ("keyboard", "guitar"),
 ) -> dict[str, object]:
     return {
         "proto": band_sync.BAND_PROTOCOL_VERSION,
@@ -22,6 +23,7 @@ def _state(
         "player_id": player_id,
         "name": player_id,
         "role": role,
+        "active_parts": list(active_parts),
         "ready": ready,
         "midi_sha256": midi_hash,
         "app_version": version,
@@ -32,7 +34,8 @@ def _state(
     }
 
 
-def test_room_codes_are_human_shareable_and_topic_is_deterministic() -> None:
+def test_protocol_v2_and_room_codes_are_human_shareable() -> None:
+    assert band_sync.BAND_PROTOCOL_VERSION == 2
     code = band_sync.generate_room_code()
     assert len(code) == band_sync.ROOM_CODE_LENGTH
     assert band_sync.normalize_room_code(code.lower()) == code
@@ -47,21 +50,54 @@ def test_midi_hash_is_content_based(tmp_path: Path) -> None:
     assert band_sync.midi_sha256(first) == band_sync.midi_sha256(second)
 
 
-def test_roster_accepts_matching_ready_players() -> None:
+def test_roster_accepts_matching_ready_two_player_lineup() -> None:
     roster = band_sync.BandRoster()
     roster.apply(_state("host", "keyboard", host=True), now=10.0)
     roster.apply(_state("guitar", "guitar"), now=10.0)
     assert roster.compatibility_issues(
         expected_hash="abc",
-        expected_version="3.4.0",
+        expected_version="band-proto-2-arr-2",
         expected_speed=100,
+        expected_active_parts=("keyboard", "guitar"),
         now=10.0,
     ) == []
 
 
-def test_roster_blocks_mismatch_unready_duplicate_and_unsynced() -> None:
+def test_three_players_can_untick_drums_and_start_without_a_drummer() -> None:
+    parts = ("keyboard", "guitar", "bass")
     roster = band_sync.BandRoster()
-    roster.apply(_state("host", "keyboard", host=True), now=10.0)
+    roster.apply(_state("host", "keyboard", host=True, active_parts=parts), now=10.0)
+    roster.apply(_state("guitar", "guitar", active_parts=parts), now=10.0)
+    roster.apply(_state("bass", "bass", active_parts=parts), now=10.0)
+    assert roster.compatibility_issues(
+        expected_hash="abc",
+        expected_version="band-proto-2-arr-2",
+        expected_speed=100,
+        expected_active_parts=parts,
+        now=10.0,
+    ) == []
+
+
+def test_four_player_lineup_allows_verified_drums() -> None:
+    parts = ("keyboard", "guitar", "bass", "drums")
+    roster = band_sync.BandRoster()
+    roster.apply(_state("host", "keyboard", host=True, active_parts=parts), now=10.0)
+    roster.apply(_state("guitar", "guitar", active_parts=parts), now=10.0)
+    roster.apply(_state("bass", "bass", active_parts=parts), now=10.0)
+    roster.apply(_state("drummer", "drums", active_parts=parts), now=10.0)
+    assert roster.compatibility_issues(
+        expected_hash="abc",
+        expected_version="band-proto-2-arr-2",
+        expected_speed=100,
+        expected_active_parts=parts,
+        now=10.0,
+    ) == []
+
+
+def test_roster_blocks_mismatch_unready_duplicate_unsynced_and_lineup_mismatch() -> None:
+    parts = ("keyboard", "guitar")
+    roster = band_sync.BandRoster()
+    roster.apply(_state("host", "keyboard", host=True, active_parts=parts), now=10.0)
     roster.apply(
         _state(
             "other",
@@ -71,35 +107,71 @@ def test_roster_blocks_mismatch_unready_duplicate_and_unsynced() -> None:
             version="old",
             speed=90,
             synced=False,
+            active_parts=("keyboard", "bass"),
         ),
         now=10.0,
     )
     issues = roster.compatibility_issues(
         expected_hash="abc",
-        expected_version="3.4.0",
+        expected_version="band-proto-2-arr-2",
         expected_speed=100,
+        expected_active_parts=parts,
         now=10.0,
     )
+    assert "Band lineup does not match between players" in issues
     assert "Everyone must be Ready" in issues
     assert "Every player needs a synchronized clock" in issues
     assert "MIDI files do not all match" in issues
     assert "Everyone must use the same BPSR MIDI version" in issues
     assert "Song speed does not match between players" in issues
     assert "Two players selected the same band part" in issues
+    assert "Missing player for Guitar" in issues
 
 
-def test_roster_blocks_drums_until_mapping_is_verified() -> None:
+def test_roster_requires_one_player_for_each_ticked_part() -> None:
+    parts = ("keyboard", "guitar", "bass", "drums")
     roster = band_sync.BandRoster()
-    roster.apply(_state("host", "keyboard", host=True), now=10.0)
-    roster.apply(_state("drummer", "drums"), now=10.0)
+    roster.apply(_state("host", "keyboard", host=True, active_parts=parts), now=10.0)
+    roster.apply(_state("guitar", "guitar", active_parts=parts), now=10.0)
+    roster.apply(_state("bass", "bass", active_parts=parts), now=10.0)
     issues = roster.compatibility_issues(
         expected_hash="abc",
-        expected_version="3.4.0",
+        expected_version="band-proto-2-arr-2",
         expected_speed=100,
-        drums_supported=False,
+        expected_active_parts=parts,
         now=10.0,
     )
-    assert "BPSR drum mapping is not configured yet" in issues
+    assert "Need 4 player(s) for the selected lineup" in issues
+    assert "Missing player for Drums" in issues
+
+
+def test_state_and_start_payload_carry_canonical_lineup() -> None:
+    sample = band_sync.ClockSample(server="test", offset_ms=0.0, rtt_ms=10.0)
+    state = band_sync.make_state_payload(
+        room_code="ABCDEFGHJKLM",
+        player_id="p1",
+        name="P1",
+        role="bass",
+        ready=True,
+        midi_hash="abc",
+        app_version="band-proto-2-arr-2",
+        speed_percent=100,
+        clock_sample=sample,
+        host=True,
+        active_parts=("bass", "keyboard", "guitar"),
+    )
+    assert state["active_parts"] == ["keyboard", "guitar", "bass"]
+
+    start = band_sync.make_start_payload(
+        room_code="ABCDEFGHJKLM",
+        player_id="p1",
+        start_utc_ms=123456,
+        midi_hash="abc",
+        app_version="band-proto-2-arr-2",
+        speed_percent=100,
+        active_parts=("bass", "keyboard"),
+    )
+    assert start["active_parts"] == ["keyboard", "bass"]
 
 
 def test_stale_players_are_pruned_on_the_same_injected_clock() -> None:
