@@ -11,8 +11,7 @@ import playback_adaptive as adaptive
 
 
 # Arrangement v4 replaces the v3 post-split sharing rule with a deterministic
-# phrase-aware ownership model. Every client can still derive the exact same
-# result locally from the same MIDI; no model/API/network call is involved.
+# phrase-aware ownership model. Every client derives the same result locally.
 BAND_SHARED_ARRANGEMENT_VERSION = 4
 
 OwnerState = Literal["keyboard", "guitar", "shared", "bass", "drums"]
@@ -67,8 +66,8 @@ _HARMONY_NAME_WORDS = (
     "rhythm",
 )
 
-# Broad no-page safe ranges used only as a musical-arrangement preference.
-# Final playback still uses each player's actual BPSR profile and mapping logic.
+# Broad no-page safe ranges used only as an arrangement preference. Final
+# playback still applies the player's real BPSR unlock/mapping profile.
 _KEYBOARD_SAFE_RANGE = (36, 95)  # C2-B6
 _GUITAR_SAFE_RANGE = (40, 86)  # E2-D6
 _PHRASE_REST_SECONDS = 0.60
@@ -87,6 +86,7 @@ class PhraseFeatures:
     short_ratio: float
     unique_ratio: float
     gm_drum_ratio: float
+    common_drum_ratio: float
     median_duration: float
     keyboard_fit: float
     guitar_fit: float
@@ -111,7 +111,7 @@ def _name_has(name: str, words: tuple[str, ...]) -> bool:
 
 
 def enhanced_role_from_source(track_name: str, channel: int, program: int) -> adaptive.Role:
-    """Recognize authored percussion even when a MIDI exporter did not use channel 10."""
+    """Recognize authored percussion even when an exporter did not use channel 10."""
     if int(channel) == 9 or _name_has(track_name, _DRUM_NAME_WORDS):
         return "drums"
     assert _original_role_from_source is not None
@@ -136,12 +136,7 @@ def _attack_groups(notes: Iterable[me.SourceNote]) -> list[list[me.SourceNote]]:
 
 
 def _segment_stream(notes: list[me.SourceNote]) -> list[list[me.SourceNote]]:
-    """Split a stream at musical rests and conservative time windows.
-
-    The time-window boundary prevents a long single MIDI track from being locked
-    to one role for the entire song, while the rest boundary preserves obvious
-    authored phrases. Simultaneous chord notes never get split from each other.
-    """
+    """Split a stream at rests and conservative phrase-length boundaries."""
     ordered = sorted(notes, key=lambda note: (note.start, note.serial))
     if not ordered:
         return []
@@ -208,6 +203,9 @@ def _features(notes: list[me.SourceNote]) -> PhraseFeatures:
     unique = len(set(pitches))
     unique_ratio = unique / len(pitches)
     gm_drum_ratio = sum(35 <= pitch <= 81 for pitch in pitches) / len(pitches)
+    # Most useful GM kit hits (kick/snare/toms/hats/cymbals) cluster in 35-59.
+    # This narrower signal sharply reduces false positives on fast piano lines.
+    common_drum_ratio = sum(35 <= pitch <= 59 for pitch in pitches) / len(pitches)
     melodicness = _clamp(
         (1.0 - chord_ratio)
         * min(1.0, unique_ratio * 1.8)
@@ -221,6 +219,7 @@ def _features(notes: list[me.SourceNote]) -> PhraseFeatures:
         short_ratio=short_ratio,
         unique_ratio=unique_ratio,
         gm_drum_ratio=gm_drum_ratio,
+        common_drum_ratio=common_drum_ratio,
         median_duration=float(median(durations)),
         keyboard_fit=_fit_score(pitches, *_KEYBOARD_SAFE_RANGE),
         guitar_fit=_fit_score(pitches, *_GUITAR_SAFE_RANGE),
@@ -270,7 +269,10 @@ def _role_ratios(
         if note.serial in metadata
     )
     total = max(1, sum(counts.values()))
-    return {name: counts.get(name, 0) / total for name in ("melody", "harmony", "bass", "drums", "unknown")}
+    return {
+        name: counts.get(name, 0) / total
+        for name in ("melody", "harmony", "bass", "drums", "unknown")
+    }
 
 
 def _phrase_scores(
@@ -294,17 +296,23 @@ def _phrase_scores(
     bass += roles["bass"] * 0.90
     drums += roles["drums"] * 0.95
 
+    pitched_name = False
     if _name_has(names, _HARMONY_NAME_WORDS):
         keyboard += 0.13
         guitar += 0.17
+        pitched_name = True
     if _name_has(names, _GUITAR_NAME_WORDS):
         guitar += 0.55
+        pitched_name = True
     if _name_has(names, _KEYBOARD_ONLY_NAME_WORDS):
         keyboard += 0.55
+        pitched_name = True
     if _name_has(names, _BASS_NAME_WORDS):
         bass += 0.68
+        pitched_name = True
     if _name_has(names, _DRUM_NAME_WORDS):
         drums += 0.78
+        pitched_name = False
 
     if programs:
         guitar_program_ratio = sum(24 <= program <= 31 for program in programs) / len(programs)
@@ -314,8 +322,6 @@ def _phrase_scores(
         bass += bass_program_ratio * 0.72
         keyboard += lead_program_ratio * 0.52
 
-    # Texture and register describe what the phrase is actually doing, not just
-    # what the exporter happened to call its track.
     keyboard += features.chord_ratio * 0.13
     guitar += features.chord_ratio * 0.17
     keyboard += features.melodicness * 0.17
@@ -325,27 +331,31 @@ def _phrase_scores(
         bass += 0.16
         guitar += 0.05
 
-    # Make actual BPSR playability part of the arrangement decision. This is a
-    # preference only; final mapping still owns the hard physical constraints.
+    # BPSR playability is part of the preference score, but hard physical
+    # constraints remain in the normal playback mapper.
     keyboard += features.keyboard_fit * 0.12
     guitar += features.guitar_fit * 0.12
 
-    # Rescue badly-exported percussion that has neither channel 10 nor a useful
-    # track name. Requiring several rhythmic signals keeps this conservative.
+    # Rescue badly-exported percussion only with several independent signals.
+    # A clearly named pitched track is never converted by this heuristic.
     repeated_pitch_signal = _clamp((0.55 - features.unique_ratio) / 0.45)
     rhythmic_signal = (
-        features.short_ratio >= 0.78
+        not pitched_name
+        and features.short_ratio >= 0.78
         and features.density >= 4.5
-        and features.gm_drum_ratio >= 0.80
+        and features.gm_drum_ratio >= 0.85
+        and features.common_drum_ratio >= 0.65
         and repeated_pitch_signal >= 0.25
     )
     if rhythmic_signal:
         drums += (
-            0.28
+            0.30
             + features.short_ratio * 0.18
             + repeated_pitch_signal * 0.22
             + min(0.12, features.chord_ratio * 0.16)
         )
+    if pitched_name:
+        drums -= 0.18
     if features.median_duration >= 0.45:
         drums -= 0.22
     if features.melodicness >= 0.68:
@@ -401,18 +411,12 @@ def _transition(previous: OwnerState, current: OwnerState) -> float:
 
 
 def _allowed_states(active_parts: tuple[band_arranger.BandPart, ...]) -> tuple[OwnerState, ...]:
-    states: list[OwnerState] = []
-    if "keyboard" in active_parts:
-        states.append("keyboard")
-    if "guitar" in active_parts:
-        states.append("guitar")
+    # Classification remains independent of who is present. A missing authored
+    # role is redirected only after classification, preserving musical intent.
+    states: list[OwnerState] = ["keyboard", "guitar"]
     if "keyboard" in active_parts and "guitar" in active_parts:
         states.append("shared")
-    # Bass remains a valid classification even when its player is absent; the
-    # normal Band fallback policy will redirect it to a pitched player.
-    states.append("bass")
-    # Likewise Drums can be recognized when absent, in which case it is omitted.
-    states.append("drums")
+    states.extend(("bass", "drums"))
     return tuple(states)
 
 
@@ -468,12 +472,7 @@ def _assign_shared_phrase(
     notes: Iterable[me.SourceNote],
     owners: dict[int, set[band_arranger.BandPart]],
 ) -> None:
-    """Share musical support without asking Guitar to reproduce huge piano chords.
-
-    Piano keeps the full chord. Guitar reinforces all notes for 1-3 note attacks;
-    for denser attacks it takes the three upper voices. This gives intentional
-    overlap while respecting the established three-note Guitar comfort profile.
-    """
+    """Share support while keeping dense piano chords reasonable on Guitar."""
     for group in _attack_groups(notes):
         guitar_notes = group if len(group) <= 3 else sorted(
             group,
@@ -520,9 +519,8 @@ def split_band_notes_shared(
 ) -> dict[band_arranger.BandPart, list[me.SourceNote]]:
     """Phrase-aware Band ownership with confidence, continuity and safe sharing.
 
-    The v2 deterministic split remains the safety baseline. v4 only revisits
-    material that baseline assigned to Piano/Guitar, plus high-confidence
-    Bass/Drum rescue, so clearly-authored source roles remain stable.
+    The v2 deterministic split remains the safety baseline. v4 revisits material
+    routed to Piano/Guitar and can rescue high-confidence Bass/Drum material.
     """
     assert _original_split is not None
     active = band_arranger.normalize_active_parts(active_parts)
@@ -531,27 +529,20 @@ def split_band_notes_shared(
         return baseline
 
     owners = _base_owner_map(baseline)
-
-    # If there is only one chordal player, the baseline already performs the
-    # desired missing-role reassignment and there is nothing useful to share.
-    both_chordal = "keyboard" in active and "guitar" in active
-
     candidates_by_stream: dict[tuple[int, int, int], list[me.SourceNote]] = defaultdict(list)
+
     for note in notes:
         current = owners.get(note.serial, set())
         meta = metadata.get(note.serial)
         lock = _meta_lock(meta)
-        # Keep baseline Bass/Drums untouched unless metadata/heuristics say a
-        # note currently living in Piano/Guitar deserves reclassification.
         if current & {"keyboard", "guitar"} or (not current and lock in {"bass", "drums"}):
             candidates_by_stream[_stream_key(meta)].append(note)
 
-    if both_chordal or candidates_by_stream:
-        for stream_notes in candidates_by_stream.values():
-            phrases = _segment_stream(stream_notes)
-            decisions = [_decision(phrase, metadata) for phrase in phrases]
-            states = _viterbi_states(decisions, active)
-            _apply_decisions(decisions, states, owners, active)
+    for stream_notes in candidates_by_stream.values():
+        phrases = _segment_stream(stream_notes)
+        decisions = [_decision(phrase, metadata) for phrase in phrases]
+        states = _viterbi_states(decisions, active)
+        _apply_decisions(decisions, states, owners, active)
 
     result: dict[band_arranger.BandPart, list[me.SourceNote]] = {
         part: [] for part in band_arranger.PART_ORDER
