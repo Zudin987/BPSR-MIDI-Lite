@@ -10,11 +10,13 @@ on:
       - "local_search_integration.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
       - "tests/test_playback*.py"
+      - "tests/test_band*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -33,11 +35,13 @@ on:
       - "local_search_integration.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
       - "tests/test_playback*.py"
+      - "tests/test_band*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -231,7 +235,7 @@ jobs:
             $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
             $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
             if ($localHash -ne $remoteHash) {
-              throw "Published asset hash mismatch for $name"
+              throw "Published Studio asset hash mismatch for $name"
             }
           }
           Write-Host "Published Studio release assets match the validated workflow outputs byte-for-byte."
