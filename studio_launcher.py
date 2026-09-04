@@ -26,9 +26,9 @@ from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
-# Studio remains a separate experimental build target and inherits the v3.3
-# adaptive arranger/calibration layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.4.1-experimental-beta"
+# Studio remains a separate experimental build target and inherits Lite v3.4's
+# evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
+app.APP_VERSION = "Studio 0.4.2-experimental-beta"
 
 install_core_transcription()
 install_online_search_bridge()
