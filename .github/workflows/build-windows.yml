@@ -10,6 +10,7 @@ on:
       - "modern_ui.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "online_*.py"
       - "playback_*.py"
       - "midi_engine.py"
