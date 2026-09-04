@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from band_cloudflare import install_cloudflare_band_transport
 from band_lineup import install_band_lineup
 from band_network_hardening import install_band_network_hardening
 from band_runtime_hardening import install_band_runtime_hardening
@@ -56,6 +57,7 @@ install_band_lineup(app)
 install_band_runtime_hardening(app)
 install_band_midi_sharing(app)
 install_band_network_hardening(app)
+install_cloudflare_band_transport(app)
 
 
 if __name__ == "__main__":
