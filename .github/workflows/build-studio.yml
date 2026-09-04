@@ -9,6 +9,7 @@ on:
       - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
+      - "ui_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
@@ -31,6 +32,7 @@ on:
       - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
+      - "ui_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
@@ -50,7 +52,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional existing Lite release tag, for example v3.3.0. Leave blank to build only."
+        description: "Optional existing Lite release tag, for example v3.4.0. Leave blank to build only."
         required: false
         type: string
 
@@ -229,7 +231,7 @@ jobs:
             $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
             $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
             if ($localHash -ne $remoteHash) {
-              throw "Published Studio asset hash mismatch for $name"
+              throw "Published asset hash mismatch for $name"
             }
           }
           Write-Host "Published Studio release assets match the validated workflow outputs byte-for-byte."
