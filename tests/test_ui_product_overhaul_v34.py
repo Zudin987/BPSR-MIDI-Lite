@@ -11,7 +11,7 @@ def test_product_summary_separates_intentional_bass_arrangement_from_physical_lo
         remapped_notes=14,
         arranged_out_notes=432,
         skipped_notes=0,
-        chord_removed_notes=432,
+        chord_removed_notes=0,
         retrigger_dropped_notes=0,
         max_simultaneous_keys=1,
         page_switches=0,
