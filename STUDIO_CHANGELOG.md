@@ -1,5 +1,12 @@
 # BPSR MIDI Studio changelog
 
+## 0.4.2-experimental-beta
+
+- Inherits Lite v3.4.0's evidence-driven arranger refinements and responsive product UI.
+- Uses the same permanent 400 px MIDI Library, protected main workspace, compact Song Check metrics, responsive text, and overlay Settings drawer as Lite.
+- Keeps the Studio YouTube/audio → MIDI pipeline, Basic Pitch/ONNX transcription, bundled FFmpeg, yt-dlp/Deno helpers, and WASAPI diagnostics otherwise unchanged.
+- Adds shared CI coverage for `ui_*.py` so UI-only changes validate both Lite and Studio Windows builds before release.
+
 ## 0.4.0-experimental-beta
 
 - Inherits Lite v3.3.0's adaptive BPSR arranger, role-aware remapping, phrase/density-aware note gates, safer collision handling, chord attack normalization, and verified per-instrument Calibration Lab.
