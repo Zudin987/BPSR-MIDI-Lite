@@ -20,6 +20,8 @@ ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_CODE_LENGTH = 12
 PLAYER_STALE_SECONDS = 25.0
 START_LEAD_SECONDS = 6.0
+START_PUBLISH_ATTEMPTS = 3
+START_PUBLISH_GAP_SECONDS = 0.18
 _NTP_UNIX_DELTA = 2_208_988_800
 
 
@@ -334,11 +336,17 @@ class NtfyBandTransport:
 
     def publish_async(self, payload: dict[str, Any]) -> None:
         def worker() -> None:
-            try:
-                self.publish(payload)
-            except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
-                if self.on_status is not None and not self.stop_event.is_set():
-                    self.on_status(f"Band network error: {exc}")
+            attempts = START_PUBLISH_ATTEMPTS if payload.get("event") == "start" else 1
+            for attempt in range(attempts):
+                if self.stop_event.is_set() and payload.get("event") != "leave":
+                    return
+                try:
+                    self.publish(payload)
+                except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+                    if self.on_status is not None and not self.stop_event.is_set():
+                        self.on_status(f"Band network error: {exc}")
+                if attempt + 1 < attempts:
+                    time.sleep(START_PUBLISH_GAP_SECONDS)
 
         threading.Thread(target=worker, daemon=True).start()
 
