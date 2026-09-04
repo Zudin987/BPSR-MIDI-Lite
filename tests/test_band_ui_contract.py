@@ -3,15 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_lite_and_studio_install_band_lineup_before_runtime_hardening() -> None:
+def test_lite_and_studio_install_band_layers_in_safe_order() -> None:
     for path in ("modern_launcher.py", "studio_launcher.py"):
         source = Path(path).read_text(encoding="utf-8")
         assert "install_band_mode(app)" in source
         assert "install_band_lineup(app)" in source
         assert "install_band_runtime_hardening(app)" in source
+        assert "install_band_midi_sharing(app)" in source
         assert source.index("install_band_mode(app)") < source.index("install_band_lineup(app)")
         assert source.index("install_band_lineup(app)") < source.index(
             "install_band_runtime_hardening(app)"
+        )
+        assert source.index("install_band_runtime_hardening(app)") < source.index(
+            "install_band_midi_sharing(app)"
         )
 
 
@@ -59,6 +63,20 @@ def test_band_room_verifies_song_version_speed_clock_and_lineup() -> None:
     assert "expected_active_parts=active_parts(app)" in lineup
     assert "active_parts=parts" in lineup
     assert "delay_until_utc_ms" in lineup
+
+
+def test_room_midi_sharing_is_lazy_verified_and_guest_can_join_without_file() -> None:
+    share = Path("band_share.py").read_text(encoding="utf-8")
+    assert "Room MIDI" in share
+    assert "Allow room members to download this MIDI" in share
+    assert "_share_needs_upload" in share
+    assert "waiting for the host MIDI" in share
+    assert "midi_sha256" in share
+    assert "SHA-256 verified" in share
+    assert "MThd" in share
+    assert "Band Cache" in share
+    assert "https://ntfy.sh" not in share  # relay URL stays centralized in band_sync
+    assert "requests" not in share
 
 
 def test_synchronized_playback_disables_pause_and_keeps_stop_path() -> None:
