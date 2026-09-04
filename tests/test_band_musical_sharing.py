@@ -47,7 +47,6 @@ def _meta(
 
 
 def _with_originals() -> None:
-    # Tests call the v4 layer directly without running the app installer.
     sharing._original_split = band_arranger.split_band_notes
     sharing._original_role_from_source = adaptive._role_from_source
 
@@ -170,6 +169,27 @@ def test_unlabelled_repetitive_short_hits_can_be_rescued_as_drums() -> None:
     assert not split["keyboard"]
     assert not split["guitar"]
     assert all(60 <= note.pitch <= 83 for note in split["drums"])
+
+
+def test_fast_named_piano_arpeggio_is_not_misclassified_as_drums() -> None:
+    _with_originals()
+    pitches = (60, 64, 67, 64, 60, 64, 67, 64, 60, 64, 67, 64)
+    notes = [
+        _note(index, pitch, start=(index - 1) * 0.09, duration=0.06)
+        for index, pitch in enumerate(pitches, start=1)
+    ]
+    metadata = {
+        note.serial: _meta(note.serial, note.pitch, role="unknown", name="Piano Arpeggio", track=6)
+        for note in notes
+    }
+
+    split = sharing.split_band_notes_shared(
+        notes,
+        metadata,
+        ("keyboard", "guitar", "drums"),
+    )
+    assert split["drums"] == []
+    assert split["keyboard"] or split["guitar"]
 
 
 def test_normal_non_drum_track_keeps_original_classifier() -> None:
