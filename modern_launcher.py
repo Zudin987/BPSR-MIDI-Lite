@@ -18,6 +18,7 @@ from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
+from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
 # v3.3 keeps the released v3.2 BPSR timing/safety layer and adds the adaptive
@@ -41,6 +42,7 @@ install_evidence_refinements(app)
 install_calibration_lab(app)
 install_guided_calibration(app)
 install_calibration_provenance(app)
+install_product_ui_overhaul(app)
 
 
 if __name__ == "__main__":
