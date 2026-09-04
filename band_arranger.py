@@ -218,16 +218,24 @@ def split_band_notes(
         result[part].append(note)
 
     # Chord-only MIDI can be explicitly tagged Harmony. Recover a top Piano
-    # voice by moving (not duplicating) the highest note of each attack.
+    # voice by moving (not duplicating) the highest note of polyphonic attacks.
+    # Never steal a monophonic, explicitly guitar-like line merely because the
+    # source contains no separate Piano track.
     if not result["keyboard"] and result["guitar"]:
-        guitar_serials = {note.serial for note in result["guitar"]}
-        move_to_keyboard: set[int] = set()
-        for group in _attack_groups(result["guitar"]):
-            top = max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
-            move_to_keyboard.add(top.serial)
-        result["keyboard"] = [note for note in result["guitar"] if note.serial in move_to_keyboard]
-        result["guitar"] = [note for note in result["guitar"] if note.serial not in move_to_keyboard]
-        guitar_serials.difference_update(move_to_keyboard)
+        guitar_groups = _attack_groups(result["guitar"])
+        if any(len(group) >= 2 for group in guitar_groups):
+            move_to_keyboard: set[int] = set()
+            for group in guitar_groups:
+                if len(group) < 2:
+                    continue
+                top = max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
+                move_to_keyboard.add(top.serial)
+            result["keyboard"] = [
+                note for note in result["guitar"] if note.serial in move_to_keyboard
+            ]
+            result["guitar"] = [
+                note for note in result["guitar"] if note.serial not in move_to_keyboard
+            ]
 
     # The reverse case occurs with one explicitly melodic polyphonic stream.
     # Keep its top voice on Piano and move lower simultaneous tones to Guitar.
@@ -253,9 +261,10 @@ def _band_extract_notes_and_pedal(path: Any, ignore_percussion: bool):
     if not context.enabled:
         return _previous_extract(path, ignore_percussion)
 
-    # Drum channel data must remain available to the splitter. Playback itself
-    # remains blocked for Drums until the real BPSR drum mapping is known.
-    data = list(_previous_extract(path, False if context.part == "drums" else ignore_percussion))
+    # Band splitting needs channel 10 even when the selected part is not Drums;
+    # otherwise per-part counts would depend on which client generated them.
+    # The selected non-drum part still contains no percussion after the split.
+    data = list(_previous_extract(path, False))
     notes = list(data[0])
     metadata = adaptive._metadata_context.get() or {}
     split = split_band_notes(notes, metadata)
@@ -287,6 +296,7 @@ def _band_extract_notes_and_pedal(path: Any, ignore_percussion: bool):
 
     data[0] = selected
     # Keep intentional band routing separate from physical filtering metrics.
+    data[2] = 0
     data[3] = len(selected_tracks)
     return tuple(data)
 
