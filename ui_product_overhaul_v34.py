@@ -13,6 +13,8 @@ def product_summary_text(plan: Any) -> str:
 
     played = max(0, int(getattr(plan, "note_count", 0)))
     remapped = max(0, int(getattr(plan, "remapped_notes", 0)))
+    transposition = int(getattr(plan, "transposed_semitones", 0))
+    folded = max(0, int(getattr(plan, "folded_notes", 0)))
     arranged = max(0, int(getattr(plan, "arranged_out_notes", 0)))
     skipped = max(0, int(getattr(plan, "skipped_notes", 0)))
     chord_removed = max(0, int(getattr(plan, "chord_removed_notes", 0)) - arranged)
@@ -21,16 +23,22 @@ def product_summary_text(plan: Any) -> str:
     peak_keys = max(0, int(getattr(plan, "max_simultaneous_keys", 0)))
     pages = max(0, int(getattr(plan, "page_switches", 0)))
     safety = "No page keys" if pages == 0 else f"{pages} page change(s)"
+    if transposition:
+        pitch_text = f"Transposed {transposition:+d} st"
+        if folded:
+            pitch_text += f" • {folded:,} locally fitted"
+    else:
+        pitch_text = f"{remapped:,} pitch-fitted"
 
     if getattr(plan, "arrangement_strategy", "") == "auto_bass_line":
         bass_line = max(0, int(getattr(plan, "bass_line_notes", 0)))
         return (
             f"Auto Bass Line • {bass_line:,} bass-role notes detected • {played:,} playable • "
-            f"{remapped:,} pitch-fitted • {physical_removed:,} physical removals • {safety}"
+            f"{pitch_text} • {physical_removed:,} physical removals • {safety}"
         )
 
     return (
-        f"{played:,} playable • {remapped:,} pitch-fitted • {physical_removed:,} simplified/removed • "
+        f"{played:,} playable • {pitch_text} • {physical_removed:,} simplified/removed • "
         f"Peak {peak_keys} key(s) • {safety}"
     )
 
