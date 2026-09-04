@@ -15,9 +15,8 @@ def product_summary_text(plan: Any) -> str:
     remapped = max(0, int(getattr(plan, "remapped_notes", 0)))
     transposition = int(getattr(plan, "transposed_semitones", 0))
     folded = max(0, int(getattr(plan, "folded_notes", 0)))
-    arranged = max(0, int(getattr(plan, "arranged_out_notes", 0)))
     skipped = max(0, int(getattr(plan, "skipped_notes", 0)))
-    chord_removed = max(0, int(getattr(plan, "chord_removed_notes", 0)) - arranged)
+    chord_removed = max(0, int(getattr(plan, "chord_removed_notes", 0)))
     retrigger_dropped = max(0, int(getattr(plan, "retrigger_dropped_notes", 0)))
     physical_removed = skipped + chord_removed + retrigger_dropped
     peak_keys = max(0, int(getattr(plan, "max_simultaneous_keys", 0)))
