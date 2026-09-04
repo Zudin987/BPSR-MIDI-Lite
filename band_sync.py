@@ -11,10 +11,10 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 
-BAND_PROTOCOL_VERSION = 1
+BAND_PROTOCOL_VERSION = 2
 DEFAULT_NTFY_BASE_URL = "https://ntfy.sh"
 ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 ROOM_CODE_LENGTH = 12
@@ -22,7 +22,29 @@ PLAYER_STALE_SECONDS = 25.0
 START_LEAD_SECONDS = 6.0
 START_PUBLISH_ATTEMPTS = 3
 START_PUBLISH_GAP_SECONDS = 0.18
+PART_ORDER: tuple[str, ...] = ("keyboard", "guitar", "bass", "drums")
+DEFAULT_ACTIVE_PARTS: tuple[str, ...] = PART_ORDER
 _NTP_UNIX_DELTA = 2_208_988_800
+
+
+def normalize_active_parts(parts: Iterable[str] | None) -> tuple[str, ...]:
+    if parts is None:
+        return DEFAULT_ACTIVE_PARTS
+    requested = {str(part) for part in parts}
+    normalized = tuple(part for part in PART_ORDER if part in requested)
+    if not normalized:
+        raise ValueError("Band lineup must contain at least one instrument")
+    return normalized
+
+
+def lineup_label(parts: Iterable[str]) -> str:
+    labels = {
+        "keyboard": "Piano",
+        "guitar": "Guitar",
+        "bass": "Bass",
+        "drums": "Drums",
+    }
+    return " + ".join(labels.get(part, part) for part in normalize_active_parts(parts))
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +63,7 @@ class PlayerState:
     player_id: str
     name: str
     role: str
+    active_parts: tuple[str, ...]
     ready: bool
     midi_sha256: str
     app_version: str
@@ -67,11 +90,16 @@ class BandRoster:
             return
         if event != "state":
             return
+        try:
+            active_parts = normalize_active_parts(payload.get("active_parts"))
+        except (TypeError, ValueError):
+            return
         timestamp = time.monotonic() if now is None else float(now)
         self.players[player_id] = PlayerState(
             player_id=player_id,
             name=str(payload.get("name", "Player"))[:32],
             role=str(payload.get("role", "keyboard")),
+            active_parts=active_parts,
             ready=bool(payload.get("ready", False)),
             midi_sha256=str(payload.get("midi_sha256", "")),
             app_version=str(payload.get("app_version", "")),
@@ -88,22 +116,42 @@ class BandRoster:
             if timestamp - state.last_seen > max_age:
                 self.players.pop(player_id, None)
 
+    def host_state(self) -> PlayerState | None:
+        hosts = [player for player in self.players.values() if player.host]
+        if not hosts:
+            return None
+        return min(hosts, key=lambda player: player.player_id)
+
     def compatibility_issues(
         self,
         *,
         expected_hash: str,
         expected_version: str,
         expected_speed: int,
-        drums_supported: bool = False,
+        expected_active_parts: Iterable[str] | None = None,
         minimum_players: int = 2,
         now: float | None = None,
     ) -> list[str]:
         self.prune(now=now)
         players = list(self.players.values())
         issues: list[str] = []
-        if len(players) < minimum_players:
-            issues.append(f"Need at least {minimum_players} players in the room")
-            return issues
+
+        if expected_active_parts is None:
+            host = self.host_state()
+            if host is not None:
+                active_parts = host.active_parts
+            else:
+                inferred = [part for part in PART_ORDER if any(p.role == part for p in players)]
+                active_parts = normalize_active_parts(inferred or DEFAULT_ACTIVE_PARTS)
+        else:
+            active_parts = normalize_active_parts(expected_active_parts)
+
+        required_players = max(int(minimum_players), len(active_parts))
+        if len(players) < required_players:
+            issues.append(f"Need {required_players} player(s) for the selected lineup")
+
+        if any(player.active_parts != active_parts for player in players):
+            issues.append("Band lineup does not match between players")
         if any(not player.ready for player in players):
             issues.append("Everyone must be Ready")
         if any(not player.clock_synced for player in players):
@@ -114,11 +162,24 @@ class BandRoster:
             issues.append("Everyone must use the same BPSR MIDI version")
         if any(player.speed_percent != expected_speed for player in players):
             issues.append("Song speed does not match between players")
+
         roles = [player.role for player in players]
         if len(set(roles)) != len(roles):
             issues.append("Two players selected the same band part")
-        if not drums_supported and "drums" in roles:
-            issues.append("BPSR drum mapping is not configured yet")
+        if any(role not in active_parts for role in roles):
+            issues.append("A player selected a band part that is disabled in the lineup")
+
+        labels = {
+            "keyboard": "Piano",
+            "guitar": "Guitar",
+            "bass": "Bass",
+            "drums": "Drums",
+        }
+        role_set = set(roles)
+        for part in active_parts:
+            if part not in role_set:
+                issues.append(f"Missing player for {labels.get(part, part)}")
+
         return issues
 
     def compact_text(self, *, now: float | None = None) -> str:
@@ -139,7 +200,9 @@ class BandRoster:
         for player in ordered[:4]:
             ready = "READY" if player.ready else "not ready"
             host = " • host" if player.host else ""
-            bits.append(f"{player.name} · {role_labels.get(player.role, player.role)} · {ready}{host}")
+            bits.append(
+                f"{player.name} · {role_labels.get(player.role, player.role)} · {ready}{host}"
+            )
         return "   |   ".join(bits)
 
 
@@ -186,6 +249,7 @@ def make_state_payload(
     speed_percent: int,
     clock_sample: ClockSample | None,
     host: bool,
+    active_parts: Iterable[str] = DEFAULT_ACTIVE_PARTS,
 ) -> dict[str, Any]:
     return {
         "proto": BAND_PROTOCOL_VERSION,
@@ -194,6 +258,7 @@ def make_state_payload(
         "player_id": player_id,
         "name": str(name).strip()[:32] or "Player",
         "role": role,
+        "active_parts": list(normalize_active_parts(active_parts)),
         "ready": bool(ready),
         "midi_sha256": midi_hash,
         "app_version": app_version,
@@ -221,6 +286,7 @@ def make_start_payload(
     midi_hash: str,
     app_version: str,
     speed_percent: int,
+    active_parts: Iterable[str] = DEFAULT_ACTIVE_PARTS,
 ) -> dict[str, Any]:
     return {
         "proto": BAND_PROTOCOL_VERSION,
@@ -231,6 +297,7 @@ def make_start_payload(
         "midi_sha256": midi_hash,
         "app_version": app_version,
         "speed_percent": int(speed_percent),
+        "active_parts": list(normalize_active_parts(active_parts)),
     }
 
 
@@ -328,7 +395,7 @@ class NtfyBandTransport:
                 "Content-Type": "text/plain; charset=utf-8",
                 "Cache": "no",
                 "Firebase": "no",
-                "User-Agent": "BPSR-MIDI-Lite-Band/1",
+                "User-Agent": f"BPSR-MIDI-Lite-Band/{BAND_PROTOCOL_VERSION}",
             },
         )
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -357,7 +424,7 @@ class NtfyBandTransport:
                 method="GET",
                 headers={
                     "Accept": "application/x-ndjson",
-                    "User-Agent": "BPSR-MIDI-Lite-Band/1",
+                    "User-Agent": f"BPSR-MIDI-Lite-Band/{BAND_PROTOCOL_VERSION}",
                 },
             )
             try:
