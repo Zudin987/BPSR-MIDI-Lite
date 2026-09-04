@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def test_lite_and_studio_install_band_mode_last() -> None:
+    for path in ("modern_launcher.py", "studio_launcher.py"):
+        source = Path(path).read_text(encoding="utf-8")
+        assert "install_band_mode(app)" in source
+        assert "install_band_runtime_hardening(app)" in source
+        assert source.index("install_band_mode(app)") < source.index(
+            "install_band_runtime_hardening(app)"
+        )
+
+
+def test_band_ui_is_single_window_and_has_room_workflow() -> None:
+    source = Path("band_ui.py").read_text(encoding="utf-8")
+    for text in (
+        "Band Mode (Beta)",
+        "Band room",
+        'text="Create"',
+        'text="Join"',
+        'text="Leave"',
+        'text="Ready"',
+        'text="Start Band"',
+    ):
+        assert text in source
+    assert "Toplevel(" not in source
+    assert "messagebox" not in source
+
+
+def test_band_ui_blocks_unverified_drum_playback() -> None:
+    ui = Path("band_ui.py").read_text(encoding="utf-8")
+    arranger = Path("band_arranger.py").read_text(encoding="utf-8")
+    assert "Drums (mapping pending)" in arranger
+    assert "Drum key mapping is not configured" in ui
+    assert "drums_supported=False" in ui
+
+
+def test_band_room_verifies_song_version_speed_and_clock() -> None:
+    ui = Path("band_ui.py").read_text(encoding="utf-8")
+    sync = Path("band_sync.py").read_text(encoding="utf-8")
+    assert "midi_sha256" in sync
+    assert "MIDI files do not all match" in sync
+    assert "Everyone must use the same BPSR MIDI version" in sync
+    assert "Song speed does not match between players" in sync
+    assert "Every player needs a synchronized clock" in sync
+    assert "START_LEAD_SECONDS = 6.0" in sync
+    assert "delay_until_utc_ms" in ui
+
+
+def test_synchronized_playback_disables_pause_and_keeps_stop_path() -> None:
+    ui = Path("band_ui.py").read_text(encoding="utf-8")
+    assert 'app.pause_button.configure(state="disabled", text="Pause")' in ui
+    assert 'app.stop_button.configure(state="normal")' in ui
+
+
+def test_runtime_hardening_preserves_absolute_deadline_and_deduplicates_start() -> None:
+    source = Path("band_runtime_hardening.py").read_text(encoding="utf-8")
+    assert "_band_start_deadline_perf" in source
+    assert "time.perf_counter() + delay" in source
+    assert "_band_last_start_utc_ms" in source
+    assert 'if getattr(getattr(app, "player", None), "is_playing", False):' in source
+
+
+def test_band_files_trigger_both_windows_workflows() -> None:
+    lite = Path(".github/workflows/build-windows.yml").read_text(encoding="utf-8")
+    studio = Path(".github/workflows/build-studio.yml").read_text(encoding="utf-8")
+    assert '- "band_*.py"' in lite
+    assert '- "band_*.py"' in studio
+    assert '- "tests/test_band*.py"' in studio
