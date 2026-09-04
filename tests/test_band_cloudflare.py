@@ -48,24 +48,28 @@ def test_launchers_install_cloudflare_after_existing_band_layers() -> None:
         )
 
 
-def test_worker_uses_durable_object_websockets_and_private_r2() -> None:
+def test_worker_uses_durable_object_websockets_and_sqlite_midi_chunks() -> None:
     source = Path("cloudflare-band/src/index.js").read_text(encoding="utf-8")
     for text in (
         "extends DurableObject",
         "acceptWebSocket",
         "webSocketMessage",
-        "MIDI_BUCKET.put",
-        "MIDI_BUCKET.get",
-        "MIDI_BUCKET.delete",
+        "MIDI_CHUNK_BYTES",
+        "ctx.storage.put(`midi:${token}:${index}`",
+        "ctx.storage.get(`midi:${token}:${index}`",
+        'ctx.storage.put("midi_meta"',
+        'midi_storage: "durable-object-sqlite"',
         'event === "state"',
         '"start", "midi_share", "midi_share_revoke"',
         "playerId !== this.hostId",
         'url.pathname === "/health"',
     ):
         assert text in source
+    assert "MIDI_BUCKET" not in source
+    assert "r2" not in source.lower()
 
 
-def test_wrangler_config_uses_sqlite_do_and_expected_r2_bucket() -> None:
+def test_wrangler_config_uses_only_sqlite_durable_object() -> None:
     config = json.loads(Path("cloudflare-band/wrangler.jsonc").read_text(encoding="utf-8"))
     assert config["name"] == "bpsr-midi-band"
     assert config["durable_objects"]["bindings"][0] == {
@@ -73,7 +77,4 @@ def test_wrangler_config_uses_sqlite_do_and_expected_r2_bucket() -> None:
         "class_name": "BandRoom",
     }
     assert config["migrations"][0]["new_sqlite_classes"] == ["BandRoom"]
-    assert config["r2_buckets"][0] == {
-        "binding": "MIDI_BUCKET",
-        "bucket_name": "bpsr-midi-band-midi",
-    }
+    assert "r2_buckets" not in config
