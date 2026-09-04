@@ -9,9 +9,9 @@ import gaming_ui_2026 as gaming_ui
 
 # Keep the Library permanently useful without allowing large notebook/tree
 # requested sizes to consume most of the application window.
-_LIBRARY_WIDTH = 350
+_LIBRARY_WIDTH = 400
 _CENTER_MIN_WIDTH = 520
-_MIN_WINDOW_WIDTH = 940
+_MIN_WINDOW_WIDTH = 990
 
 
 def _force_library_open(app: Any) -> None:
