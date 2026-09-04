@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from ui_product_overhaul_v34 import product_summary_text
+from ui_product_overhaul_v34 import product_metric_texts, product_summary_text
 
 
 def test_product_summary_separates_intentional_bass_arrangement_from_physical_loss() -> None:
@@ -42,3 +42,42 @@ def test_product_summary_keeps_normal_arrangement_compact() -> None:
     )
     text = product_summary_text(plan)
     assert text == "593 playable • 41 pitch-fitted • 3 simplified/removed • Peak 4 key(s) • No page keys"
+
+
+def test_song_check_cards_keep_long_diagnostics_out_of_primary_row() -> None:
+    plan = SimpleNamespace(
+        note_count=187,
+        source_note_count=187,
+        remapped_notes=30,
+        transposed_semitones=-3,
+        folded_notes=30,
+        skipped_notes=0,
+        chord_removed_notes=0,
+        retrigger_dropped_notes=0,
+        page_switches=0,
+    )
+    assert product_metric_texts(plan) == {
+        "playable": "187",
+        "pitch": "-3 st + 30 fits",
+        "removed": "0",
+        "safety": "No page keys",
+    }
+
+
+def test_song_check_cards_surface_loss_without_sentence_clipping() -> None:
+    plan = SimpleNamespace(
+        note_count=117,
+        source_note_count=187,
+        remapped_notes=15,
+        transposed_semitones=-22,
+        folded_notes=15,
+        skipped_notes=10,
+        chord_removed_notes=60,
+        retrigger_dropped_notes=0,
+        page_switches=0,
+    )
+    metrics = product_metric_texts(plan)
+    assert metrics["playable"] == "117 / 187"
+    assert metrics["pitch"] == "-22 st + 15 fits"
+    assert metrics["removed"] == "70"
+    assert metrics["safety"] == "No page keys"
