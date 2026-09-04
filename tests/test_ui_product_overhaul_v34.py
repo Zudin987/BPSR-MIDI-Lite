@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 from ui_product_overhaul_v34 import product_metric_texts, product_summary_text
@@ -81,3 +82,15 @@ def test_song_check_cards_surface_loss_without_sentence_clipping() -> None:
     assert metrics["pitch"] == "-22 st + 15 fits"
     assert metrics["removed"] == "70"
     assert metrics["safety"] == "No page keys"
+
+
+def test_persistent_library_keeps_sidebar_open_without_squeezing_center() -> None:
+    source = Path("ui_persistent_library.py").read_text(encoding="utf-8")
+
+    assert "_LIBRARY_WIDTH = 400" in source
+    assert "_CENTER_MIN_WIDTH = 520" in source
+    assert "_MIN_WINDOW_WIDTH = 990" in source
+    assert "panel.grid_propagate(False)" in source
+    assert "_remove_library_toggle" in source
+    assert "gaming_runtime._set_library_visible = _set_library_visible_persistent" in source
+    assert "gaming_ui._responsive_layout = _persistent_responsive_layout" in source
