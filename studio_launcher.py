@@ -3,6 +3,7 @@ from __future__ import annotations
 import app
 from band_cloudflare import install_cloudflare_band_transport
 from band_lineup import install_band_lineup
+from band_musical_sharing import install_shared_band_arrangement
 from band_network_hardening import install_band_network_hardening
 from band_room_registry import install_band_room_registry
 from band_runtime_hardening import install_band_runtime_hardening
@@ -62,6 +63,7 @@ install_product_ui_overhaul(app)
 install_persistent_library(app)
 install_band_mode(app)
 install_band_lineup(app)
+install_shared_band_arrangement(app)
 install_band_runtime_hardening(app)
 install_band_midi_sharing(app)
 install_band_network_hardening(app)
