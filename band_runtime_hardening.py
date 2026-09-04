@@ -152,6 +152,38 @@ def _sync_part_after_manual_instrument_change(app: Any) -> None:
         pass
 
 
+def _prepare_local_band_practice(app: Any) -> bool:
+    """Return False when local Play must be blocked by Band safety rules."""
+    enabled_var = getattr(app, "_band_enabled_var", None)
+    if enabled_var is None:
+        return True
+    try:
+        if not bool(enabled_var.get()):
+            return True
+    except tk.TclError:
+        return True
+
+    if band_ui._band_part(app) == "drums":
+        status_var = getattr(app, "_band_room_status_var", None)
+        if status_var is not None:
+            status_var.set(
+                "Drum playback is disabled until the real BPSR drum key mapping is verified."
+            )
+        return False
+
+    # Local practice while marked Ready would let the host believe this client
+    # is waiting for a synchronized launch. Automatically withdraw Ready first.
+    if bool(getattr(app, "_band_ready", False)):
+        app._band_ready = False
+        try:
+            app._band_ready_button.configure(text="Ready")
+        except (AttributeError, tk.TclError):
+            pass
+        if getattr(app, "_band_connected", False):
+            band_ui._publish_state(app)
+    return True
+
+
 def install_band_runtime_hardening(app_module: Any) -> None:
     """Install timing/dedup guards after Band Mode has installed its UI hooks."""
     global _original_player_run, _original_schedule_synchronized_playback
@@ -167,10 +199,17 @@ def install_band_runtime_hardening(app_module: Any) -> None:
 
     app_class = app_module.App
     original_instrument_changed = app_class._instrument_changed
+    original_start = app_class._start
 
     def instrument_changed(self: Any) -> None:
         original_instrument_changed(self)
         _sync_part_after_manual_instrument_change(self)
 
+    def start(self: Any) -> None:
+        if not _prepare_local_band_practice(self):
+            return
+        original_start(self)
+
     app_class._instrument_changed = instrument_changed
+    app_class._start = start
     app_module._band_runtime_hardening_installed = True
