@@ -17,10 +17,13 @@ def test_product_summary_separates_intentional_bass_arrangement_from_physical_lo
         page_switches=0,
         arrangement_strategy="auto_bass_line",
         bass_line_notes=163,
+        transposed_semitones=-1,
+        folded_notes=0,
     )
     text = product_summary_text(plan)
     assert "Auto Bass Line" in text
     assert "163 bass-role notes" in text
+    assert "Transposed -1 st" in text
     assert "0 physical removals" in text
     assert "No page keys" in text
 
