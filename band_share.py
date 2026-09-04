@@ -378,6 +378,8 @@ def _ensure_share_uploaded_async(app: Any, *, force_announce: bool = False) -> N
     app._band_share_uploading = True
     app._band_share_status_var.set(f"Sharing {path.name}…")
     base_url = getattr(getattr(app, "_band_transport", None), "base_url", band_sync.DEFAULT_NTFY_BASE_URL)
+    room_code = str(app._band_room_code_var.get())
+    player_id = str(app._band_player_id)
 
     def worker() -> None:
         try:
@@ -385,12 +387,12 @@ def _ensure_share_uploaded_async(app: Any, *, force_announce: bool = False) -> N
             if attachment["midi_sha256"] != midi_hash:
                 raise OSError("Selected MIDI changed while it was being shared")
             payload = make_midi_share_payload(
-                room_code=app._band_room_code_var.get(),
-                player_id=app._band_player_id,
+                room_code=room_code,
+                player_id=player_id,
                 midi_hash=midi_hash,
                 attachment=attachment,
             )
-            app._band_share_queue.put(("uploaded", payload))
+            app._band_share_queue.put(("uploaded", (room_code, payload)))
         except Exception as exc:  # noqa: BLE001
             app._band_share_queue.put(("upload_error", str(exc)))
 
@@ -430,15 +432,16 @@ def _start_download_async(app: Any, payload: dict[str, Any]) -> None:
 
     app._band_share_downloading_hash = expected_hash
     app._band_share_status_var.set(f"Downloading room MIDI: {share['filename']}…")
+    room_code = str(app._band_room_code_var.get())
 
     def worker() -> None:
         try:
             path = download_shared_midi(
                 share,
-                room_code=app._band_room_code_var.get(),
+                room_code=room_code,
                 base_url=base_url,
             )
-            app._band_share_queue.put(("downloaded", (share, path)))
+            app._band_share_queue.put(("downloaded", (room_code, share, path)))
         except Exception as exc:  # noqa: BLE001
             app._band_share_queue.put(("download_error", str(exc)))
 
@@ -575,23 +578,44 @@ def _drain_share_events(app: Any) -> None:
     try:
         while True:
             kind, payload = app._band_share_queue.get_nowait()
-            if kind == "uploaded" and isinstance(payload, dict):
+            if kind == "uploaded" and isinstance(payload, tuple) and len(payload) == 2:
+                room_code, share_payload = payload
                 app._band_share_uploading = False
-                app._band_share_payload = payload
-                app._band_share_hash = str(payload.get("midi_sha256", ""))
+                same_room = (
+                    getattr(app, "_band_connected", False)
+                    and getattr(app, "_band_is_host", False)
+                    and str(app._band_room_code_var.get()) == str(room_code)
+                )
+                current_hash = band_ui._current_midi_hash(app)
+                if (
+                    not same_room
+                    or not isinstance(share_payload, dict)
+                    or str(share_payload.get("midi_sha256", "")) != current_hash
+                    or not _share_allowed(app)
+                ):
+                    if same_room and _share_needs_upload(app):
+                        _ensure_share_uploaded_async(app)
+                    continue
+                app._band_share_payload = share_payload
+                app._band_share_hash = str(share_payload.get("midi_sha256", ""))
                 transport = getattr(app, "_band_transport", None)
-                if transport is not None and _share_allowed(app):
-                    transport.publish_async(payload)
+                if transport is not None:
+                    transport.publish_async(share_payload)
                 app._band_share_status_var.set(
-                    f"Room MIDI ready to download: {payload.get('filename', 'MIDI')} "
+                    f"Room MIDI ready to download: {share_payload.get('filename', 'MIDI')} "
                     "(temporary relay attachment)"
                 )
             elif kind == "upload_error":
                 app._band_share_uploading = False
                 app._band_share_status_var.set(f"Could not share Room MIDI: {payload}")
-            elif kind == "downloaded" and isinstance(payload, tuple) and len(payload) == 2:
-                share, path = payload
+            elif kind == "downloaded" and isinstance(payload, tuple) and len(payload) == 3:
+                room_code, share, path = payload
                 app._band_share_downloading_hash = ""
+                if (
+                    not getattr(app, "_band_connected", False)
+                    or str(app._band_room_code_var.get()) != str(room_code)
+                ):
+                    continue
                 app._band_share_payload_received = share
                 try:
                     app.file_var.set(str(path))
