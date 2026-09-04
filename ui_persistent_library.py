@@ -94,6 +94,31 @@ def _remove_library_toggle(root: Any) -> None:
         _remove_library_toggle(child)
 
 
+def _polish_library_copy(root: Any) -> None:
+    """Remove old numbered-flow copy and keep sidebar guidance compact."""
+    try:
+        children = tuple(root.winfo_children())
+    except (AttributeError, tk.TclError):
+        return
+    for child in children:
+        try:
+            text = str(child.cget("text"))
+            normalized = " ".join(text.split())
+            if normalized == "2 Song":
+                child.configure(text="Songs")
+            elif text.startswith("Local keeps permanent MIDI files."):
+                child.configure(
+                    text=(
+                        "Local files stay on disk. Online loads temporarily. "
+                        "Bookmarks save links; Save to Local keeps a MIDI copy."
+                    ),
+                    wraplength=_LIBRARY_WIDTH - 36,
+                )
+        except (tk.TclError, TypeError):
+            pass
+        _polish_library_copy(child)
+
+
 def install_persistent_library(app_module: Any) -> None:
     if getattr(app_module, "_persistent_library_installed", False):
         return
@@ -109,6 +134,7 @@ def install_persistent_library(app_module: Any) -> None:
             pass
         _force_library_open(self)
         _remove_library_toggle(self)
+        _polish_library_copy(self)
 
     app_class._build_ui = build_ui
 
