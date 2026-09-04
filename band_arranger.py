@@ -3,30 +3,62 @@ from __future__ import annotations
 import contextvars
 import threading
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from statistics import median
-from typing import Any, Literal
+from typing import Any, Iterable, Literal
 
 import midi_engine as me
 import playback_adaptive as adaptive
 
 
 BandPart = Literal["keyboard", "guitar", "bass", "drums"]
-BAND_ARRANGEMENT_VERSION = 1
+BAND_ARRANGEMENT_VERSION = 2
 
+PART_ORDER: tuple[BandPart, ...] = ("keyboard", "guitar", "bass", "drums")
+DEFAULT_ACTIVE_PARTS: tuple[BandPart, ...] = PART_ORDER
 PART_LABELS: dict[str, BandPart] = {
     "Piano / Keyboard": "keyboard",
     "Guitar": "guitar",
     "Bass": "bass",
-    "Drums (mapping pending)": "drums",
+    "Drums": "drums",
 }
 PART_LABELS_REVERSE = {value: label for label, value in PART_LABELS.items()}
+
+DRUM_MIN_PITCH = 60  # C4
+DRUM_MAX_PITCH = 83  # B5
+GM_DRUM_BASE_PITCH = 35
+DRUM_SLOT_COUNT = DRUM_MAX_PITCH - DRUM_MIN_PITCH + 1
+
+
+def normalize_active_parts(parts: Iterable[str] | None) -> tuple[BandPart, ...]:
+    if parts is None:
+        return DEFAULT_ACTIVE_PARTS
+    requested = {str(part) for part in parts}
+    normalized = tuple(part for part in PART_ORDER if part in requested)
+    if not normalized:
+        raise ValueError("Band lineup must contain at least one instrument.")
+    return normalized
+
+
+def normalize_drum_pitch(pitch: int) -> int:
+    """Map a MIDI percussion note into BPSR Drums' verified C4-B5 span.
+
+    BPSR exposes 24 fixed drum note slots and does not need High/Low Octave.
+    Notes already authored for C4-B5 stay unchanged. Standard GM percussion
+    notes outside that span are wrapped across the 24 slots with GM note 35 as
+    the first slot, preserving the relative drum-note ordering deterministically.
+    """
+    value = int(pitch)
+    if DRUM_MIN_PITCH <= value <= DRUM_MAX_PITCH:
+        return value
+    return DRUM_MIN_PITCH + ((value - GM_DRUM_BASE_PITCH) % DRUM_SLOT_COUNT)
 
 
 @dataclass(slots=True)
 class BandPlanOptions(adaptive.AdaptivePlanOptions):
     band_enabled: bool = False
     band_part: BandPart = "keyboard"
+    band_active_parts: tuple[BandPart, ...] = DEFAULT_ACTIVE_PARTS
     band_arrangement_version: int = BAND_ARRANGEMENT_VERSION
 
 
@@ -40,6 +72,8 @@ class BandSplitStats:
     selected_notes: int
     selected_tracks: int
     part: BandPart
+    active_parts: tuple[BandPart, ...] = DEFAULT_ACTIVE_PARTS
+    drum_remapped_notes: int = 0
 
     @property
     def omitted_notes(self) -> int:
@@ -57,6 +91,7 @@ class BandPlanInfo:
 class _BandContext:
     enabled: bool
     part: BandPart
+    active_parts: tuple[BandPart, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +105,8 @@ class _StreamStats:
 _previous_extract: Any = None
 _previous_build_plan: Any = None
 _band_context: contextvars.ContextVar[_BandContext] = contextvars.ContextVar(
-    "bpsr_band_context", default=_BandContext(False, "keyboard")
+    "bpsr_band_context",
+    default=_BandContext(False, "keyboard", DEFAULT_ACTIVE_PARTS),
 )
 _band_split_context: contextvars.ContextVar[BandSplitStats | None] = contextvars.ContextVar(
     "bpsr_band_split_stats", default=None
@@ -149,26 +185,64 @@ def _unknown_stream_part(stats: _StreamStats) -> BandPart | None:
     return None
 
 
-def split_band_notes(
-    notes: list[me.SourceNote], metadata: dict[int, adaptive.SourceMeta]
-) -> dict[BandPart, list[me.SourceNote]]:
-    """Split one source MIDI deterministically into complementary band parts.
+def _redirect_inactive_part(
+    part: BandPart,
+    active_parts: tuple[BandPart, ...],
+) -> BandPart | None:
+    if part in active_parts:
+        return part
+    if part == "drums":
+        # Percussion is never converted into pitched accompaniment when no
+        # drummer is present. It is intentionally omitted instead.
+        return None
+    preferences: dict[BandPart, tuple[BandPart, ...]] = {
+        # Piano is the best fallback for the low line when Bass is absent.
+        "bass": ("keyboard", "guitar"),
+        # Guitar is the best melodic fallback when no Piano player is present.
+        "keyboard": ("guitar", "bass"),
+        # Piano is the best harmony fallback when no Guitar player is present.
+        "guitar": ("keyboard", "bass"),
+        "drums": (),
+    }
+    for candidate in preferences[part]:
+        if candidate in active_parts:
+            return candidate
+    return None
 
-    The split never changes timing and never assigns one source note to two
-    players. Explicit MIDI roles/programs win first. Ambiguous streams are then
-    separated by register and chord texture. A final outer-voice fallback keeps
-    Piano useful on chord-only reductions and keeps Guitar useful on one-track
-    chord arrangements without duplicating notes.
+
+def _adapt_split_to_active_parts(
+    split: dict[BandPart, list[me.SourceNote]],
+    active_parts: tuple[BandPart, ...],
+) -> dict[BandPart, list[me.SourceNote]]:
+    result: dict[BandPart, list[me.SourceNote]] = {part: [] for part in PART_ORDER}
+    for source_part in PART_ORDER:
+        target = _redirect_inactive_part(source_part, active_parts)
+        if target is None:
+            continue
+        result[target].extend(split[source_part])
+    for part in PART_ORDER:
+        result[part].sort(key=lambda note: (note.start, note.serial))
+    return result
+
+
+def split_band_notes(
+    notes: list[me.SourceNote],
+    metadata: dict[int, adaptive.SourceMeta],
+    active_parts: Iterable[str] | None = None,
+) -> dict[BandPart, list[me.SourceNote]]:
+    """Split one source MIDI deterministically into complementary active parts.
+
+    Explicit MIDI roles/programs win first. Ambiguous streams are separated by
+    register and chord texture. The full four-role split is then adapted to the
+    host-selected lineup: missing melodic instruments hand their material to a
+    sensible active fallback, while missing Drums simply omits percussion.
+    One source note is never assigned to two players.
     """
 
-    result: dict[BandPart, list[me.SourceNote]] = {
-        "keyboard": [],
-        "guitar": [],
-        "bass": [],
-        "drums": [],
-    }
+    active = normalize_active_parts(active_parts)
+    full: dict[BandPart, list[me.SourceNote]] = {part: [] for part in PART_ORDER}
     if not notes:
-        return result
+        return full
 
     stats_by_stream = _stream_statistics(notes, metadata)
     assignment: dict[int, BandPart] = {}
@@ -184,7 +258,9 @@ def split_band_notes(
             assignment[note.serial] = explicit
             continue
         key = _stream_key(meta)
-        inferred = _unknown_stream_part(stats_by_stream.get(key, _StreamStats(60.0, 0.0, -1, "")))
+        inferred = _unknown_stream_part(
+            stats_by_stream.get(key, _StreamStats(60.0, 0.0, -1, ""))
+        )
         if inferred is not None:
             assignment[note.serial] = inferred
         else:
@@ -205,8 +281,8 @@ def split_band_notes(
                 assignment[note.serial] = target
     elif len(unresolved_keys) == 1:
         # A single ambiguous polyphonic stream is treated as a piano reduction:
-        # top voice -> Piano, remaining chord tones -> Guitar. Monophonic notes
-        # stay with Piano rather than being alternated arbitrarily.
+        # top voice -> Piano, lower simultaneous tones -> Guitar. Monophonic
+        # notes stay with Piano rather than being alternated arbitrarily.
         stream_notes = unresolved_by_stream[unresolved_keys[0]]
         for group in _attack_groups(stream_notes):
             top = max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
@@ -214,15 +290,12 @@ def split_band_notes(
                 assignment[note.serial] = "keyboard" if note.serial == top.serial else "guitar"
 
     for note in notes:
-        part = assignment.get(note.serial, "keyboard")
-        result[part].append(note)
+        full[assignment.get(note.serial, "keyboard")].append(note)
 
-    # Chord-only MIDI can be explicitly tagged Harmony. Recover a top Piano
-    # voice by moving (not duplicating) the highest note of polyphonic attacks.
-    # Never steal a monophonic, explicitly guitar-like line merely because the
-    # source contains no separate Piano track.
-    if not result["keyboard"] and result["guitar"]:
-        guitar_groups = _attack_groups(result["guitar"])
+    # Chord-only Harmony material can recover a Piano top voice, but never steal
+    # a monophonic explicitly guitar-like line just to fill an empty role.
+    if not full["keyboard"] and full["guitar"]:
+        guitar_groups = _attack_groups(full["guitar"])
         if any(len(group) >= 2 for group in guitar_groups):
             move_to_keyboard: set[int] = set()
             for group in guitar_groups:
@@ -230,28 +303,37 @@ def split_band_notes(
                     continue
                 top = max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
                 move_to_keyboard.add(top.serial)
-            result["keyboard"] = [
-                note for note in result["guitar"] if note.serial in move_to_keyboard
+            full["keyboard"] = [
+                note for note in full["guitar"] if note.serial in move_to_keyboard
             ]
-            result["guitar"] = [
-                note for note in result["guitar"] if note.serial not in move_to_keyboard
+            full["guitar"] = [
+                note for note in full["guitar"] if note.serial not in move_to_keyboard
             ]
 
     # The reverse case occurs with one explicitly melodic polyphonic stream.
-    # Keep its top voice on Piano and move lower simultaneous tones to Guitar.
-    if not result["guitar"] and result["keyboard"]:
+    if not full["guitar"] and full["keyboard"]:
         move_to_guitar: set[int] = set()
-        for group in _attack_groups(result["keyboard"]):
+        for group in _attack_groups(full["keyboard"]):
             if len(group) < 2:
                 continue
             top = max(group, key=lambda note: (note.pitch, note.velocity, -note.serial))
             move_to_guitar.update(note.serial for note in group if note.serial != top.serial)
         if move_to_guitar:
-            result["guitar"] = [note for note in result["keyboard"] if note.serial in move_to_guitar]
-            result["keyboard"] = [note for note in result["keyboard"] if note.serial not in move_to_guitar]
+            full["guitar"] = [
+                note for note in full["keyboard"] if note.serial in move_to_guitar
+            ]
+            full["keyboard"] = [
+                note for note in full["keyboard"] if note.serial not in move_to_guitar
+            ]
 
-    for part in result:
-        result[part].sort(key=lambda note: (note.start, note.serial))
+    result = _adapt_split_to_active_parts(full, active)
+
+    # The verified BPSR Drum instrument has exactly C4-B5 and no octave modes.
+    # Normalize only the Drum part, preserving authored C4-B5 notes as-is.
+    result["drums"] = [
+        replace(note, pitch=normalize_drum_pitch(note.pitch))
+        for note in result["drums"]
+    ]
     return result
 
 
@@ -261,20 +343,34 @@ def _band_extract_notes_and_pedal(path: Any, ignore_percussion: bool):
     if not context.enabled:
         return _previous_extract(path, ignore_percussion)
 
-    # Band splitting needs channel 10 even when the selected part is not Drums;
-    # otherwise per-part counts would depend on which client generated them.
-    # The selected non-drum part still contains no percussion after the split.
+    # Band splitting always needs channel 10 so every client computes the same
+    # four-role source analysis before adapting it to the chosen lineup.
     data = list(_previous_extract(path, False))
     notes = list(data[0])
     metadata = adaptive._metadata_context.get() or {}
-    split = split_band_notes(notes, metadata)
+    split = split_band_notes(notes, metadata, context.active_parts)
     selected = list(split[context.part])
     selected_serials = {note.serial for note in selected}
 
+    drum_remapped = 0
+    if context.part == "drums":
+        original_pitch_by_serial = {note.serial: note.pitch for note in notes}
+        drum_remapped = sum(
+            original_pitch_by_serial.get(note.serial, note.pitch) != note.pitch
+            for note in selected
+        )
+
     if metadata:
+        selected_pitch = {note.serial: note.pitch for note in selected}
         for serial in tuple(metadata):
             if serial not in selected_serials:
                 metadata.pop(serial, None)
+                continue
+            if context.part == "drums":
+                meta = metadata[serial]
+                pitch = selected_pitch.get(serial, meta.pitch)
+                if pitch != meta.pitch:
+                    metadata[serial] = replace(meta, pitch=pitch)
         adaptive._analysis_context.set(adaptive._analyse_notes(selected, metadata))
 
     selected_tracks = {
@@ -291,11 +387,13 @@ def _band_extract_notes_and_pedal(path: Any, ignore_percussion: bool):
         selected_notes=len(selected),
         selected_tracks=len(selected_tracks),
         part=context.part,
+        active_parts=context.active_parts,
+        drum_remapped_notes=drum_remapped,
     )
     _band_split_context.set(stats)
 
     data[0] = selected
-    # Keep intentional band routing separate from physical filtering metrics.
+    # Intentional Band routing is not a "filtered note" loss.
     data[2] = 0
     data[3] = len(selected_tracks)
     return tuple(data)
@@ -303,13 +401,36 @@ def _band_extract_notes_and_pedal(path: Any, ignore_percussion: bool):
 
 def _coerce_band_options(options: Any | None) -> BandPlanOptions:
     if isinstance(options, BandPlanOptions):
+        options.band_active_parts = normalize_active_parts(options.band_active_parts)
         return options
     values: dict[str, Any] = {}
     if options is not None:
         for field in fields(adaptive.AdaptivePlanOptions):
             if hasattr(options, field.name):
                 values[field.name] = getattr(options, field.name)
-    return BandPlanOptions(**values)
+        for name in ("band_enabled", "band_part", "band_active_parts", "band_arrangement_version"):
+            if hasattr(options, name):
+                values[name] = getattr(options, name)
+    result = BandPlanOptions(**values)
+    result.band_active_parts = normalize_active_parts(result.band_active_parts)
+    return result
+
+
+def _drum_plan_options(options: BandPlanOptions) -> BandPlanOptions:
+    """Use the keyboard physical map only as a C4-B5 key transport for Drums."""
+    return replace(
+        options,
+        instrument="keyboard",
+        mode="stable",
+        unlock_tier="tier2",
+        mapping_method="skip",
+        use_sustain_pedal=False,
+        ignore_percussion=False,
+        # Drums are short attacks; allow a moderately dense simultaneous hit
+        # while still respecting the established physical input safety model.
+        max_notes_per_chord=max(6, int(options.max_notes_per_chord)),
+        adaptive_chord_limit=max(6, int(options.adaptive_chord_limit)),
+    )
 
 
 def _remember_plan_info(plan: Any, info: BandPlanInfo) -> None:
@@ -334,12 +455,30 @@ def plan_info(plan: Any) -> BandPlanInfo | None:
 def band_build_plan(path: Any, options: Any | None = None):
     assert _previous_build_plan is not None
     requested = _coerce_band_options(options)
-    context = _BandContext(bool(requested.band_enabled), requested.band_part)
+    active_parts = normalize_active_parts(requested.band_active_parts)
+    if requested.band_enabled and requested.band_part not in active_parts:
+        raise ValueError("Your selected Band part is disabled in the current lineup.")
+
+    effective = (
+        _drum_plan_options(requested)
+        if requested.band_enabled and requested.band_part == "drums"
+        else requested
+    )
+    context = _BandContext(bool(requested.band_enabled), requested.band_part, active_parts)
     token_context = _band_context.set(context)
     token_stats = _band_split_context.set(None)
     try:
-        plan = _previous_build_plan(path, requested)
+        plan = _previous_build_plan(path, effective)
         stats = _band_split_context.get()
+        if context.enabled and context.part == "drums":
+            if int(getattr(plan, "page_switches", 0)) or any(
+                event.kind == "page" for event in getattr(plan, "events", ())
+            ):
+                raise ValueError("Drums must never use BPSR page keys.")
+            if int(getattr(plan, "octave_switches", 0)) or any(
+                event.kind == "state" for event in getattr(plan, "events", ())
+            ):
+                raise ValueError("Drums C4-B5 must never use High/Low Octave.")
         if context.enabled and stats is not None:
             _remember_plan_info(
                 plan,
@@ -361,6 +500,21 @@ def part_from_label(label: str) -> BandPart:
 
 def part_label(part: BandPart) -> str:
     return PART_LABELS_REVERSE.get(part, "Piano / Keyboard")
+
+
+def _active_parts_from_app(app: Any) -> tuple[BandPart, ...]:
+    variables = getattr(app, "_band_lineup_vars", None)
+    if not isinstance(variables, dict):
+        return DEFAULT_ACTIVE_PARTS
+    selected = [
+        part
+        for part in PART_ORDER
+        if part in variables and bool(variables[part].get())
+    ]
+    try:
+        return normalize_active_parts(selected)
+    except ValueError:
+        return DEFAULT_ACTIVE_PARTS
 
 
 def install_band_arranger(app_module: Any) -> None:
@@ -390,10 +544,16 @@ def install_band_arranger(app_module: Any) -> None:
         role_var = getattr(self, "_band_role_var", None)
         enabled = bool(enabled_var.get()) if enabled_var is not None else False
         part = part_from_label(str(role_var.get())) if role_var is not None else "keyboard"
+        if enabled and part in {"keyboard", "guitar", "bass"}:
+            # The Band part is authoritative. This prevents the underlying
+            # single-player Instrument control from accidentally changing a
+            # connected player's physical mapping.
+            values["instrument"] = part
         return BandPlanOptions(
             **values,
             band_enabled=enabled,
             band_part=part,
+            band_active_parts=_active_parts_from_app(self),
             band_arrangement_version=BAND_ARRANGEMENT_VERSION,
         )
 
