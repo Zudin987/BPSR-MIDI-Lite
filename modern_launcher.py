@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
 from local_search_integration import install_local_search_integration
@@ -24,6 +25,7 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 # v3.4 keeps the verified v3.3 timing/safety layer, adds evidence-driven
 # arrangement refinements, and ships the responsive product UI overhaul.
+# The feature/band-mode-v35 branch layers the experimental Band Mode on top.
 app.APP_VERSION = "3.4.0"
 
 install_online_search_bridge()
@@ -45,6 +47,7 @@ install_guided_calibration(app)
 install_calibration_provenance(app)
 install_product_ui_overhaul(app)
 install_persistent_library(app)
+install_band_mode(app)
 
 
 if __name__ == "__main__":
