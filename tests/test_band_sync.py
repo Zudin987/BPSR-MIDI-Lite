@@ -115,10 +115,12 @@ def test_start_delay_uses_clock_offset(monkeypatch) -> None:
     assert band_sync.delay_until_utc_ms(1_006_025, sample) == 6.0
 
 
-def test_ntfy_transport_is_zero_account_and_non_cached() -> None:
+def test_ntfy_transport_is_zero_account_non_cached_and_start_redundant() -> None:
     source = Path("band_sync.py").read_text(encoding="utf-8")
     assert 'DEFAULT_NTFY_BASE_URL = "https://ntfy.sh"' in source
     assert '"Cache": "no"' in source
     assert '"Firebase": "no"' in source
     assert "/json" in source
     assert "requests" not in source
+    assert "START_PUBLISH_ATTEMPTS = 3" in source
+    assert 'payload.get("event") == "start"' in source
