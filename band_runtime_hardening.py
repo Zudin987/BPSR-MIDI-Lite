@@ -13,6 +13,7 @@ import player as player_module
 
 _original_player_run: Any = None
 _original_schedule_synchronized_playback: Any = None
+_original_toggle_ready: Any = None
 
 
 def _safe_current_midi_hash(app: Any) -> str:
@@ -41,6 +42,14 @@ def _safe_current_midi_hash(app: Any) -> str:
     app._band_hash_cache_key = key
     app._band_hash_cache_value = digest
     return digest
+
+
+def _band_compatibility_version(_app: Any) -> str:
+    """Shared Lite/Studio compatibility token for deterministic Band clients."""
+    return (
+        f"band-proto-{band_sync.BAND_PROTOCOL_VERSION}"
+        f"-arr-{band_arranger.BAND_ARRANGEMENT_VERSION}"
+    )
 
 
 def _deadline_preserving_player_run(
@@ -184,9 +193,51 @@ def _prepare_local_band_practice(app: Any) -> bool:
     return True
 
 
+def _hardened_toggle_ready(app: Any) -> None:
+    """Only let a client Ready after its selected Band part is actually usable."""
+    assert _original_toggle_ready is not None
+    if bool(getattr(app, "_band_ready", False)):
+        _original_toggle_ready(app)
+        return
+    if not getattr(app, "_band_connected", False):
+        return
+    if band_ui._band_part(app) == "drums":
+        _original_toggle_ready(app)
+        return
+
+    try:
+        app._analyze()
+    except Exception:
+        pass
+    plan = getattr(app, "current_plan", None)
+    info = band_arranger.plan_info(plan)
+    current_part = band_ui._band_part(app)
+    if (
+        plan is None
+        or info is None
+        or info.part != current_part
+        or info.stats.selected_notes <= 0
+        or int(getattr(plan, "note_count", 0)) <= 0
+    ):
+        label = {
+            "keyboard": "Piano",
+            "guitar": "Guitar",
+            "bass": "Bass",
+            "drums": "Drums",
+        }.get(current_part, current_part)
+        try:
+            app._band_room_status_var.set(
+                f"Cannot Ready: this MIDI has no usable {label} part in the current Band split"
+            )
+        except tk.TclError:
+            pass
+        return
+    _original_toggle_ready(app)
+
+
 def install_band_runtime_hardening(app_module: Any) -> None:
     """Install timing/dedup guards after Band Mode has installed its UI hooks."""
-    global _original_player_run, _original_schedule_synchronized_playback
+    global _original_player_run, _original_schedule_synchronized_playback, _original_toggle_ready
     if getattr(app_module, "_band_runtime_hardening_installed", False):
         return
 
@@ -194,8 +245,11 @@ def install_band_runtime_hardening(app_module: Any) -> None:
     player_module.MidiPlayer._run = _deadline_preserving_player_run
 
     _original_schedule_synchronized_playback = band_ui._schedule_synchronized_playback
+    _original_toggle_ready = band_ui._toggle_ready
     band_ui._schedule_synchronized_playback = _hardened_schedule_synchronized_playback
+    band_ui._toggle_ready = _hardened_toggle_ready
     band_ui._current_midi_hash = _safe_current_midi_hash
+    band_ui._current_app_version = _band_compatibility_version
 
     app_class = app_module.App
     original_instrument_changed = app_class._instrument_changed
