@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import app
 from band_lineup import install_band_lineup
+from band_network_hardening import install_band_network_hardening
 from band_runtime_hardening import install_band_runtime_hardening
 from band_share import install_band_midi_sharing
 from band_ui import install_band_mode
@@ -54,6 +55,7 @@ install_band_mode(app)
 install_band_lineup(app)
 install_band_runtime_hardening(app)
 install_band_midi_sharing(app)
+install_band_network_hardening(app)
 
 
 if __name__ == "__main__":
