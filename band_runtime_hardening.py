@@ -1,0 +1,176 @@
+from __future__ import annotations
+
+import time
+import tkinter as tk
+from pathlib import Path
+from typing import Any
+
+import band_arranger
+import band_sync
+import band_ui
+import player as player_module
+
+
+_original_player_run: Any = None
+_original_schedule_synchronized_playback: Any = None
+
+
+def _safe_current_midi_hash(app: Any) -> str:
+    """Hash the selected MIDI without creating fallback Tk variables."""
+    file_var = getattr(app, "file_var", None)
+    if file_var is None:
+        return ""
+    try:
+        path_text = str(file_var.get()).strip()
+    except tk.TclError:
+        return ""
+    if not path_text:
+        return ""
+    path = Path(path_text)
+    try:
+        stat = path.stat()
+    except OSError:
+        return ""
+    key = (str(path.resolve()), int(stat.st_mtime_ns), int(stat.st_size))
+    if getattr(app, "_band_hash_cache_key", None) == key:
+        return str(getattr(app, "_band_hash_cache_value", ""))
+    try:
+        digest = band_sync.midi_sha256(path)
+    except OSError:
+        return ""
+    app._band_hash_cache_key = key
+    app._band_hash_cache_value = digest
+    return digest
+
+
+def _deadline_preserving_player_run(
+    self: Any,
+    plan: Any,
+    start_delay: float,
+    on_status: Any,
+    on_finished: Any,
+    input_backend: str = "scan",
+) -> None:
+    """Convert the Band deadline back to delay inside the worker thread.
+
+    MidiPlayer normally computes ``perf_counter() + delay`` after its worker
+    thread has started. For an online ensemble that small thread-start gap is
+    avoidable jitter. Band Mode stores an absolute perf-counter deadline before
+    spawning the worker; this wrapper converts it to the exact remaining delay
+    immediately before the established player loop takes over.
+    """
+    assert _original_player_run is not None
+    deadline = getattr(self, "_band_start_deadline_perf", None)
+    if deadline is not None:
+        try:
+            delattr(self, "_band_start_deadline_perf")
+        except AttributeError:
+            pass
+        start_delay = max(0.0, float(deadline) - time.perf_counter())
+    _original_player_run(
+        self,
+        plan,
+        start_delay,
+        on_status,
+        on_finished,
+        input_backend,
+    )
+
+
+def _hardened_schedule_synchronized_playback(app: Any, payload: dict[str, Any]) -> None:
+    assert _original_schedule_synchronized_playback is not None
+
+    start_utc_ms = int(payload.get("start_utc_ms", 0))
+    if start_utc_ms <= 0:
+        _original_schedule_synchronized_playback(app, payload)
+        return
+
+    # ntfy delivers published messages to the publisher too. The host already
+    # arms itself locally before its own streamed Start message comes back, and
+    # reconnects may redeliver a control message. Never start the player twice.
+    if getattr(getattr(app, "player", None), "is_playing", False):
+        return
+    if int(getattr(app, "_band_last_start_utc_ms", 0)) == start_utc_ms:
+        return
+
+    # Preserve all existing validation/status messages. Only install an
+    # absolute local deadline when the same preconditions are known to pass.
+    try:
+        compatible = band_ui._start_payload_is_compatible(app, payload)
+        part = band_ui._band_part(app)
+        sample = getattr(app, "_band_clock_sample", None)
+        delay = band_sync.delay_until_utc_ms(start_utc_ms, sample) if sample is not None else 0.0
+    except Exception:
+        compatible = False
+        part = "drums"
+        sample = None
+        delay = 0.0
+
+    if compatible and part != "drums" and sample is not None and delay >= 0.75:
+        app.player._band_start_deadline_perf = time.perf_counter() + delay
+
+    _original_schedule_synchronized_playback(app, payload)
+
+    if getattr(getattr(app, "player", None), "is_playing", False):
+        app._band_last_start_utc_ms = start_utc_ms
+    else:
+        # Validation may have rejected the command before MidiPlayer.start.
+        try:
+            delattr(app.player, "_band_start_deadline_perf")
+        except (AttributeError, TypeError):
+            pass
+
+
+def _sync_part_after_manual_instrument_change(app: Any) -> None:
+    enabled_var = getattr(app, "_band_enabled_var", None)
+    role_var = getattr(app, "_band_role_var", None)
+    if enabled_var is None or role_var is None:
+        return
+    try:
+        if not bool(enabled_var.get()):
+            return
+        instrument = str(app._instrument_code())
+    except (tk.TclError, AttributeError):
+        return
+    if instrument not in {"keyboard", "guitar", "bass"}:
+        return
+    expected = band_arranger.part_label(instrument)  # type: ignore[arg-type]
+    try:
+        if str(role_var.get()) == expected:
+            return
+        role_var.set(expected)
+        app._band_ready = False
+        ready_button = getattr(app, "_band_ready_button", None)
+        if ready_button is not None:
+            ready_button.configure(text="Ready")
+        status_var = getattr(app, "_band_room_status_var", None)
+        if status_var is not None:
+            status_var.set("Instrument changed — band part updated; press Ready again")
+        if getattr(app, "_band_connected", False):
+            band_ui._publish_state(app)
+    except tk.TclError:
+        pass
+
+
+def install_band_runtime_hardening(app_module: Any) -> None:
+    """Install timing/dedup guards after Band Mode has installed its UI hooks."""
+    global _original_player_run, _original_schedule_synchronized_playback
+    if getattr(app_module, "_band_runtime_hardening_installed", False):
+        return
+
+    _original_player_run = player_module.MidiPlayer._run
+    player_module.MidiPlayer._run = _deadline_preserving_player_run
+
+    _original_schedule_synchronized_playback = band_ui._schedule_synchronized_playback
+    band_ui._schedule_synchronized_playback = _hardened_schedule_synchronized_playback
+    band_ui._current_midi_hash = _safe_current_midi_hash
+
+    app_class = app_module.App
+    original_instrument_changed = app_class._instrument_changed
+
+    def instrument_changed(self: Any) -> None:
+        original_instrument_changed(self)
+        _sync_part_after_manual_instrument_change(self)
+
+    app_class._instrument_changed = instrument_changed
+    app_module._band_runtime_hardening_installed = True
