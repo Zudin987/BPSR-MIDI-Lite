@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from band_arranger_identity import install_band_arranger_identity
 from band_cloudflare import install_cloudflare_band_transport
 from band_lineup import install_band_lineup
 from band_musical_sharing import install_shared_band_arrangement
@@ -64,6 +65,7 @@ install_persistent_library(app)
 install_band_mode(app)
 install_band_lineup(app)
 install_shared_band_arrangement(app)
+install_band_arranger_identity(app)
 install_band_runtime_hardening(app)
 install_band_midi_sharing(app)
 install_band_network_hardening(app)
