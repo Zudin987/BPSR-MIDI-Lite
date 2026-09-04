@@ -3,6 +3,7 @@ from __future__ import annotations
 import app
 from band_lineup import install_band_lineup
 from band_runtime_hardening import install_band_runtime_hardening
+from band_share import install_band_midi_sharing
 from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
@@ -59,6 +60,7 @@ install_persistent_library(app)
 install_band_mode(app)
 install_band_lineup(app)
 install_band_runtime_hardening(app)
+install_band_midi_sharing(app)
 
 
 if __name__ == "__main__":
