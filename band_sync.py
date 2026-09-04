@@ -94,8 +94,9 @@ class BandRoster:
         expected_speed: int,
         drums_supported: bool = False,
         minimum_players: int = 2,
+        now: float | None = None,
     ) -> list[str]:
-        self.prune()
+        self.prune(now=now)
         players = list(self.players.values())
         issues: list[str] = []
         if len(players) < minimum_players:
@@ -118,8 +119,8 @@ class BandRoster:
             issues.append("BPSR drum mapping is not configured yet")
         return issues
 
-    def compact_text(self) -> str:
-        self.prune()
+    def compact_text(self, *, now: float | None = None) -> str:
+        self.prune(now=now)
         if not self.players:
             return "No players connected"
         ordered = sorted(
