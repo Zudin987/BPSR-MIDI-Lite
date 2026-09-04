@@ -16,6 +16,7 @@ from playback_arranger_refinements import install_arranger_refinements
 from playback_calibration_guidance import install_guided_calibration
 from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
+from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
 from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
@@ -43,6 +44,7 @@ install_adaptive_arranger(app)
 install_arranger_refinements(app)
 install_adaptive_pressure_model(app)
 install_adaptive_arranger_ui(app)
+install_evidence_refinements(app)
 install_calibration_lab(app)
 install_guided_calibration(app)
 install_calibration_provenance(app)
