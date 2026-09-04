@@ -30,10 +30,10 @@ from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
-# v3.4 keeps the verified v3.3 timing/safety layer, adds evidence-driven
-# arrangement refinements, and ships the responsive product UI overhaul.
-# The feature/band-mode-v35 branch layers the experimental Band Mode on top.
-app.APP_VERSION = "3.4.0"
+# The feature branch is intentionally a separate compatibility identity from
+# stable v3.4. Earlier Band betas used the stable version string even though
+# their arranger contract differed; v4 must never silently mix with those rooms.
+app.APP_VERSION = "3.5.0-beta-arr4"
 
 install_online_search_bridge()
 install_modern_ui(app)
