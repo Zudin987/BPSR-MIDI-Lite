@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
 from local_search_integration import install_local_search_integration
@@ -53,6 +54,7 @@ install_calibration_provenance(app)
 install_studio_audio_latency(app)
 install_product_ui_overhaul(app)
 install_persistent_library(app)
+install_band_mode(app)
 
 
 if __name__ == "__main__":
