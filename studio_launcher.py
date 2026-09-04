@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import app
+from band_runtime_hardening import install_band_runtime_hardening
 from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
@@ -55,6 +56,7 @@ install_studio_audio_latency(app)
 install_product_ui_overhaul(app)
 install_persistent_library(app)
 install_band_mode(app)
+install_band_runtime_hardening(app)
 
 
 if __name__ == "__main__":
