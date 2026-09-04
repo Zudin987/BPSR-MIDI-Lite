@@ -5,7 +5,15 @@ import playback_adaptive as adaptive
 import playback_evidence_refinements as evidence
 
 
-def _candidate(start: float, pitch: int, track: int, *, role: str = "harmony", name: str = "Piano"):
+def _candidate(
+    start: float,
+    pitch: int,
+    track: int,
+    *,
+    role: str = "harmony",
+    name: str = "Piano",
+    program: int = 0,
+):
     return adaptive._CandidateMeta(
         start=start,
         pitch=pitch,
@@ -13,7 +21,7 @@ def _candidate(start: float, pitch: int, track: int, *, role: str = "harmony", n
         track_index=track,
         track_name=name,
         channel=0,
-        program=0,
+        program=program,
         role=role,
     )
 
@@ -43,12 +51,60 @@ def test_two_hand_polyphonic_piano_recovers_top_melody_and_low_bass_envelopes() 
     assert all(item.role in {"bass", "harmony"} for item in lower)
 
 
+def test_separated_piano_lines_promote_unknown_lower_track_to_bass() -> None:
+    candidates = []
+    for index in range(12):
+        start = index * 0.25
+        candidates.append(
+            _candidate(start, 78 + index % 5, 0, role="melody", name="Piano")
+        )
+        candidates.append(
+            _candidate(start + 0.004, 55 + index % 7, 1, role="unknown", name="Piano")
+        )
+
+    refined = evidence._refine_polyphonic_roles(candidates)
+    upper = [item for item in refined if item.track_index == 0]
+    lower = [item for item in refined if item.track_index == 1]
+
+    assert {item.role for item in upper} == {"melody"}
+    assert {item.role for item in lower} == {"bass"}
+
+
+def test_separated_non_keyboard_lines_are_not_reclassified() -> None:
+    candidates = []
+    for index in range(12):
+        start = index * 0.25
+        candidates.append(
+            _candidate(start, 78 + index % 4, 0, role="melody", name="Track", program=40)
+        )
+        candidates.append(
+            _candidate(start + 0.004, 54 + index % 5, 1, role="unknown", name="Track", program=40)
+        )
+
+    refined = evidence._refine_polyphonic_roles(candidates)
+    assert {item.role for item in refined if item.track_index == 0} == {"melody"}
+    assert {item.role for item in refined if item.track_index == 1} == {"unknown"}
+
+
 def test_explicit_harmony_name_is_never_rewritten_as_envelope_role() -> None:
     candidates = []
     for index in range(6):
         start = index * 0.25
         for pitch in (48, 52, 55):
             candidates.append(_candidate(start, pitch, 0, name="Harmony"))
+    refined = evidence._refine_polyphonic_roles(candidates)
+    assert {item.role for item in refined} == {"harmony"}
+
+
+def test_dense_non_keyboard_harmony_is_not_rewritten_as_piano_hands() -> None:
+    candidates = []
+    for index in range(6):
+        start = index * 0.25
+        for pitch in (67, 71, 74):
+            candidates.append(_candidate(start, pitch, 0, name="Track", program=48))
+        for pitch in (38, 43, 50):
+            candidates.append(_candidate(start, pitch, 1, name="Track", program=48))
+
     refined = evidence._refine_polyphonic_roles(candidates)
     assert {item.role for item in refined} == {"harmony"}
 
