@@ -18,6 +18,7 @@ from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
+from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
@@ -43,6 +44,7 @@ install_calibration_lab(app)
 install_guided_calibration(app)
 install_calibration_provenance(app)
 install_product_ui_overhaul(app)
+install_persistent_library(app)
 
 
 if __name__ == "__main__":
