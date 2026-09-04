@@ -22,6 +22,7 @@ from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
+from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
@@ -51,6 +52,7 @@ install_guided_calibration(app)
 install_calibration_provenance(app)
 install_studio_audio_latency(app)
 install_product_ui_overhaul(app)
+install_persistent_library(app)
 
 
 if __name__ == "__main__":
