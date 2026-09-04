@@ -55,6 +55,7 @@ def test_roster_accepts_matching_ready_players() -> None:
         expected_hash="abc",
         expected_version="3.4.0",
         expected_speed=100,
+        now=10.0,
     ) == []
 
 
@@ -77,6 +78,7 @@ def test_roster_blocks_mismatch_unready_duplicate_and_unsynced() -> None:
         expected_hash="abc",
         expected_version="3.4.0",
         expected_speed=100,
+        now=10.0,
     )
     assert "Everyone must be Ready" in issues
     assert "Every player needs a synchronized clock" in issues
@@ -95,8 +97,16 @@ def test_roster_blocks_drums_until_mapping_is_verified() -> None:
         expected_version="3.4.0",
         expected_speed=100,
         drums_supported=False,
+        now=10.0,
     )
     assert "BPSR drum mapping is not configured yet" in issues
+
+
+def test_stale_players_are_pruned_on_the_same_injected_clock() -> None:
+    roster = band_sync.BandRoster()
+    roster.apply(_state("old", "keyboard"), now=10.0)
+    roster.prune(now=40.1)
+    assert roster.players == {}
 
 
 def test_start_delay_uses_clock_offset(monkeypatch) -> None:
