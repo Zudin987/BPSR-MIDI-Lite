@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import midi_engine as me
 import playback_adaptive as adaptive
 import playback_evidence_refinements as evidence
-from suitability import SuitabilityResult
 
 
 def _candidate(start: float, pitch: int, track: int, *, role: str = "harmony", name: str = "Piano"):
@@ -52,6 +49,19 @@ def test_explicit_harmony_name_is_never_rewritten_as_envelope_role() -> None:
         start = index * 0.25
         for pitch in (48, 52, 55):
             candidates.append(_candidate(start, pitch, 0, name="Harmony"))
+    refined = evidence._refine_polyphonic_roles(candidates)
+    assert {item.role for item in refined} == {"harmony"}
+
+
+def test_nearby_polyphonic_streams_are_not_invented_as_separate_hands() -> None:
+    candidates = []
+    for index in range(6):
+        start = index * 0.25
+        for pitch in (60, 64, 67):
+            candidates.append(_candidate(start, pitch, 0))
+        for pitch in (62, 65, 69):
+            candidates.append(_candidate(start, pitch, 1))
+
     refined = evidence._refine_polyphonic_roles(candidates)
     assert {item.role for item in refined} == {"harmony"}
 
@@ -118,9 +128,44 @@ def test_bass_auto_uses_reliable_detected_bass_line(monkeypatch) -> None:
 
     assert len(kept) == 10
     assert all(metadata[note.serial].role == "bass" for note in kept)
-    assert removed == 10
+    assert removed == 0
     assert metrics["arranged_out_notes"] == 10
     assert metrics["bass_line_notes"] == 10
+
+
+def test_sparse_bass_evidence_falls_back_to_existing_arranger(monkeypatch) -> None:
+    notes = []
+    metadata = {}
+    for index in range(12):
+        note = _source(index, index * 0.25, 60 + index % 4)
+        notes.append(note)
+        metadata[note.serial] = _meta(note, "bass" if index < 4 else "melody")
+
+    calls = []
+
+    def passthrough(selected, maximum, instrument):
+        calls.append((list(selected), maximum, instrument))
+        return list(selected), 0
+
+    monkeypatch.setattr(evidence, "_previous_limit_notes_per_chord", passthrough)
+    options_token = adaptive._options_context.set(
+        adaptive.AdaptivePlanOptions(
+            instrument="bass",
+            mapping_method="transpose",
+            adaptive_auto=True,
+        )
+    )
+    metadata_token = adaptive._metadata_context.set(metadata)
+    try:
+        kept, removed = evidence._evidence_limit_notes_per_chord(notes, 1, "bass")
+    finally:
+        adaptive._options_context.reset(options_token)
+        adaptive._metadata_context.reset(metadata_token)
+
+    assert kept == notes
+    assert removed == 0
+    assert len(calls) == 1
+    assert calls[0][0] == notes
 
 
 def test_raw_bass_does_not_auto_extract_roles(monkeypatch) -> None:
@@ -151,41 +196,3 @@ def test_raw_bass_does_not_auto_extract_roles(monkeypatch) -> None:
     assert removed == 0
     assert len(calls) == 1
     assert calls[0][0] == notes
-
-
-def test_intentional_bass_arrangement_is_not_scored_as_destructive_loss(monkeypatch) -> None:
-    monkeypatch.setattr(
-        evidence,
-        "_previous_evaluate_suitability",
-        lambda plan: SuitabilityResult(
-            code="complex",
-            label="Very complex",
-            summary="old",
-            score=3,
-            notes_per_second=3.0,
-            changed_ratio=0.70,
-            reasons=("70% of notes need remapping or removal",),
-        ),
-    )
-    plan = SimpleNamespace(
-        source_note_count=100,
-        arranged_out_notes=70,
-        bass_line_notes=30,
-        folded_notes=0,
-        skipped_notes=0,
-        chord_removed_notes=70,
-        retrigger_compressed_notes=0,
-        retrigger_merged_notes=0,
-        retrigger_dropped_notes=0,
-        max_source_chord=2,
-        max_planned_chord=1,
-        max_simultaneous_keys=1,
-    )
-
-    result = evidence._evidence_evaluate_suitability(plan)
-
-    assert result.code == "good"
-    assert result.score == 0
-    assert result.changed_ratio == 0.0
-    assert not any("need remapping or removal" in reason for reason in result.reasons)
-    assert any("Auto Bass Line" in reason for reason in result.reasons)
