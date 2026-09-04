@@ -7,8 +7,11 @@ import gaming_runtime_2026 as gaming_runtime
 import gaming_ui_2026 as gaming_ui
 
 
-_LIBRARY_WIDTH = 260
-_MIN_WINDOW_WIDTH = 820
+# Keep the Library permanently useful without allowing large notebook/tree
+# requested sizes to consume most of the application window.
+_LIBRARY_WIDTH = 350
+_CENTER_MIN_WIDTH = 520
+_MIN_WINDOW_WIDTH = 940
 
 
 def _force_library_open(app: Any) -> None:
@@ -18,6 +21,11 @@ def _force_library_open(app: Any) -> None:
         return
     try:
         body.columnconfigure(0, minsize=_LIBRARY_WIDTH, weight=0)
+        body.columnconfigure(1, minsize=_CENTER_MIN_WIDTH, weight=1)
+        panel.configure(width=_LIBRARY_WIDTH)
+        # The Local/Online/Bookmarks children can have a very large requested
+        # width. Do not let that request resize the whole Library column.
+        panel.grid_propagate(False)
         panel.grid()
         app._gaming_library_visible = True
     except tk.TclError:
@@ -43,9 +51,9 @@ def _persistent_responsive_layout(app: Any, width: int) -> None:
     """Keep Library visible at every supported size; only manage Settings."""
     _force_library_open(app)
 
-    # Product UI owns the Settings drawer. On a very narrow window, close the
-    # drawer rather than sacrificing the permanent Library or main player.
-    if width < 760 and bool(getattr(app, "_gaming_settings_visible", False)):
+    # Settings is an overlay drawer. On the narrowest supported window, close
+    # it instead of sacrificing either the permanent Library or main player.
+    if width < _MIN_WINDOW_WIDTH and bool(getattr(app, "_gaming_settings_visible", False)):
         try:
             import ui_product_overhaul_v34 as product_ui
 
@@ -53,7 +61,6 @@ def _persistent_responsive_layout(app: Any, width: int) -> None:
         except Exception:
             pass
 
-    # If Settings remains open, keep its overlay width responsive.
     if bool(getattr(app, "_gaming_settings_visible", False)):
         panel = getattr(app, "_gaming_settings_panel", None)
         if panel is not None:
