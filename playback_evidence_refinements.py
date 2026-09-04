@@ -63,13 +63,40 @@ def _candidate_stream_key(candidate: Any) -> tuple[int, int, int]:
     return int(candidate.track_index), int(candidate.channel), int(candidate.program)
 
 
+def _stream_chord_ratio(notes: list[Any]) -> float:
+    if not notes:
+        return 0.0
+    groups = _attack_groups_candidates(notes)
+    clustered = sum(len(group) for group in groups if len(group) > 1)
+    return clustered / len(notes)
+
+
+def _is_keyboard_like_stream(notes: list[Any]) -> bool:
+    """Return True only for streams where piano-hand inference is defensible."""
+    if not notes:
+        return False
+    names = " ".join(str(note.track_name).casefold() for note in notes)
+    if any(word in names for word in ("piano", "keyboard", "keys")):
+        return True
+    programs = {int(note.program) for note in notes}
+    return bool(programs) and all(0 <= program <= 7 for program in programs)
+
+
 def _is_generic_chord_stream(notes: list[Any]) -> bool:
-    if len(notes) < 12:
+    if len(notes) < 12 or not _is_keyboard_like_stream(notes):
         return False
     if any(arranger_refinements._name_role(str(note.track_name)) is not None for note in notes):
         return False
     harmony = sum(getattr(note, "role", "unknown") == "harmony" for note in notes)
     return harmony / max(1, len(notes)) >= 0.80
+
+
+def _is_relative_line_stream(notes: list[Any]) -> bool:
+    if len(notes) < 8 or not _is_keyboard_like_stream(notes):
+        return False
+    if any(arranger_refinements._name_role(str(note.track_name)) is not None for note in notes):
+        return False
+    return _stream_chord_ratio(notes) <= 0.18
 
 
 def _mark_stream_envelope(
@@ -89,14 +116,52 @@ def _mark_stream_envelope(
         role_by_identity[id(chosen)] = role
 
 
-def _refine_polyphonic_roles(candidates: list[Any]) -> list[Any]:
-    """Recover top-melody and low-bass envelopes from dense generic piano.
+def _infer_relative_keyboard_lines(
+    by_stream: dict[tuple[int, int, int], list[Any]],
+    role_by_identity: dict[int, str],
+) -> None:
+    """Recover a low accompaniment line when absolute-pitch rules miss it.
 
-    The v3.3 stream classifier intentionally calls chord-heavy material
-    ``harmony``. That is safe for generic accompaniment, but on a two-hand
-    piano MIDI it erases both outer voices. Keep inner notes as harmony while
-    exposing one top and one bottom voice per attack to the existing role-aware
-    continuity and collision scorers.
+    Real piano reductions often contain two almost-monophonic tracks. A lower
+    hand around B2-B3 is too high for the old absolute ``median <= 48`` bass
+    rule, even when it is clearly the low counterpart to a much higher melody.
+    Only infer this relationship for piano/keyboard-like streams with a large
+    register split, so orchestral or same-register counterpoint is untouched.
+    """
+    lines = [notes for notes in by_stream.values() if _is_relative_line_stream(notes)]
+    if len(lines) < 2:
+        return
+
+    ordered = sorted(lines, key=lambda notes: float(median(int(item.pitch) for item in notes)))
+    low = ordered[0]
+    high = ordered[-1]
+    low_median = float(median(int(item.pitch) for item in low))
+    high_median = float(median(int(item.pitch) for item in high))
+    if high_median - low_median < 12.0 or low_median > 62.0 or high_median < 64.0:
+        return
+
+    low_role = str(getattr(low[0], "role", "unknown"))
+    high_role = str(getattr(high[0], "role", "unknown"))
+    if low_role not in {"unknown", "bass"} or high_role not in {"unknown", "melody"}:
+        return
+
+    if low_role == "unknown":
+        for note in low:
+            role_by_identity[id(note)] = "bass"
+    if high_role == "unknown":
+        for note in high:
+            role_by_identity[id(note)] = "melody"
+
+
+def _refine_polyphonic_roles(candidates: list[Any]) -> list[Any]:
+    """Recover missing outer voices from piano/keyboard reductions.
+
+    Two evidence-backed cases are handled conservatively:
+    * dense two-hand piano streams that were both labelled ``harmony``;
+    * separated, mostly-monophonic upper/lower piano lines where the lower line
+      sits above the old absolute bass threshold.
+
+    Explicit track roles and non-keyboard material are never rewritten.
     """
 
     if not candidates:
@@ -106,11 +171,10 @@ def _refine_polyphonic_roles(candidates: list[Any]) -> list[Any]:
     for candidate in candidates:
         by_stream[_candidate_stream_key(candidate)].append(candidate)
 
-    generic = [notes for notes in by_stream.values() if _is_generic_chord_stream(notes)]
-    if not generic:
-        return list(candidates)
-
     role_by_identity: dict[int, str] = {}
+    _infer_relative_keyboard_lines(by_stream, role_by_identity)
+
+    generic = [notes for notes in by_stream.values() if _is_generic_chord_stream(notes)]
     if len(generic) >= 2:
         ordered = sorted(generic, key=lambda notes: float(median(int(item.pitch) for item in notes)))
         low = ordered[0]
@@ -121,7 +185,7 @@ def _refine_polyphonic_roles(candidates: list[Any]) -> list[Any]:
         if high_median - low_median >= 7.0:
             _mark_stream_envelope(role_by_identity, high, role="melody", high=True)
             _mark_stream_envelope(role_by_identity, low, role="bass", high=False)
-    else:
+    elif len(generic) == 1:
         stream = generic[0]
         pitches = [int(item.pitch) for item in stream]
         if pitches and max(pitches) - min(pitches) >= 24:
