@@ -1,5 +1,16 @@
 # Changelog
 
+## v3.4.0
+
+- Overhauled the main product UI around the real playback workflow: permanent MIDI Library, primary BPSR Instrument/Category setup, compact Song Check metrics, Live MIDI preview, and always-visible playback controls.
+- Made the Library permanently visible at a controlled 400 px width while protecting the main workspace from sidebar-driven clipping; Settings now opens as an overlay drawer instead of squeezing Song Check and Live MIDI.
+- Replaced long primary Song Check sentences with compact **Playable / Pitch / Removed / Safety** metrics, while keeping technical conversion details available on demand and separating coherent transposition from local pitch fitting.
+- Added evidence-driven piano/keyboard role recovery from real BPSR recordings and representative MIDIs, including conservative outer-voice recovery for dense two-hand arrangements and register-separated keyboard lines.
+- Kept intentional musical arrangement changes separate from notes lost to BPSR physical limits so suitability and diagnostics do not misreport deliberate arranging as conversion failure.
+- Preserved the verified no-page playback safeguards, focus-loss key release, F10 emergency stop, adaptive timing, and existing Guitar/Keyboard mapping behavior.
+- Added regression coverage for the responsive product UI and permanent Library layout, and hardened Windows Lite/Studio CI so future `ui_*.py`-only changes cannot bypass build/test validation.
+- Kept Lite lightweight: Studio-only Basic Pitch, ONNX, FFmpeg, yt-dlp, Deno, and audio runtimes remain out of the Lite build.
+
 ## v3.1.2
 
 - Defaulted fresh installs and unspecific legacy settings to Category 1 instead of silently assuming the highest Piano, Guitar, or Bass unlock.
@@ -34,7 +45,7 @@
 - A typed title now stays inside BPSR MIDI Lite and clearly explains that Online Sequencer does not publish an app-accessible title-search API.
 - Kept direct link/ID playback, automatic BPSR fit analysis, temporary cache, bookmarks, Save to Local, Local MIDI isolation, and dark-mode table/notebook colors unchanged.
 - Removed the older hidden/legacy **Find Songs Online** browser action as well, so the application has no Online Sequencer browser launcher.
-- Added regressions for the one-action UI, no-browser behavior, direct link/ID resolution, Cloudflare data rejection, and dark mode.
+- Added regressions for the one-action UI, no-browser behavior, direct-ID resolution, Cloudflare data rejection, and dark mode.
 
 ## v3.0.2
 
