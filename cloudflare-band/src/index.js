@@ -98,6 +98,14 @@ export default {
     if (!parsed) return new Response("Not found", { status: 404 });
     const { room, tail } = parsed;
 
+    if (tail === "create" && request.method === "POST") {
+      return roomStub(env, room).fetch("https://internal/room-create", { method: "POST" });
+    }
+
+    if (tail === "exists" && request.method === "GET") {
+      return roomStub(env, room).fetch("https://internal/room-exists", { method: "GET" });
+    }
+
     if (tail === "ws") {
       if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
         return new Response("Expected WebSocket", { status: 426 });
@@ -125,10 +133,12 @@ export class BandRoom extends DurableObject {
     this.env = env;
     this.hostId = null;
     this.midiMeta = null;
+    this.createdAt = null;
 
     this.ctx.blockConcurrencyWhile(async () => {
       this.hostId = (await this.ctx.storage.get("host_id")) || null;
       this.midiMeta = (await this.ctx.storage.get("midi_meta")) || null;
+      this.createdAt = (await this.ctx.storage.get("created_at")) || null;
     });
   }
 
@@ -173,6 +183,8 @@ export class BandRoom extends DurableObject {
   }
 
   async storeMidi(request, token) {
+    if (!this.createdAt) return json({ error: "room not found" }, 404);
+
     const expectedSize = Number(request.headers.get("content-length") || "0");
     const expectedHash = String(request.headers.get("x-midi-sha256") || "").toLowerCase();
     const filename = safeFilename(request.headers.get("x-midi-filename"));
@@ -242,6 +254,7 @@ export class BandRoom extends DurableObject {
   }
 
   async loadMidi(token) {
+    if (!this.createdAt) return new Response("Not found", { status: 404 });
     const meta = this.midiMeta || (await this.ctx.storage.get("midi_meta")) || null;
     this.midiMeta = meta;
     if (!meta || String(meta.token || "") !== token) {
@@ -291,6 +304,21 @@ export class BandRoom extends DurableObject {
     const url = new URL(request.url);
 
     if (url.hostname === "internal") {
+      if (url.pathname === "/room-create" && request.method === "POST") {
+        if (this.createdAt) return json({ error: "room already exists" }, 409);
+        this.createdAt = Date.now();
+        await this.ctx.storage.put("created_at", this.createdAt);
+        await this.touch();
+        return json({ ok: true, created_at: this.createdAt });
+      }
+
+      if (url.pathname === "/room-exists" && request.method === "GET") {
+        const createdAt = this.createdAt || (await this.ctx.storage.get("created_at")) || null;
+        this.createdAt = createdAt;
+        if (!createdAt) return json({ exists: false }, 404);
+        return json({ exists: true, created_at: createdAt });
+      }
+
       const midiMatch = url.pathname.match(/^\/midi\/([0-9a-fA-F]{64})$/);
       if (midiMatch && request.method === "PUT") {
         return this.storeMidi(request, midiMatch[1].toLowerCase());
@@ -301,6 +329,7 @@ export class BandRoom extends DurableObject {
       return new Response("Not found", { status: 404 });
     }
 
+    if (!this.createdAt) return new Response("Room not found", { status: 404 });
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
       return new Response("Expected WebSocket", { status: 426 });
     }
@@ -408,5 +437,6 @@ export class BandRoom extends DurableObject {
     await this.ctx.storage.deleteAll();
     this.hostId = null;
     this.midiMeta = null;
+    this.createdAt = null;
   }
 }
