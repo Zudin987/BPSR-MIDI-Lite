@@ -9,6 +9,7 @@ on:
       - "modern_launcher.py"
       - "modern_ui.py"
       - "gaming_*.py"
+      - "ui_*.py"
       - "online_*.py"
       - "playback_*.py"
       - "midi_engine.py"
@@ -25,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: "Optional version to publish, for example v3.3.0. Leave blank to build only."
+        description: "Optional version to publish, for example v3.4.0. Leave blank to build only."
         required: false
         type: string
 

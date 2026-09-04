@@ -50,9 +50,11 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_advanced_playback_profile(app)" in launcher
         assert "install_adaptive_arranger(app)" in launcher
         assert "install_calibration_provenance(app)" in launcher
+        assert "install_product_ui_overhaul(app)" in launcher
+        assert "install_persistent_library(app)" in launcher
 
-    assert 'app.APP_VERSION = "3.3.1"' in lite
-    assert 'app.APP_VERSION = "Studio 0.4.1-experimental-beta"' in studio
+    assert 'app.APP_VERSION = "3.4.0"' in lite
+    assert 'app.APP_VERSION = "Studio 0.4.2-experimental-beta"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:
@@ -63,7 +65,7 @@ def test_online_search_ui_is_search_first_with_verify_fallback() -> None:
     assert "No link, ID, or cookie copying is needed." in ui
 
 
-def test_release_workflows_are_manual_and_not_hardcoded_to_old_patch() -> None:
+def test_release_workflows_are_manual_and_cover_product_ui_changes() -> None:
     lite = Path(".github/workflows/build-windows.yml").read_text(encoding="utf-8")
     studio = Path(".github/workflows/build-studio.yml").read_text(encoding="utf-8")
 
@@ -72,3 +74,7 @@ def test_release_workflows_are_manual_and_not_hardcoded_to_old_patch() -> None:
         assert "inputs.release_version != ''" in workflow
         assert "[release v3.1.1]" not in workflow
         assert "RELEASE_VERSION: ${{ inputs.release_version }}" in workflow
+
+    # New product UI modules must never bypass the Windows validation matrix.
+    assert '- "ui_*.py"' in lite
+    assert studio.count('- "ui_*.py"') >= 2

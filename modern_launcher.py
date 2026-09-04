@@ -16,12 +16,15 @@ from playback_arranger_refinements import install_arranger_refinements
 from playback_calibration_guidance import install_guided_calibration
 from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
+from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
+from ui_persistent_library import install_persistent_library
+from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
-# v3.3 keeps the released v3.2 BPSR timing/safety layer and adds the adaptive
-# musical arranger plus verified per-instrument in-game calibration on top.
-app.APP_VERSION = "3.3.1"
+# v3.4 keeps the verified v3.3 timing/safety layer, adds evidence-driven
+# arrangement refinements, and ships the responsive product UI overhaul.
+app.APP_VERSION = "3.4.0"
 
 install_online_search_bridge()
 install_modern_ui(app)
@@ -36,9 +39,12 @@ install_adaptive_arranger(app)
 install_arranger_refinements(app)
 install_adaptive_pressure_model(app)
 install_adaptive_arranger_ui(app)
+install_evidence_refinements(app)
 install_calibration_lab(app)
 install_guided_calibration(app)
 install_calibration_provenance(app)
+install_product_ui_overhaul(app)
+install_persistent_library(app)
 
 
 if __name__ == "__main__":
