@@ -38,15 +38,23 @@ def main():
             assert audio.workspace.winfo_rooty() + audio.workspace.winfo_height() <= audio.workspace.winfo_screenheight()
             assert audio.manual_button.winfo_viewable() and audio.source_tree.winfo_viewable()
             assert audio.workspace_scrollbar.winfo_viewable() and audio.source_scrollbar.winfo_viewable()
+            assert audio.source_hscrollbar.winfo_viewable() and audio.summary_hscrollbar.winfo_viewable()
             assert str(audio.acquire_button.cget("state")) == "disabled"
             assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width()
 
             # A 640x480 window must keep both the manual input at the top and
             # the export/footer controls reachable through vertical scrolling.
+            # Toolbars must reflow instead of letting their right-most controls
+            # disappear, and wide tables must remain horizontally scrollable.
             audio.workspace.geometry("640x480+0+0")
             audio.workspace_canvas.yview_moveto(0)
             pump()
             assert audio.manual_button.winfo_rooty() >= audio.workspace.winfo_rooty()
+            assert int(audio.search_button.grid_info()["row"]) >= 1
+            assert int(audio.rearrange_button.grid_info()["row"]) >= 1
+            window_right = audio.workspace.winfo_rootx() + audio.workspace.winfo_width()
+            for button in audio.convert_button.master.winfo_children():
+                assert button.winfo_rootx() + button.winfo_width() <= window_right
             window_bottom = audio.workspace.winfo_rooty() + audio.workspace.winfo_height()
             footer_bottom = audio.save_button.winfo_rooty() + audio.save_button.winfo_height()
             if footer_bottom > window_bottom:
@@ -86,15 +94,17 @@ def main():
             reports.mkdir(exist_ok=True)
             (reports/"ui-checks.json").write_text(json.dumps({"tab": "audio_band", "library_width": 400,
                 "manual_audio_visible": True, "music_resolver_visible": True,
-                "fits_desktop": True, "small_window_footer_access": True, "resolver_scrollbar": True,
-                "cancel_current_job": True, "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
+                "fits_desktop": True, "small_window_footer_access": True,
+                "small_window_toolbar_reflow": True, "horizontal_table_scroll": True,
+                "resolver_scrollbar": True, "cancel_current_job": True,
+                "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
             try:
                 from PIL import ImageGrab
                 x, y = audio.workspace.winfo_rootx(), audio.workspace.winfo_rooty()
                 ImageGrab.grab((x, y, x+audio.workspace.winfo_width(), y+audio.workspace.winfo_height())).save(reports/"audio-band-workspace.png")
             except OSError as exc:
                 print("Desktop capture unavailable:", exc)
-            print("Studio tab, preserved Library width, current-job cancellation, four-part summary and cached re-arrangement verified.")
+            print("Studio tab, responsive 640x480 workspace, preserved Library width, cancellation and cached re-arrangement verified.")
         finally:
             app.destroy()
 
