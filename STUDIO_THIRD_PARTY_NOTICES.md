@@ -22,7 +22,7 @@ License: MIT (see the ONNX Runtime package/project license distributed by its ma
 
 Project: `imageio/imageio-ffmpeg`
 
-Purpose: supplies the platform FFmpeg executable used to convert downloaded audio into WAV for transcription.
+Purpose: supplies the platform FFmpeg executable used to prepare audio for transcription and is reused by the isolated spotDL runtime.
 
 License for the Python wrapper: BSD 2-Clause.
 
@@ -40,23 +40,37 @@ License: BSD 3-Clause.
 
 Studio uses SoundCard 0.4.6. The latency diagnostic records the user's normal Windows output mix only while the user explicitly runs the test. It does not inspect BPSR memory or network traffic.
 
+## spotDL
+
+Project: `spotDL/spotify-downloader`
+
+Purpose: Studio's optional song-search/download source for Audio → Band. spotDL uses Spotify metadata to identify tracks and matches/downloads audio from YouTube / YouTube Music.
+
+License: MIT.
+
+Studio does **not** bundle spotDL into the main EXE. On first spotDL search, Studio creates an isolated managed Python 3.11 runtime and installs the pinned `spotdl==4.5.2` package there. The runtime is separate from Lite and from every AI/transcription environment.
+
+spotDL's own project documentation states that users are responsible for ensuring downloads are authorized and that it does not support unauthorized downloading of copyrighted material. Studio therefore shows an explicit rights confirmation before the selected spotDL result is downloaded and analyzed.
+
 ## yt-dlp
 
 Project: `yt-dlp/yt-dlp`
 
-Purpose: YouTube search metadata and public audio retrieval.
+Purpose: YouTube search/retrieval in existing Studio features and the YouTube audio backend used transitively by spotDL.
 
-Studio does not bundle yt-dlp into the source tree. On first YouTube use it downloads the official current nightly Windows executable from the yt-dlp GitHub release and verifies the SHA-256 published by that release.
+Studio does not bundle a second yt-dlp copy into the source tree. Existing direct YouTube tooling manages its own verified executable, while the isolated spotDL runtime receives the yt-dlp Python dependency required by the pinned spotDL package.
 
-The official executable contains yt-dlp's EJS challenge scripts. The yt-dlp source project is published under the Unlicense. Its packaged release binaries may include components under additional licenses; see yt-dlp's `THIRD_PARTY_LICENSES.txt`.
+The yt-dlp source project is published under the Unlicense. Its packaged release binaries may include components under additional licenses; see yt-dlp's `THIRD_PARTY_LICENSES.txt`.
 
 ## Deno
 
 Project: `denoland/deno`
 
-Purpose: JavaScript runtime used by yt-dlp's current YouTube challenge support.
+Purpose: JavaScript runtime recommended by current spotDL/yt-dlp releases for YouTube challenge support.
 
-Studio downloads the official Windows x64 Deno runtime from the Deno GitHub release on first YouTube use and verifies the release SHA-256 before extraction. See the Deno project for its current MIT license and notices.
+When Studio first installs the isolated spotDL runtime it also attempts spotDL's official `--download-deno` setup. Failure to install Deno does not disable spotDL completely, but Studio warns that a small number of YouTube matches may fail without it.
+
+See the Deno project for its current MIT license and notices.
 
 ## Other dependencies
 
@@ -67,17 +81,10 @@ The built-in spectral drum/beat fallback is project code.
 
 Studio also contains dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.
 
-## Online music services
+## Online music source behavior
 
-The Audio → Band Music Resolver uses HTTPS calls implemented with Python's
-standard library; no provider SDK is redistributed. Apple Music/iTunes Search
-is used only for catalogue discovery, never as an audio downloader. A
-MassiveMusic/7digital connection requires the user's own commercial API
-agreement and accesses purchased media only when that partner endpoint is
-enabled. Bandcamp access is limited to the user's own collection through its
-OpenSubsonic beta credentials.
+The Audio → Band search UI now exposes **spotDL only**. Apple Music, MassiveMusic/7digital and Bandcamp resolver controls are no longer part of the Studio search flow. Manual local MP3/WAV/FLAC/M4A/OGG input remains permanently available and requires no spotDL setup.
 
-Each service's current API and content terms apply independently. SoundCloud
-audio is not integrated because SoundCloud's API terms prohibit feeding its
-content into AI audio source separation. Spotify streams and other protected
-streaming content are not downloaded or converted by the Music Resolver.
+The spotDL search path uses Spotify metadata for track identity and then asks spotDL to match audio from YouTube / YouTube Music. Studio does not download Spotify audio streams. The selected full audio file is checked for type/signature, size and SHA-256 before it enters the Audio → Band pipeline, then is kept in Studio's verified acquisition cache.
+
+Each upstream service's current terms and the user's local law/rights still apply independently.
