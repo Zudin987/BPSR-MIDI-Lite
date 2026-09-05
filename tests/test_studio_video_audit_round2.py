@@ -67,7 +67,7 @@ try:
     assert not any(text == "Songs" for text in mapped_text), mapped_text[:20]
 
     # The collapsed Song Check must not leave an empty Arrangement impact title
-    # and divider. They return only with Details.
+    # or decorative divider. Details restores only the useful title/content.
     title = app._ux_arrangement_impact_title
     assert title is not None and not title.winfo_ismapped()
     anchor = app._product_impact_anchor
@@ -75,7 +75,7 @@ try:
     full_ui._toggle_song_details(app)
     pump(app)
     assert title.winfo_ismapped()
-    assert anchor.winfo_ismapped()
+    assert not anchor.winfo_ismapped()
     full_ui._toggle_song_details(app)
     pump(app)
     assert not title.winfo_ismapped()
