@@ -15,6 +15,17 @@ def _close_band_if_needed(app: Any) -> None:
         full_ui._hide_feature_overlay(app, "band")
 
 
+def _force_unmap(panel: Any) -> None:
+    """Physically hide a panel even before the overlay registry knows about it."""
+    if panel is None:
+        return
+    for method_name in ("grid_remove", "pack_forget", "place_forget"):
+        try:
+            getattr(panel, method_name)()
+        except (tk.TclError, AttributeError):
+            pass
+
+
 def _dedupe_songs_button(app: Any) -> None:
     """Keep one top-bar Songs action instead of a hidden Library duplicate."""
     songs = getattr(app, "_ux_songs_button", None)
@@ -37,11 +48,16 @@ def install_overlay_coordinator() -> None:
     if getattr(full_ui, "_overlay_coordinator_2026_installed", False):
         return
 
+    import playback_advanced_ui as advanced_ui
+    import playback_calibration_ui as calibration_ui
+
     original_settings = full_ui._set_settings_visible
     original_feature = full_ui._show_feature_overlay
     original_library = full_ui._show_library
     original_root = full_ui._responsive_root
     original_finalize = full_ui._finalize_app_ui
+    original_custom_show = advanced_ui._show_custom_panel
+    original_calibration_show = calibration_ui._show_panel
 
     def set_settings_visible(app: Any, visible: bool) -> None:
         # The product layout starts with Settings marked visible so the first
@@ -87,6 +103,25 @@ def install_overlay_coordinator() -> None:
             full_ui._hide_feature_overlay(app, "calibration")
         original_library(app, user_opened=user_opened)
 
+    def show_custom_panel(app: Any, visible: bool) -> None:
+        # Advanced UI creates and grids/packs the panel before calling its final
+        # hide during App construction. At that moment the final overlay state
+        # has never registered the panel, so the generic hide alone cannot find
+        # it. Unmap the real widget first to prevent a hidden Custom surface from
+        # leaking into Band Room or the main player on first launch.
+        if not visible:
+            _force_unmap(getattr(app, "custom_settings_frame", None))
+        original_custom_show(app, visible)
+
+    def show_calibration_panel(app: Any, visible: bool) -> None:
+        # Calibration has the same construction order as Custom tuning: its
+        # LabelFrame is initially gridded before the first hide call. Physically
+        # unmap it before delegating so it cannot remain visible beneath another
+        # overlay merely because its overlay state is not initialized yet.
+        if not visible:
+            _force_unmap(getattr(app, "_calibration_panel", None))
+        original_calibration_show(app, visible)
+
     def responsive_root(app: Any, width: int | None = None) -> None:
         # ui_full_overhaul's base compact policy hides the initially-visible
         # Settings panel below 720 px. Guard only user-opened Settings while that
@@ -113,4 +148,6 @@ def install_overlay_coordinator() -> None:
     full_ui._show_library = show_library
     full_ui._responsive_root = responsive_root
     full_ui._finalize_app_ui = finalize
+    advanced_ui._show_custom_panel = show_custom_panel
+    calibration_ui._show_panel = show_calibration_panel
     full_ui._overlay_coordinator_2026_installed = True
