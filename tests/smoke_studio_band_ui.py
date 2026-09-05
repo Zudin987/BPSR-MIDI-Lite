@@ -1,4 +1,4 @@
-"""Exercise the actual patched Studio/Tk window on the Windows build runner."""
+"""Exercise the actual patched Studio/Tk UI on the Windows build runner."""
 import json
 import os
 import sys
@@ -9,10 +9,25 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _find_text(root, text):
+    for child in root.winfo_children():
+        try:
+            if str(child.cget("text")) == text:
+                return child
+        except Exception:
+            pass
+        found = _find_text(child, text)
+        if found is not None:
+            return found
+    return None
+
+
 def main():
     with tempfile.TemporaryDirectory() as folder:
         os.environ["BPSR_STUDIO_BAND_HOME"] = str(Path(folder) / "band")
         import studio_launcher
+        import ui_full_overhaul_2026 as full_ui
+        import playback_calibration_ui
         from studio_band.arrange import ArrangementSettings, arrange, load_drum_profile
         from studio_band.export import export_arrangement
         from studio_band.music import BeatMap, MasterSong, MusicEvent
@@ -27,12 +42,52 @@ def main():
                 time.sleep(.01)
 
         try:
+            pump()
+            # Main product UI: normal desktop keeps a compact Library, but the
+            # 990 px permanent minimum is gone and small/high-DPI layouts can
+            # collapse it without losing access to Songs.
+            library_width = app._gaming_library_panel.winfo_width()
+            assert 250 <= library_width <= 370, library_width
+            assert app.minsize()[0] <= 720, app.minsize()
+            assert getattr(app, "_ux_songs_button", None) is not None, "Responsive Songs toggle missing"
+
+            app.geometry("760x540+0+0")
+            pump()
+            assert not app._gaming_library_visible, "Library did not auto-collapse for compact window"
+            app._ux_songs_button.invoke()
+            pump()
+            assert app._gaming_library_visible and app._gaming_library_panel.winfo_manager() == "place", "Songs did not reopen as compact overlay"
+            app._ux_songs_button.invoke()
+            pump()
+
+            # Settings is a scrollable overlay rather than a tall fixed right
+            # column. At a short window the last setting remains reachable.
+            app.geometry("900x520+0+0")
+            pump()
+            full_ui._set_settings_visible(app, True)
+            pump()
+            assert app._gaming_settings_panel.winfo_manager() == "place", "Settings is not an overlay"
+            full_ui._settings_scroll_command(app, "moveto", "1.0")
+            pump()
+            assert int(getattr(app, "_ux_settings_offset", 0)) >= 0
+            full_ui._set_settings_visible(app, False)
+
+            # Rare Calibration content also uses the same-window clipped/scrollable
+            # overlay rather than pushing the entire main player downward.
+            playback_calibration_ui._show_panel(app, True)
+            pump()
+            assert app._calibration_panel.winfo_manager() == "place", "Calibration did not become an overlay"
+            assert full_ui._overlay_state(app, "calibration")["visible"] is True
+            playback_calibration_ui._show_panel(app, False)
+            pump()
+
+            app.geometry("1180x650+0+0")
+            pump()
             audio = app._studio_band_audio
             app.song_source_notebook.select(audio.tab)
             audio.open_workspace()
             pump()
             assert app.song_source_var.get() == "audio_band", "Audio -> Band tab did not become active"
-            assert app._gaming_library_panel.winfo_width() == 400, "MIDI Library width changed"
             assert audio.workspace.winfo_viewable(), "Audio -> Band workspace is not visible"
             initial_geometry = audio.workspace.geometry()
             assert audio.workspace.winfo_rooty() + audio.workspace.winfo_height() <= audio.workspace.winfo_screenheight(), "Workspace extends below desktop"
@@ -43,11 +98,15 @@ def main():
             assert hasattr(audio, "source_hscrollbar") and hasattr(audio, "summary_hscrollbar"), "Wide tables have no horizontal scroll fallback"
             assert str(audio.acquire_button.cget("state")) == "disabled", "Acquire should start disabled"
             assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width(), "Footer overflows horizontally"
+            assert "availability" not in tuple(str(x) for x in audio.source_tree.cget("displaycolumns")), "Redundant action/status column still displayed"
+            if hasattr(audio, "_ux_hidden_source_combo"):
+                assert not audio._ux_hidden_source_combo.winfo_ismapped(), "One-choice source combobox is still visible"
+            assert _find_text(audio.workspace, "Models & quality…") is not None, "Advanced model controls were not renamed for users"
+            assert _find_text(audio.workspace, "Details…") is not None, "Technical details were not demoted"
 
-            # A 640x480 window must keep both the manual input at the top and
-            # the export/footer controls reachable through vertical scrolling.
-            # Toolbars must reflow instead of letting their right-most controls
-            # disappear, and wide tables must remain horizontally scrollable.
+            # A 640x480 Audio -> Band window keeps the manual input at the top
+            # and footer controls reachable through vertical scrolling. Toolbars
+            # reflow instead of clipping their right-most controls.
             audio.workspace.geometry("640x480+0+0")
             audio.workspace_canvas.yview_moveto(0)
             pump()
@@ -68,6 +127,7 @@ def main():
             audio.workspace.geometry(initial_geometry)
             audio.workspace_canvas.yview_moveto(0)
             pump()
+
             # Each new job owns a fresh Event. The actual Cancel button must
             # cancel that job rather than the Event captured during UI creation.
             old_cancel = audio.cancel
@@ -94,19 +154,35 @@ def main():
             assert not errors, errors
             reports = Path("ui-smoke-report")
             reports.mkdir(exist_ok=True)
-            (reports/"ui-checks.json").write_text(json.dumps({"tab": "audio_band", "library_width": 400,
-                "manual_audio_visible": True, "music_resolver_visible": True,
-                "fits_desktop": True, "small_window_footer_access": True,
-                "small_window_toolbar_reflow": True, "horizontal_table_scroll": True,
-                "resolver_scrollbar": True, "cancel_current_job": True,
-                "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
+            (reports/"ui-checks.json").write_text(json.dumps({
+                "tab": "audio_band",
+                "library_width": library_width,
+                "responsive_library": True,
+                "settings_scroll_overlay": True,
+                "calibration_overlay": True,
+                "manual_audio_visible": True,
+                "music_resolver_visible": True,
+                "resolver_action_column_removed": True,
+                "one_choice_source_hidden": True,
+                "fits_desktop": True,
+                "small_window_footer_access": True,
+                "small_window_toolbar_reflow": True,
+                "horizontal_table_scroll": True,
+                "resolver_scrollbar": True,
+                "cancel_current_job": True,
+                "rearrange_without_models": True,
+                "callbacks": errors,
+            }), encoding="utf-8")
             try:
                 from PIL import ImageGrab
                 x, y = audio.workspace.winfo_rootx(), audio.workspace.winfo_rooty()
                 ImageGrab.grab((x, y, x+audio.workspace.winfo_width(), y+audio.workspace.winfo_height())).save(reports/"audio-band-workspace.png")
+                app.deiconify(); app.lift(); pump(.2)
+                x, y = app.winfo_rootx(), app.winfo_rooty()
+                ImageGrab.grab((x, y, x+app.winfo_width(), y+app.winfo_height())).save(reports/"main-responsive-ui.png")
             except OSError as exc:
                 print("Desktop capture unavailable:", exc)
-            print("Studio tab, responsive 640x480 workspace, preserved Library width, cancellation and cached re-arrangement verified.")
+            print("Studio main UI, responsive overlays, 640x480 Audio -> Band, cancellation and cached re-arrangement verified.")
         finally:
             app.destroy()
 
