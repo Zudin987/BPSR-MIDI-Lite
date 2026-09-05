@@ -2,8 +2,8 @@
 
 This specifically guards defects visible in the user's 77.8-second desktop
 recording: clipped Library tabs/columns, leaking focused surfaces, detached
-Close/scroll chrome, stale Audio-tab copy, obsolete duplicate YouTube UI and
-always-visible Audio table horizontal scrollbars/progress state.
+Close/scroll chrome, compact Custom-tuning clipping, stale Audio-tab copy,
+obsolete duplicate YouTube UI and misleading Audio scroll/progress state.
 """
 from __future__ import annotations
 
@@ -49,6 +49,12 @@ def mapped_content_siblings(panel, *chrome) -> list[str]:
     return result
 
 
+def walk(root):
+    for child in root.winfo_children():
+        yield child
+        yield from walk(child)
+
+
 def main() -> None:
     reports = Path("ui-smoke-report")
     reports.mkdir(exist_ok=True)
@@ -57,6 +63,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as folder:
         os.environ["BPSR_STUDIO_BAND_HOME"] = str(Path(folder) / "band")
         import band_ui
+        import playback_advanced_ui as advanced_ui
         import studio_launcher
         import ui_full_overhaul_2026 as full_ui
 
@@ -78,6 +85,15 @@ def main() -> None:
             for index in range(len(labels)):
                 x, _y, width, _height = notebook.bbox(index)
                 assert x + width <= notebook.winfo_width() + 2, (index, labels[index], x, width, notebook.winfo_width())
+
+            nested_library_titles = []
+            for widget in walk(app._gaming_library_panel):
+                try:
+                    if widget.winfo_class() in {"TLabelframe", "Labelframe"}:
+                        nested_library_titles.append(str(widget.cget("text")))
+                except Exception:
+                    pass
+            assert "Songs" not in nested_library_titles, nested_library_titles
 
             for tree in (app.online_tree, app.bookmark_tree):
                 display = tuple(str(value) for value in tree.cget("displaycolumns"))
@@ -148,6 +164,30 @@ def main() -> None:
             calibration_ui._show_panel(app, False)
             pump(app)
 
+            # The supplied recording showed a concrete compact Custom regression:
+            # Retrigger gap and the long helper sentence extended past the right
+            # edge. Verify every mapped direct child is physically contained.
+            app.geometry("560x700+0+0")
+            pump(app)
+            advanced_ui._show_custom_panel(app, True)
+            pump(app)
+            full_ui._responsive_root(app)
+            pump(app)
+            custom = app.custom_settings_frame
+            custom_left = custom.winfo_rootx()
+            custom_right = custom_left + custom.winfo_width()
+            for widget in custom.winfo_children():
+                if not widget.winfo_ismapped():
+                    continue
+                left = widget.winfo_rootx()
+                right = left + widget.winfo_width()
+                assert left >= custom_left - 2, (str(widget), left, custom_left)
+                assert right <= custom_right + 2, (str(widget), right, custom_right)
+            assert getattr(custom, "_ux_round3_narrow", None) is True
+            capture(app, reports / "video-audit-custom-560x700.png")
+            advanced_ui._show_custom_panel(app, False)
+            pump(app)
+
             # Audio -> Band sidebar selection must not inherit the previous
             # YouTube footer instruction or expose downloader implementation in
             # the normal idle state.
@@ -163,14 +203,28 @@ def main() -> None:
             assert "yt-dlp" not in str(audio.resolver_status.get())
 
             audio.open_workspace()
-            audio.workspace.geometry("1180x760+0+0")
+            # Keep the visual capture above the Windows taskbar. The normal
+            # open_workspace code already uses screen-height headroom; this test
+            # should not intentionally force a 760px client onto a ~768px runner.
+            safe_height = min(680, max(480, int(audio.workspace.winfo_screenheight()) - 90))
+            audio.workspace.geometry(f"1180x{safe_height}+0+0")
             pump(app)
             assert audio.workspace.title() == "Audio → Band"
             assert int(float(audio.bar.cget("value"))) == 0
             assert str(audio.bar.cget("mode")) == "determinate"
             assert not audio.source_hscrollbar.winfo_ismapped(), "source horizontal scrollbar visible on wide workspace"
             assert not audio.summary_hscrollbar.winfo_ismapped(), "summary horizontal scrollbar visible on wide workspace"
-            capture(audio.workspace, reports / "video-audit-audio-band-1180x760.png")
+            audio_text = []
+            for widget in walk(audio.workspace):
+                try:
+                    value = str(widget.cget("text"))
+                except Exception:
+                    continue
+                if value:
+                    audio_text.append(value)
+            assert "Melody" in audio_text and "Separation" in audio_text, audio_text
+            assert "Main Melody" not in audio_text and "Stem Quality" not in audio_text, audio_text
+            capture(audio.workspace, reports / "video-audit-audio-band-wide.png")
 
             audio.workspace.geometry("640x480+0+0")
             pump(app)
