@@ -311,6 +311,15 @@ def test_nonzero_subprocess_retains_stderr_and_returns_immediately():
     assert "ncls needs MSVC" in failure.value.details
 
 
+def test_successful_subprocess_returns_unadorned_stdout():
+    output = run_process(
+        [sys.executable, "-c", "import sys; print('machine-readable'); sys.stderr.write('warning only\\n')"],
+        stage="test",
+        timeout=5,
+    )
+    assert output == "machine-readable\n"
+
+
 def test_live_subprocess_emits_nonfatal_stall_warning():
     updates = []
     run_process(

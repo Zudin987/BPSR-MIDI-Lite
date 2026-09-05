@@ -23,7 +23,6 @@ def test_real_audio_pipeline(tmp_path):
     try:
         path = BandPipeline(runtimes=runtime).convert(source, ConversionSettings(device="cpu"), progress=print)
     except Exception as exc:
-        import json
         import traceback
         (reports / "failure.json").write_text(json.dumps({"error": str(exc), "details": getattr(exc, "details", ""),
                                                         "traceback": traceback.format_exc()}, indent=2), encoding="utf-8")
@@ -32,8 +31,8 @@ def test_real_audio_pipeline(tmp_path):
     assert len(record["parts"]["piano"])+len(record["parts"]["guitar"]) > 0
     assert record["providers"]["separator"]["actual"] == "demucs"
     assert record["source_audio_sha256"]
-    (reports / "actual-providers.json").write_text(__import__("json").dumps(record["providers"], indent=2), encoding="utf-8")
-    (reports / "quality-notes.json").write_text(__import__("json").dumps(record["warnings"], indent=2), encoding="utf-8")
+    (reports / "actual-providers.json").write_text(json.dumps(record["providers"], indent=2), encoding="utf-8")
+    (reports / "quality-notes.json").write_text(json.dumps(record["warnings"], indent=2), encoding="utf-8")
     for provider in ("demucs", "transkun", "beat_this", "mr_mt3"):
         assert any(e["provider"] == provider for e in record["providers"]["engines"]), f"Preferred model failed: {provider}; see report"
 

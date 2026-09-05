@@ -95,6 +95,14 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
             sections.append("[stderr]\n" + "".join(stderr).rstrip())
         return "\n\n".join(sections)
 
+    def standard_output() -> str:
+        # Successful callers historically consume stdout (JSON lines from
+        # yt-dlp and package rows from ``uv pip freeze``). Keep the labelled,
+        # split stdout/stderr rendering exclusively for failure details so
+        # diagnostics cannot contaminate machine-readable successful output.
+        with activity_lock:
+            return "".join(stdout_lines)
+
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
@@ -159,7 +167,7 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
         output = technical_output()
         if process.returncode:
             raise StageError(stage, "The component failed. Retry or repair its runtime in Advanced.", output)
-        return output
+        return standard_output()
     finally:
         if process.poll() is None:
             stop_process(process)
