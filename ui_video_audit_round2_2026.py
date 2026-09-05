@@ -61,7 +61,7 @@ def _retire_legacy_youtube_tab(app: Any) -> None:
     """Keep yt-dlp internally, but remove the obsolete standalone YouTube UI.
 
     Audio -> Band now owns normal song acquisition and already uses yt-dlp as an
-    automatic fallback.  Leaving the old YouTube -> single core MIDI tab visible
+    automatic fallback. Leaving the old YouTube -> single core MIDI tab visible
     duplicated the same user decision and was a recurring source of stale status
     copy in the recording.
     """
@@ -130,7 +130,7 @@ def _find_arrangement_title(app: Any) -> Any | None:
 
 
 def _sync_details_chrome(app: Any) -> None:
-    """Do not show an empty 'Arrangement impact' section while Details is closed."""
+    """Hide empty technical chrome; show only the useful title with Details."""
     title = getattr(app, "_ux_arrangement_impact_title", None)
     if title is None:
         title = _find_arrangement_title(app)
@@ -138,18 +138,20 @@ def _sync_details_chrome(app: Any) -> None:
     anchor = getattr(app, "_product_impact_anchor", None)
     impact = getattr(app, "_product_impact_label", None)
     visible = bool(getattr(app, "_product_details_visible", False))
+
+    # The separator is purely decorative and consumed vertical room in both the
+    # collapsed and expanded states. Retire it permanently in Studio beta.8.
+    if anchor is not None:
+        _hide(anchor)
     if not visible:
-        for widget in (anchor, title):
-            if widget is not None:
-                _hide(widget)
+        if title is not None:
+            _hide(title)
         return
     if impact is None:
         return
     try:
-        if anchor is not None and not anchor.winfo_ismapped():
-            anchor.pack(fill="x", pady=(8, 5), before=impact)
         if title is not None and not title.winfo_ismapped():
-            title.pack(anchor="w", before=impact)
+            title.pack(anchor="w", pady=(5, 0), before=impact)
     except tk.TclError:
         pass
 
