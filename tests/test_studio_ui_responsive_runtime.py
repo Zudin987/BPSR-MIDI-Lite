@@ -42,14 +42,14 @@ def row(widget):
     return int(widget.grid_info().get("row", -1))
 
 
-def capture(app, name):
+def capture(window, name):
     try:
         from PIL import ImageGrab
 
         reports = Path("ui-smoke-report")
         reports.mkdir(exist_ok=True)
-        x, y = app.winfo_rootx(), app.winfo_rooty()
-        ImageGrab.grab((x, y, x + app.winfo_width(), y + app.winfo_height())).save(
+        x, y = window.winfo_rootx(), window.winfo_rooty()
+        ImageGrab.grab((x, y, x + window.winfo_width(), y + window.winfo_height())).save(
             reports / name
         )
     except OSError:
@@ -68,24 +68,28 @@ def assert_overlay_inside_body(app, panel):
 
 app = studio_launcher.app.App()
 try:
-    # The normal product min-width can be larger on a roomy CI desktop. Lower
-    # it explicitly so this regression test also exercises the emergency
-    # compact contract rather than silently staying at 720+ logical pixels.
     app.minsize(560, 380)
     app.geometry("560x700+0+0")
     pump(app)
-    app._band_enabled_var.set(True)
-    band_ui._set_band_frame_visible(app, True)
-    pump(app)
-    full_ui._responsive_root(app)
-    pump(app)
+    assert not app._band_window.winfo_viewable()
 
-    state = full_ui._overlay_state(app, "band")
-    assert state.get("visible") is True
-    assert app._band_frame.winfo_manager() == "place"
-    assert app._band_frame.winfo_width() < 560, app._band_frame.winfo_width()
+    # Checking Band Mode must immediately open a separate Band Room workspace.
+    app._band_enabled_var.set(True)
+    band_ui._toggle_band_mode(app)
+    pump(app)
+    assert app._band_window.winfo_viewable()
+    assert app._band_window.title() == "Band Room"
+    assert app._band_frame.master is app._band_window_body
+    assert app._band_frame.winfo_manager() == "grid"
     assert str(app._ux_band_room_button.cget("state")) == "normal"
-    assert_overlay_inside_body(app, app._band_frame)
+    assert app.winfo_viewable()
+
+    # Force a compact Band Room viewport and verify the same extension reflow
+    # contract that previously protected the in-window overlay.
+    app._band_window.geometry("560x520+10+10")
+    pump(app)
+    full_ui._reflow_band_panel(app)
+    pump(app)
 
     status_rows = {
         row(widget)
@@ -107,8 +111,10 @@ try:
     assert row(app._band_share_checkbox) == 1
     assert row(app._band_download_button) == 2
 
-    # The permanent playback toolbar must stay both vertically and horizontally
-    # reachable while the secondary Band Room overlay is open.
+    # The detached window owns its own vertical scrollbar/canvas, while the main
+    # playback toolbar stays reachable and unchanged behind it.
+    assert app._band_window_scrollbar.winfo_manager() == "grid"
+    assert app._band_window_canvas.winfo_manager() == "grid"
     window_bottom = app.winfo_rooty() + app.winfo_height()
     window_right = app.winfo_rootx() + app.winfo_width()
     toolbar_bottom = app.stop_button.winfo_rooty() + app.stop_button.winfo_height()
@@ -116,85 +122,54 @@ try:
     assert toolbar_bottom <= window_bottom + 2, (toolbar_bottom, window_bottom)
     assert toolbar_right <= window_right + 2, (toolbar_right, window_right)
 
-    capture(app, "main-band-room-compact.png")
+    band_right = app._band_window.winfo_rootx() + app._band_window.winfo_width()
+    assert app._band_download_button.winfo_rootx() + app._band_download_button.winfo_width() <= band_right + 2
+    assert app._band_role_combo.winfo_rootx() + app._band_role_combo.winfo_width() <= band_right + 2
+    capture(app._band_window, "band-room-window-compact.png")
 
-    # If the Band Room is taller than the compact viewport, the final UI must
-    # expose a scrollbar and make the bottom Room MIDI controls reachable.
-    _width, _requested, _viewport, maximum = full_ui._overlay_geometry(app, "band")
-    body_bottom = app._gaming_body.winfo_rooty() + app._gaming_body.winfo_height()
-    if maximum > 0:
-        scrollbar = state.get("scrollbar")
-        assert scrollbar is not None and scrollbar.winfo_manager() == "place"
-        full_ui._overlay_scroll_command(app, "band", "moveto", "1.0")
-        pump(app)
-        capture(app, "main-band-room-compact-bottom.png")
-    share_bottom = app._band_share_frame.winfo_rooty() + app._band_share_frame.winfo_height()
-    download_bottom = app._band_download_button.winfo_rooty() + app._band_download_button.winfo_height()
-    assert share_bottom <= body_bottom + 2, (share_bottom, body_bottom)
-    assert download_bottom <= body_bottom + 2, (download_bottom, body_bottom)
-
-    # Closing the overlay keeps Band Mode selected and exposes a direct reopen
-    # action instead of requiring the user to toggle the feature off/on.
-    full_ui._hide_feature_overlay(app, "band")
+    # Closing the Band Room hides only the workspace. The mode remains selected,
+    # and the dedicated button can reopen the same window without disconnecting.
+    app._band_window.event_generate("<Escape>")
     pump(app)
-    assert not full_ui._overlay_state(app, "band").get("visible")
+    assert not app._band_window.winfo_viewable()
     assert bool(app._band_enabled_var.get())
     assert str(app._ux_band_room_button.cget("state")) == "normal"
+    app._ux_band_room_button.invoke()
+    pump(app)
+    assert app._band_window.winfo_viewable()
 
-    # Secondary interfaces are real responsive surfaces too, not just the main
-    # page. Exercise Settings, Custom tuning and Calibration at the same width.
+    # Because Band Room is now a real second window, main-window Settings,
+    # Custom tuning, Calibration and Songs no longer have to close it.
     full_ui._set_settings_visible(app, True)
     pump(app)
     assert app._gaming_settings_visible
     assert app._gaming_settings_panel.winfo_manager() == "place"
     assert_overlay_inside_body(app, app._gaming_settings_panel)
+    assert app._band_window.winfo_viewable()
     capture(app, "main-settings-compact.png")
     full_ui._set_settings_visible(app, False)
 
     advanced_ui._show_custom_panel(app, True)
     pump(app)
-    custom_state = full_ui._overlay_state(app, "custom")
-    assert custom_state.get("visible") is True
+    assert full_ui._overlay_state(app, "custom").get("visible") is True
     assert app.custom_settings_frame.winfo_manager() == "place"
     assert_overlay_inside_body(app, app.custom_settings_frame)
-    capture(app, "main-custom-tuning-compact.png")
+    assert app._band_window.winfo_viewable()
     advanced_ui._show_custom_panel(app, False)
 
     calibration_ui._show_panel(app, True)
     pump(app)
-    calibration_state = full_ui._overlay_state(app, "calibration")
-    assert calibration_state.get("visible") is True
+    assert full_ui._overlay_state(app, "calibration").get("visible") is True
     assert app._calibration_panel.winfo_manager() == "place"
     assert_overlay_inside_body(app, app._calibration_panel)
-    capture(app, "main-calibration-compact.png")
+    assert app._band_window.winfo_viewable()
     calibration_ui._show_panel(app, False)
 
-    # Do not allow two independent side/feature overlays to pile on top of each
-    # other. Opening Settings, Custom tuning, or user-opened Songs replaces Band.
-    band_ui._set_band_frame_visible(app, True)
-    pump(app)
-    assert full_ui._overlay_state(app, "band").get("visible")
-    full_ui._set_settings_visible(app, True)
-    pump(app)
-    assert not full_ui._overlay_state(app, "band").get("visible")
-    assert app._gaming_settings_visible
-    full_ui._set_settings_visible(app, False)
-
-    band_ui._set_band_frame_visible(app, True)
-    pump(app)
-    advanced_ui._show_custom_panel(app, True)
-    pump(app)
-    assert not full_ui._overlay_state(app, "band").get("visible")
-    assert full_ui._overlay_state(app, "custom").get("visible")
-    advanced_ui._show_custom_panel(app, False)
-
-    band_ui._set_band_frame_visible(app, True)
-    pump(app)
     full_ui._hide_library(app)
     full_ui._show_library(app, user_opened=True)
     pump(app)
-    assert not full_ui._overlay_state(app, "band").get("visible")
     assert app._gaming_library_visible and app._ux_library_overlay
+    assert app._band_window.winfo_viewable()
     full_ui._hide_library(app)
 finally:
     app.destroy()
