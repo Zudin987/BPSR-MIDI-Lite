@@ -64,6 +64,14 @@ try:
     toolbar_bottom = app.stop_button.winfo_rooty() + app.stop_button.winfo_height()
     assert toolbar_bottom <= window_bottom + 2, (toolbar_bottom, window_bottom)
 
+    # Expanded Band Mode must not merely be mapped; its last controls need to
+    # remain physically reachable inside the main body at a compact desktop.
+    body_bottom = app._gaming_body.winfo_rooty() + app._gaming_body.winfo_height()
+    share_bottom = app._band_share_frame.winfo_rooty() + app._band_share_frame.winfo_height()
+    download_bottom = app._band_download_button.winfo_rooty() + app._band_download_button.winfo_height()
+    assert share_bottom <= body_bottom + 2, (share_bottom, body_bottom)
+    assert download_bottom <= body_bottom + 2, (download_bottom, body_bottom)
+
     reports = Path("ui-smoke-report")
     reports.mkdir(exist_ok=True)
     try:
