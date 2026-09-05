@@ -2,8 +2,8 @@
 
 This specifically guards defects visible in the user's 77.8-second desktop
 recording: clipped Library tabs/columns, leaking focused surfaces, detached
-Close/scroll chrome, stale Audio-tab copy and always-visible Audio table
-horizontal scrollbars/progress state.
+Close/scroll chrome, stale Audio-tab copy, obsolete duplicate YouTube UI and
+always-visible Audio table horizontal scrollbars/progress state.
 """
 from __future__ import annotations
 
@@ -73,7 +73,8 @@ def main() -> None:
             notebook = app.song_source_notebook
             labels = [str(notebook.tab(i, "text")) for i in range(int(notebook.index("end")))]
             checks["library_tabs"] = labels
-            assert labels == ["Local", "Online", "Saved", "YouTube", "Audio"], labels
+            assert labels == ["Local", "Online", "Saved", "Audio"], labels
+            assert str(app.youtube_tab) not in tuple(str(value) for value in notebook.tabs())
             for index in range(len(labels)):
                 x, _y, width, _height = notebook.bbox(index)
                 assert x + width <= notebook.winfo_width() + 2, (index, labels[index], x, width, notebook.winfo_width())
@@ -82,8 +83,12 @@ def main() -> None:
                 display = tuple(str(value) for value in tree.cget("displaycolumns"))
                 assert "changes" not in display, display
                 assert display in {("fit",), ("fit", "notes")}, display
-            youtube_display = tuple(str(value) for value in app.youtube_tree.cget("displaycolumns"))
-            assert youtube_display == ("duration",), youtube_display
+
+            # The collapsed Song Check should not leave an empty technical
+            # section title/divider in the normal workflow.
+            assert app._ux_arrangement_impact_title is not None
+            assert not app._ux_arrangement_impact_title.winfo_ismapped()
+            assert not app._product_impact_anchor.winfo_ismapped()
             capture(app, reports / "video-audit-main-1280x720.png")
 
             # Settings is a focused surface now: it must not sit as a narrow
@@ -129,14 +134,33 @@ def main() -> None:
             full_ui._hide_feature_overlay(app, "band")
             pump(app)
 
+            # Compact focused surfaces keep a real side margin instead of
+            # touching both window edges at 720 logical pixels.
+            app.geometry("720x640+0+0")
+            pump(app)
+            import playback_calibration_ui as calibration_ui
+            calibration_ui._show_panel(app, True)
+            pump(app)
+            full_ui._responsive_root(app)
+            pump(app)
+            assert app._calibration_panel.winfo_width() <= 688, app._calibration_panel.winfo_width()
+            capture(app, reports / "video-audit-calibration-720x640.png")
+            calibration_ui._show_panel(app, False)
+            pump(app)
+
             # Audio -> Band sidebar selection must not inherit the previous
-            # YouTube footer instruction.
+            # YouTube footer instruction or expose downloader implementation in
+            # the normal idle state.
+            app.geometry("1280x720+0+0")
+            pump(app)
             audio = app._studio_band_audio
             notebook.select(audio.tab)
             app.event_generate("<<NotebookTabChanged>>")
             pump(app)
             assert "YouTube" not in str(app.status_var.get()), app.status_var.get()
             assert "Audio" in str(app.status_var.get()), app.status_var.get()
+            assert "spotDL" not in str(audio.resolver_status.get())
+            assert "yt-dlp" not in str(audio.resolver_status.get())
 
             audio.open_workspace()
             audio.workspace.geometry("1180x760+0+0")
