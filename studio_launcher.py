@@ -47,6 +47,7 @@ from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
 from studio_spotdl import install_spotdl_band_audio
 from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
+from ui_band_responsive_2026 import install_band_responsive_patch
 from ui_full_overhaul_2026 import install_full_ui_overhaul
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
@@ -94,6 +95,7 @@ install_spotdl_ytdlp_fallback()
 install_responsive_band_audio()
 install_band_audio(app)
 install_full_ui_overhaul(app)
+install_band_responsive_patch()
 
 
 if __name__ == "__main__":
