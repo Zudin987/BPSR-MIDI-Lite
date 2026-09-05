@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def pump(app, seconds: float = 0.25) -> None:
@@ -97,6 +100,7 @@ def main() -> None:
             checks["main_1280x720"] = True
             checks["library_visible_1280"] = bool(app._gaming_library_visible)
             checks["toolbar_visible_1280"] = inside_window(app, app.stop_button)
+            assert checks["library_visible_1280"]
             assert checks["toolbar_visible_1280"]
             capture(app, reports / "main-1280x720.png")
 
