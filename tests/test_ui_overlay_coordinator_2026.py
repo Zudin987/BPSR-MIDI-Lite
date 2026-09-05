@@ -33,6 +33,17 @@ def test_hidden_custom_and_calibration_panels_are_physically_unmapped() -> None:
     assert "calibration_ui._show_panel = show_calibration_panel" in SOURCE
 
 
+def test_auto_collapsed_library_restores_only_without_explicit_user_close() -> None:
+    assert "def toggle_library(app" in SOURCE
+    assert "_ux_library_user_closed" in SOURCE
+    assert "body_width >= 820" in SOURCE
+    assert 'not bool(getattr(app, "_gaming_library_visible", False))' in SOURCE
+    assert 'not bool(getattr(app, "_ux_library_user_closed", False))' in SOURCE
+    assert "show_library(app, user_opened=False)" in SOURCE
+    assert "gaming_ui._toggle_library = toggle_library" in SOURCE
+    assert "persistent._toggle_library_persistent = toggle_library" in SOURCE
+
+
 def test_topbar_reuses_original_library_button_as_single_songs_action() -> None:
     assert "_dedupe_songs_button" in SOURCE
     assert 'full_ui._find_button(app, "Library")' in SOURCE
