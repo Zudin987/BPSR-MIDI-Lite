@@ -48,6 +48,10 @@ def capture(app, name):
 
 app = studio_launcher.app.App()
 try:
+    # The normal product min-width can be larger on a roomy CI desktop. Lower
+    # it explicitly so this regression test also exercises the emergency
+    # compact contract rather than silently staying at 720+ logical pixels.
+    app.minsize(560, 380)
     app.geometry("560x700+0+0")
     pump(app)
     app._band_enabled_var.set(True)
@@ -59,6 +63,7 @@ try:
     state = full_ui._overlay_state(app, "band")
     assert state.get("visible") is True
     assert app._band_frame.winfo_manager() == "place"
+    assert app._band_frame.winfo_width() < 560, app._band_frame.winfo_width()
     assert str(app._ux_band_room_button.cget("state")) == "normal"
 
     status_rows = {
