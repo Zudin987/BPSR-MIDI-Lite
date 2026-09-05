@@ -33,7 +33,18 @@ def main(argv=None) -> int:
         def report(message):
             atomic_json(progress_path, {"id": request_id, "message": str(message)})
         if request["operation"] == "capabilities":
-            result = {"version": 1, "provider": provider, "capabilities": ["infer", "cancel"], "status": "ready"}
+            import importlib.metadata
+            from studio_band.providers import DISTRIBUTIONS
+            from studio_band.runtime import PROVIDER_MODEL
+            version = "1"
+            if provider in DISTRIBUTIONS:
+                try:
+                    version = importlib.metadata.version(DISTRIBUTIONS[provider])
+                except importlib.metadata.PackageNotFoundError:
+                    version = None
+            result = {"version": version, "provider": provider, "capabilities": ["infer", "cancel"],
+                      "model": PROVIDER_MODEL.get(provider),
+                      "status": "runtime_ready" if version else "runtime_missing"}
         elif request["operation"] == "infer":
             result = run_provider(provider, request["payload"], report)
         else:

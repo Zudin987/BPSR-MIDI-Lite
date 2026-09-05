@@ -60,4 +60,9 @@ Studio downloads the official Windows x64 Deno runtime from the Deno GitHub rele
 
 ## Other dependencies
 
+Studio Audio → Band uses the MIT-licensed tkinterdnd2 wrapper with its included
+TkDND notices. Optional AI engines run in separately installed environments;
+see [the model and checkpoint license notes](STUDIO_BAND_ACCURATE.md#third-party-modellicense-notes).
+The built-in spectral drum/beat fallback is project code.
+
 Studio also contains dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.

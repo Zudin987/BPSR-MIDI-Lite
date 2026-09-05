@@ -26,7 +26,8 @@ RUNTIMES = {
     "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "piano": ["transkun==2.0.1", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "beat": ["beat-this==1.1.0", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
-    "mt3": ["mt3-infer==0.2.0", "torch==2.5.1", "torchaudio==2.5.1", "torchvision==0.20.1", "transformers==4.44.2", "numpy==1.26.4"],
+    # MR-MT3's packaged T5 adapter uses the plural past_key_values/cache API.
+    "mt3": ["mt3-infer==0.2.0", "torch==2.5.1", "torchaudio==2.5.1", "torchvision==0.20.1", "transformers==4.57.1", "numpy==1.26.4"],
     "hq": ["audio-separator[cpu]==0.30.2", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
 }
 PROVIDER_RUNTIME = {"demucs": "separator", "roformer": "hq", "transkun": "piano",
@@ -135,9 +136,12 @@ class RuntimeManager:
             return Path(shutil.which("uv"))
         target = self.runtime_root / "tools" / "uv.exe"
         if target.exists():
-            record = read_json(target.with_suffix(".json"))
-            if record.get("version") == UV_VERSION and record.get("sha256") == file_hash(target):
-                return target
+            try:
+                record = read_json(target.with_suffix(".json"))
+                if record.get("version") == UV_VERSION and record.get("sha256") == file_hash(target):
+                    return target
+            except (OSError, ValueError):
+                pass  # interrupted bootstrap: download and verify again
         if os.name != "nt":
             raise StageError("Runtime setup", "Install uv for this source checkout and retry.")
         check_cancel(cancel)
