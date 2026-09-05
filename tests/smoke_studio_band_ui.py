@@ -34,9 +34,27 @@ def main():
             assert app.song_source_var.get() == "audio_band"
             assert app._gaming_library_panel.winfo_width() == 400
             assert audio.workspace.winfo_viewable()
+            initial_geometry = audio.workspace.geometry()
+            assert audio.workspace.winfo_rooty() + audio.workspace.winfo_height() <= audio.workspace.winfo_screenheight()
             assert audio.manual_button.winfo_viewable() and audio.source_tree.winfo_viewable()
+            assert audio.workspace_scrollbar.winfo_viewable() and audio.source_scrollbar.winfo_viewable()
             assert str(audio.acquire_button.cget("state")) == "disabled"
             assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width()
+
+            # A 640x480 window must keep both the manual input at the top and
+            # the export/footer controls reachable through vertical scrolling.
+            audio.workspace.geometry("640x480+0+0")
+            audio.workspace_canvas.yview_moveto(0)
+            pump()
+            assert audio.manual_button.winfo_rooty() >= audio.workspace.winfo_rooty()
+            assert audio.workspace_canvas.yview()[1] < 1.0
+            audio.workspace_canvas.yview_moveto(1.0)
+            pump()
+            assert audio.save_button.winfo_rooty() + audio.save_button.winfo_height() <= (
+                audio.workspace.winfo_rooty() + audio.workspace.winfo_height())
+            audio.workspace.geometry(initial_geometry)
+            audio.workspace_canvas.yview_moveto(0)
+            pump()
             # Each new job owns a fresh Event. The actual Cancel button must
             # cancel that job rather than the Event captured during UI creation.
             old_cancel = audio.cancel
@@ -65,6 +83,7 @@ def main():
             reports.mkdir(exist_ok=True)
             (reports/"ui-checks.json").write_text(json.dumps({"tab": "audio_band", "library_width": 400,
                 "manual_audio_visible": True, "music_resolver_visible": True,
+                "fits_desktop": True, "small_window_scroll": True, "resolver_scrollbar": True,
                 "cancel_current_job": True, "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
             try:
                 from PIL import ImageGrab

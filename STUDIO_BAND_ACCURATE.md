@@ -1,6 +1,6 @@
 # Studio Audio → Band beta
 
-Studio **0.5.0-band-accurate-beta.2** adds local or authorised-provider audio conversion to Piano,
+Studio **0.5.0-band-accurate-beta.3** adds local or authorised-provider audio conversion to Piano,
 Guitar, Bass and Drums. This branch builds on the Band Mode v4 development
 branch (PR #35); it is a beta for evaluation, not a stable release.
 
@@ -18,6 +18,10 @@ branch (PR #35); it is a beta for evaluation, not a stable release.
    This uses the saved musical map and does not rerun audio models.
 8. Export the MIDI files and `Arrangement.json` to keep them outside the temporary cache.
    **Use FullBand in player** opens the existing Song Check/player without starting playback.
+
+The workspace and its setup/advanced dialogs fit themselves inside the current
+desktop. On smaller screens, use the visible scrollbar or mouse wheel to reach
+the preview and export controls; resolver results have their own scrollbar.
 
 The export contains `Song - Piano.mid`, `Song - Guitar.mid`, `Song - Bass.mid`,
 `Song - Drum.mid`, `Song - Full Band.mid` and `Song - Arrangement.json` (with the actual song

@@ -21,6 +21,68 @@ from studio_band.runtime import RUNTIMES, detect_hardware
 from studio_band.storage import atomic_json, read_json
 
 
+def _fit_toplevel(window, preferred_width: int, preferred_height: int,
+                  minimum_width: int = 640, minimum_height: int = 480) -> str:
+    """Keep a dialog inside a small desktop, leaving room for Windows chrome."""
+    screen_width = max(320, window.winfo_screenwidth())
+    screen_height = max(300, window.winfo_screenheight())
+    width = min(preferred_width, max(320, screen_width - 40))
+    height = min(preferred_height, max(300, screen_height - 100))
+    x = max(0, (screen_width - width) // 2)
+    y = max(0, (screen_height - height) // 3)
+    geometry = f"{width}x{height}+{x}+{y}"
+    window.geometry(geometry)
+    window.minsize(min(minimum_width, width), min(minimum_height, height))
+    return geometry
+
+
+def _scrollable_body(window, padding=14):
+    """Create a vertically scrollable themed body and preserve nested widget wheels."""
+    shell = ttk.Frame(window)
+    shell.pack(fill="both", expand=True)
+    background = ttk.Style(window).lookup("TFrame", "background") or window.cget("background")
+    canvas = tk.Canvas(shell, borderwidth=0, highlightthickness=0, background=background)
+    scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    body = ttk.Frame(canvas, padding=padding)
+    body_id = canvas.create_window((0, 0), window=body, anchor="nw")
+
+    def refresh(_event=None):
+        bounds = canvas.bbox("all")
+        if bounds:
+            canvas.configure(scrollregion=bounds)
+
+    body.bind("<Configure>", refresh, add="+")
+    canvas.bind("<Configure>", lambda event: canvas.itemconfigure(body_id, width=event.width), add="+")
+
+    def wheel(event):
+        try:
+            widget_class = event.widget.winfo_class()
+        except (AttributeError, tk.TclError):
+            widget_class = ""
+        if widget_class in {"Treeview", "Text", "Listbox", "TCombobox", "TSpinbox", "Spinbox"}:
+            return None
+        delta = getattr(event, "delta", 0)
+        if delta:
+            steps = -int(delta / 120) or (-1 if delta > 0 else 1)
+        elif getattr(event, "num", None) == 4:
+            steps = -1
+        elif getattr(event, "num", None) == 5:
+            steps = 1
+        else:
+            return None
+        canvas.yview_scroll(steps, "units")
+        return "break"
+
+    window.bind("<MouseWheel>", wheel, add="+")
+    window.bind("<Button-4>", wheel, add="+")
+    window.bind("<Button-5>", wheel, add="+")
+    window.after_idle(refresh)
+    return canvas, body, scrollbar
+
+
 class BandAudioTab:
     def __init__(self, app):
         self.app, self.pipeline = app, BandPipeline()
@@ -29,6 +91,7 @@ class BandAudioTab:
         self.events, self.cancel, self.preview = queue.Queue(), threading.Event(), PreviewPlayer()
         self.busy, self.manifest, self.record, self.details = False, None, None, ""
         self.active_task, self.acquired_path, self.source_metadata = "", None, None
+        self.source_setup_window = None
         self.search_results: dict[str, ResolverTrack] = {}
         self.path = tk.StringVar(app)
         self.music_query = tk.StringVar(app)
@@ -56,11 +119,9 @@ class BandAudioTab:
         self.workspace = tk.Toplevel(app)
         self.workspace.withdraw()
         self.workspace.title("Studio · Audio → Band Accurate")
-        self.workspace.geometry("980x780")
-        self.workspace.minsize(820, 680)
+        self.workspace_default_geometry = _fit_toplevel(self.workspace, 980, 780)
         self.workspace.protocol("WM_DELETE_WINDOW", self.hide_workspace)
-        body = ttk.Frame(self.workspace, padding=14)
-        body.pack(fill="both", expand=True)
+        self.workspace_canvas, body, self.workspace_scrollbar = _scrollable_body(self.workspace)
         body.columnconfigure(0, weight=1)
         source = ttk.LabelFrame(body, text="Audio source · local file is always supported", padding=9)
         source.grid(row=0, column=0, sticky="nsew")
@@ -70,7 +131,7 @@ class BandAudioTab:
         row.columnconfigure(0, weight=1)
         entry = ttk.Entry(row, textvariable=self.path)
         entry.grid(row=0, column=0, sticky="ew")
-        self.manual_button = ttk.Button(row, text="Choose local MP3 / WAV", command=self.browse)
+        self.manual_button = ttk.Button(row, text="Choose local audio…", command=self.browse)
         self.manual_button.grid(row=0, column=1, padx=(6, 0))
         try:
             from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -93,7 +154,10 @@ class BandAudioTab:
         self.search_button = ttk.Button(search, text="Search music", command=self.search_music)
         self.search_button.grid(row=0, column=2, padx=(6, 0))
         ttk.Button(search, text="Source setup", command=self.source_setup).grid(row=0, column=3, padx=(6, 0))
-        self.source_tree = ttk.Treeview(source, columns=("artist", "provider", "availability"),
+        results = ttk.Frame(source)
+        results.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        results.columnconfigure(0, weight=1)
+        self.source_tree = ttk.Treeview(results, columns=("artist", "provider", "availability"),
                                         show="tree headings", height=4, selectmode="browse")
         self.source_tree.heading("#0", text="Track")
         self.source_tree.heading("artist", text="Artist")
@@ -103,7 +167,10 @@ class BandAudioTab:
         self.source_tree.column("artist", width=190, minwidth=100, stretch=True)
         self.source_tree.column("provider", width=125, minwidth=90, stretch=False)
         self.source_tree.column("availability", width=190, minwidth=140, stretch=False)
-        self.source_tree.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        self.source_tree.grid(row=0, column=0, sticky="ew")
+        self.source_scrollbar = ttk.Scrollbar(results, orient="vertical", command=self.source_tree.yview)
+        self.source_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.source_tree.configure(yscrollcommand=self.source_scrollbar.set)
         self.source_tree.bind("<<TreeviewSelect>>", lambda _event: self.source_selected())
         source_actions = ttk.Frame(source)
         source_actions.grid(row=4, column=0, sticky="ew", pady=(6, 0))
@@ -113,8 +180,11 @@ class BandAudioTab:
         self.open_source_button = ttk.Button(source_actions, text="Open provider", command=self.open_selected_source,
                                              state="disabled")
         self.open_source_button.pack(side="left", padx=6)
-        ttk.Label(source_actions, textvariable=self.resolver_status, style="Hint.TLabel", wraplength=650,
-                  justify="left").pack(side="left", padx=(8, 0), fill="x", expand=True)
+        self.resolver_status_label = ttk.Label(source, textvariable=self.resolver_status, style="Hint.TLabel",
+                                               wraplength=760, justify="left")
+        self.resolver_status_label.grid(row=5, column=0, sticky="ew", pady=(5, 0))
+        source.bind("<Configure>", lambda event: self.resolver_status_label.configure(
+            wraplength=max(260, event.width - 24)), add="+")
         controls = ttk.Frame(body)
         controls.grid(row=1, column=0, sticky="w", pady=8)
         ttk.Label(controls, text="Main Melody").grid(row=0, column=0, sticky="w")
@@ -281,18 +351,29 @@ class BandAudioTab:
 
     def source_setup(self):
         if self.busy:
-            return
+            return None
+        if self.source_setup_window is not None and self.source_setup_window.winfo_exists():
+            self.source_setup_window.deiconify()
+            self.source_setup_window.lift()
+            return self.source_setup_window
         window = tk.Toplevel(self.workspace)
+        self.source_setup_window = window
         window.title("Music source setup · session only")
-        window.geometry("720x520")
-        window.minsize(650, 470)
-        content = ttk.Frame(window, padding=14)
-        content.pack(fill="both", expand=True)
-        ttk.Label(content, text=(
+        window.transient(self.workspace)
+        _fit_toplevel(window, 720, 520, 520, 400)
+        window._scroll_canvas, content, window._scrollbar = _scrollable_body(window)
+
+        def close():
+            self.source_setup_window = None
+            window.destroy()
+
+        window.protocol("WM_DELETE_WINDOW", close)
+        intro = ttk.Label(content, text=(
             "Apple is discovery-only. Bandcamp uses your Fan Settings → Subsonic collection. "
             "MassiveMusic requires a commercial partner agreement and an entitled user. "
             "Secrets stay only in memory for this Studio session."
-        ), wraplength=670, justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        ), wraplength=670, justify="left")
+        intro.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         fields = [
             ("Apple developer token (optional)", "apple_token"),
             ("MassiveMusic consumer key", "massive_consumer_key"),
@@ -312,11 +393,15 @@ class BandAudioTab:
             secret = any(word in name for word in ("token", "secret", "password", "api_key"))
             ttk.Entry(content, textvariable=value, show="•" if secret else "").grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=3)
         content.columnconfigure(1, weight=1)
-        ttk.Label(content, text=(
+        environment_note = ttk.Label(content, text=(
             "For repeat use, set the matching BPSR_APPLE_MUSIC_*, BPSR_MASSIVEMUSIC_* or "
             "BPSR_BANDCAMP_* environment variables. Credentials are never written to Arrangement.json."
-        ), style="Hint.TLabel", wraplength=670, justify="left").grid(row=len(fields)+1, column=0, columnspan=2,
-                                                                     sticky="w", pady=(10, 6))
+        ), style="Hint.TLabel", wraplength=670, justify="left")
+        environment_note.grid(row=len(fields)+1, column=0, columnspan=2, sticky="ew", pady=(10, 6))
+        content.bind("<Configure>", lambda event: (
+            intro.configure(wraplength=max(260, event.width - 28)),
+            environment_note.configure(wraplength=max(260, event.width - 28))), add="+")
+
         def apply():
             try:
                 self.resolver_config = ResolverConfig(storefront=self.storefront.get(),
@@ -325,10 +410,13 @@ class BandAudioTab:
             except ValueError as exc:
                 messagebox.showerror("Invalid music source setup", str(exc), parent=window)
                 return
-            window.destroy()
+            close()
             self.resolver_status.set("Music source setup applied for this Studio session.")
-        ttk.Button(content, text="Apply for this session", command=apply).grid(row=len(fields)+2, column=0,
-                                                                                columnspan=2, sticky="w", pady=5)
+        actions = ttk.Frame(content)
+        actions.grid(row=len(fields)+2, column=0, columnspan=2, sticky="w", pady=5)
+        ttk.Button(actions, text="Apply for this session", command=apply).pack(side="left")
+        ttk.Button(actions, text="Cancel", command=close).pack(side="left", padx=6)
+        return window
 
     def arrangement_settings(self):
         return ArrangementSettings(self.melody.get().lower(), {p:v.get() for p,v in self.tiers.items()})
@@ -470,17 +558,26 @@ class BandAudioTab:
     def show_details(self):
         window = tk.Toplevel(self.workspace)
         window.title("Audio conversion details")
-        text = tk.Text(window, width=100, height=30, wrap="word")
-        text.pack(fill="both", expand=True)
+        window.transient(self.workspace)
+        _fit_toplevel(window, 780, 520, 480, 340)
+        content = ttk.Frame(window, padding=10)
+        content.pack(fill="both", expand=True)
+        text = tk.Text(content, width=80, height=24, wrap="word")
+        scrollbar = ttk.Scrollbar(content, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+        text.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         text.insert("1.0", self.details or "No conversion details yet.")
         text.configure(state="disabled")
 
     def advanced(self):
         window = tk.Toplevel(self.workspace)
         window.title("Audio → Band · Advanced")
-        content = ttk.Frame(window, padding=14)
-        content.pack(fill="both", expand=True)
-        ttk.Label(content, text="Models download into separate runtimes on first use. Downloads may be several GB.", wraplength=650).pack(anchor="w")
+        window.transient(self.workspace)
+        _fit_toplevel(window, 720, 560, 520, 400)
+        window._scroll_canvas, content, window._scrollbar = _scrollable_body(window)
+        intro = ttk.Label(content, text="Models download into separate runtimes on first use. Downloads may be several GB.", wraplength=650)
+        intro.pack(anchor="w")
         ttk.Checkbutton(content, text="Install missing recommended models automatically", variable=self.install).pack(anchor="w", pady=4)
         ttk.Checkbutton(content, text="Independent musical cross-check", variable=self.cross_check).pack(anchor="w")
         ttk.Combobox(content, textvariable=self.device, values=("auto", "cpu", "cuda"), state="readonly", width=12).pack(anchor="w", pady=6)
@@ -492,7 +589,11 @@ class BandAudioTab:
             ttk.Combobox(row, textvariable=self.tiers[part], values=values, state="readonly", width=10).pack(side="left")
         for row in self.pipeline.runtimes.statuses():
             ttk.Label(content, text=f"{row['runtime']}: {row['status']}").pack(anchor="w")
-        ttk.Label(content, text="Standard: Demucs 6 stems. HQ: BS-RoFormer vocals, then Demucs instruments. Piano: Transkun V2. Beat: Beat This! Cross-check: MR-MT3.\nADTOF is a user-installed option; its port has no declared license. HQ weights and optional engines are downloaded separately, not included in this executable.", wraplength=650, justify="left").pack(anchor="w", pady=8)
+        engine_note = ttk.Label(content, text="Standard: Demucs 6 stems. HQ: BS-RoFormer vocals, then Demucs instruments. Piano: Transkun V2. Beat: Beat This! Cross-check: MR-MT3.\nADTOF is a user-installed option; its port has no declared license. HQ weights and optional engines are downloaded separately, not included in this executable.", wraplength=650, justify="left")
+        engine_note.pack(anchor="w", pady=8)
+        content.bind("<Configure>", lambda event: (
+            intro.configure(wraplength=max(260, event.width - 28)),
+            engine_note.configure(wraplength=max(260, event.width - 28))), add="+")
         def install():
             requested_device = self.device.get()
             window.destroy()
@@ -520,11 +621,26 @@ class BandAudioTab:
     def edit_drums(self):
         window = tk.Toplevel(self.app)
         window.title("BPSR drum mapping · provisional")
+        window.transient(self.workspace)
+        _fit_toplevel(window, 760, 560, 480, 360)
         target = self.pipeline.runtimes.root / "profiles" / "bpsr_drums.json"
         profile = load_drum_profile(target if target.exists() else None)
-        ttk.Label(window, text="Pad range C4-B5 is verified; the semantic mapping still needs in-game calibration.", padding=8).pack()
-        text = tk.Text(window, width=85, height=25)
-        text.pack(fill="both", expand=True)
+        content = ttk.Frame(window, padding=8)
+        content.pack(fill="both", expand=True)
+        note = ttk.Label(content, text="Pad range C4-B5 is verified; the semantic mapping still needs in-game calibration.", wraplength=700)
+        note.pack(anchor="w", pady=(0, 6))
+        editor = ttk.Frame(content)
+        editor.pack(fill="both", expand=True)
+        text = tk.Text(editor, width=75, height=22, wrap="none")
+        yscroll = ttk.Scrollbar(editor, orient="vertical", command=text.yview)
+        xscroll = ttk.Scrollbar(editor, orient="horizontal", command=text.xview)
+        text.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
+        text.grid(row=0, column=0, sticky="nsew")
+        yscroll.grid(row=0, column=1, sticky="ns")
+        xscroll.grid(row=1, column=0, sticky="ew")
+        editor.rowconfigure(0, weight=1)
+        editor.columnconfigure(0, weight=1)
+        content.bind("<Configure>", lambda event: note.configure(wraplength=max(260, event.width - 20)), add="+")
         text.insert("1.0", json.dumps(profile, indent=2))
         def save():
             try:
@@ -540,7 +656,7 @@ class BandAudioTab:
                 self.status.set("Drum mapping saved. Apply melody / category re-exports using the new mapping.")
             except (OSError, ValueError, KeyError) as exc:
                 messagebox.showerror("Invalid drum profile", str(exc), parent=window)
-        ttk.Button(window, text="Save mapping", command=save).pack(pady=8)
+        ttk.Button(content, text="Save mapping", command=save).pack(anchor="w", pady=(8, 0))
 
     def close(self):
         self.cancel.set()

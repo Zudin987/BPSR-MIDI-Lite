@@ -1,5 +1,13 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.3
+
+- Fits the Audio → Band workspace inside the current desktop instead of opening a fixed 980×780 window that can sit behind the Windows taskbar.
+- Adds vertical scrolling so conversion, preview and export controls remain reachable at 640×480 window size, while preserving a full-width responsive layout on larger screens.
+- Adds a visible resolver-results scrollbar and moves long source status text below its actions so search controls do not collapse on narrow windows.
+- Makes Source setup, Advanced, Technical details and Drum mapping dialogs screen-aware and scrollable where needed; Source setup also avoids duplicate windows and adds an explicit Cancel action.
+- Renames the manual picker to **Choose local audio…** so its label no longer implies that supported FLAC/M4A/OGG files are excluded.
+
 ## 0.5.0-band-accurate-beta.2
 
 - Adds a provider-neutral Music Resolver inside Audio → Band while keeping local MP3/WAV/FLAC/M4A/OGG selection visible and available at all times.

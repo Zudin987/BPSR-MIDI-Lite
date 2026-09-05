@@ -185,6 +185,9 @@ def test_manifest_source_filter_removes_paths_credentials_and_unknown_fields():
 def test_ui_keeps_manual_audio_first_class_and_soundcloud_out_of_ai_acquisition():
     ui = Path("studio_band_ui.py").read_text(encoding="utf-8")
     resolver = Path("studio_band/resolver.py").read_text(encoding="utf-8").casefold()
-    assert "Choose local MP3 / WAV" in ui and "Acquire & Analyze" in ui
+    assert "Choose local audio…" in ui and "Acquire & Analyze" in ui
+    assert "_fit_toplevel(self.workspace, 980, 780)" in ui
+    assert "self.workspace_canvas" in ui and "self.workspace_scrollbar" in ui
+    assert "self.source_scrollbar" in ui and "yscrollcommand=self.source_scrollbar.set" in ui
     assert "apple" in resolver and "bandcamp" in resolver and "massive" in resolver
     assert "soundcloud" not in resolver
