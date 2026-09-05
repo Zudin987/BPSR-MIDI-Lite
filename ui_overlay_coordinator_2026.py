@@ -56,10 +56,16 @@ def install_overlay_coordinator() -> None:
 
     def show_library(app: Any, *, user_opened: bool = False) -> None:
         # Automatic wide-layout docking is allowed beside Band Room. A user
-        # explicitly opening Songs on a compact screen replaces the Band panel
-        # rather than painting another overlay on top of it.
+        # explicitly opening Songs is a navigation action, so make it the only
+        # secondary surface instead of stacking it with Settings or a feature
+        # overlay. This also covers callers that use the persistent-library API
+        # directly instead of going through the top-bar toggle.
         if user_opened:
             _close_band_if_needed(app)
+            if bool(getattr(app, "_gaming_settings_visible", False)):
+                set_settings_visible(app, False)
+            full_ui._hide_feature_overlay(app, "custom")
+            full_ui._hide_feature_overlay(app, "calibration")
         original_library(app, user_opened=user_opened)
 
     def responsive_root(app: Any, width: int | None = None) -> None:
