@@ -1,5 +1,15 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.4
+
+- Replaces the Audio → Band Apple/MassiveMusic/Bandcamp resolver UI with a single **spotDL** search/download path while keeping manual MP3/WAV/FLAC/M4A/OGG input permanently available.
+- Uses Spotify metadata for song identity and spotDL's YouTube / YouTube Music matching for audio; Spotify audio streams are not downloaded.
+- Installs pinned `spotdl==4.5.2` into its own managed Python 3.11 runtime on first search instead of bundling it into the Studio EXE or Lite dependencies.
+- Reuses Studio's bundled FFmpeg and attempts spotDL's recommended Deno helper setup for better current YouTube compatibility.
+- Renames the source actions to **Search spotDL**, **Download & Analyze**, **Open Spotify** and **spotDL info**; the old storefront selector is repurposed as a fixed `spotDL` source indicator.
+- Keeps explicit download/analysis rights confirmation, Spotify-URL validation, a 2 GB limit, MP3 signature checks, SHA-256 verification, atomic acquisition caching and shell-free subprocess invocation.
+- Adds unit coverage for spotDL result normalization, non-Spotify URL rejection and safe download command construction.
+
 ## 0.5.0-band-accurate-beta.3
 
 - Fits the Audio → Band workspace inside the current desktop instead of opening a fixed 980×780 window that can sit behind the Windows taskbar.
