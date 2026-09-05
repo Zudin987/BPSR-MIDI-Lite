@@ -58,6 +58,7 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 from ui_video_audit_2026 import install_video_audit_ui
 from ui_video_audit_compat_2026 import install_video_audit_compat
 from ui_video_audit_round2_2026 import install_video_audit_round2
+from ui_video_audit_round3_2026 import install_video_audit_round3
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
@@ -110,6 +111,7 @@ install_calibration_extension_reflow()
 install_video_audit_ui()
 install_video_audit_compat()
 install_video_audit_round2()
+install_video_audit_round3()
 
 
 if __name__ == "__main__":
