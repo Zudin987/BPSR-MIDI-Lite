@@ -70,6 +70,7 @@ def _events_from_midi(path: Path, engine: str, source: str | None = None) -> lis
 
 
 def basic_pitch(payload: dict, report) -> dict:
+    from basic_pitch import ICASSP_2022_MODEL_PATH
     from basic_pitch.inference import predict
     from studio_youtube import _basic_pitch_model
     source = payload["source"]
@@ -93,7 +94,7 @@ def basic_pitch(payload: dict, report) -> dict:
         events.append(MusicEvent(source, "MAIN_MELODY" if source == "vocals" else "BASS" if source == "bass" else "HARMONY",
                                  float(start), float(end), int(pitch), max(1, min(127, round(40 + confidence * 75))),
                                  confidence, "basic_pitch", evidence={"confidence_kind": "activation amplitude"}).to_dict())
-    return {"events": events, "device": "cpu", "model_files": [str(_basic_pitch_model())]}
+    return {"events": events, "device": "cpu", "model_files": [str(ICASSP_2022_MODEL_PATH)]}
 
 
 def demucs(payload: dict, report) -> dict:

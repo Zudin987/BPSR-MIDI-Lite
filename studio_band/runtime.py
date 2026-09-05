@@ -121,7 +121,7 @@ class RuntimeManager:
                 alias = directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
                 directory.mkdir(parents=True, exist_ok=True)
                 with file_lock(directory / "copy.lock"):
-                    if not alias.exists() or alias.stat().st_size != ffmpeg.stat().st_size:
+                    if not alias.exists() or file_hash(alias) != directory.name:
                         temporary = alias.with_suffix(".tmp")
                         shutil.copy2(ffmpeg, temporary)
                         os.replace(temporary, alias)
