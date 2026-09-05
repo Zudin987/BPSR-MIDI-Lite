@@ -7,7 +7,7 @@ import ui_full_overhaul_2026 as full_ui
 import ui_video_audit_2026 as audit
 
 
-# Third recording-driven polish pass.  This stays Studio-only and deliberately
+# Third recording-driven polish pass. This stays Studio-only and deliberately
 # changes composition/copy only; playback, calibration math, Band networking and
 # Audio -> Band inference/download behavior remain owned by their feature layers.
 _CUSTOM_NARROW_AT = 620
@@ -81,9 +81,9 @@ def _reflow_custom_panel(app: Any, width: int | None = None) -> None:
     """Split the legacy 4-column Custom form into one field per row when narrow.
 
     The recording showed the right-hand Retrigger gap and the long help sentence
-    being clipped.  The old form has two logical fields per row: columns 0/1 and
-    2/3.  At compact width we keep each pair intact but move the right-hand pair
-    to the next row.  Unit labels sharing the control cell keep their padding, so
+    being clipped. The old form has two logical fields per row: columns 0/1 and
+    2/3. At compact width we keep each pair intact but move the right-hand pair
+    to the next row. Unit labels sharing the control cell keep their padding, so
     e.g. "ms (0 = Auto)" remains attached to its spinbox rather than becoming a
     separate floating label.
     """
@@ -107,6 +107,9 @@ def _reflow_custom_panel(app: Any, width: int | None = None) -> None:
         for column in range(4):
             panel.columnconfigure(column, weight=0, uniform="")
         panel.columnconfigure(1, weight=1)
+        if not narrow:
+            # Restore the original two flexible value columns on a roomy panel.
+            panel.columnconfigure(3, weight=1)
     except tk.TclError:
         pass
 
