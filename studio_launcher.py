@@ -56,6 +56,7 @@ from ui_overlay_coordinator_2026 import install_overlay_coordinator
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 from ui_video_audit_2026 import install_video_audit_ui
+from ui_video_audit_compat_2026 import install_video_audit_compat
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
@@ -106,6 +107,7 @@ install_band_visibility_guard()
 install_overlay_coordinator()
 install_calibration_extension_reflow()
 install_video_audit_ui()
+install_video_audit_compat()
 
 
 if __name__ == "__main__":
