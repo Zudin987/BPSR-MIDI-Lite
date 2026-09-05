@@ -124,9 +124,11 @@ jobs:
         shell: pwsh
         run: pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
 
-      - name: Verify Studio workspace and cancellation
+      - name: Verify Studio workspace and responsive UI
         shell: pwsh
-        run: python tests/smoke_studio_band_ui.py
+        run: |
+          python tests/smoke_studio_band_ui.py
+          python tests/smoke_studio_responsive_ui.py
 
       - name: Upload Studio workspace verification
         if: always()
