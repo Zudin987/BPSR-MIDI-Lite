@@ -198,29 +198,6 @@ def _polish_primary_setup(app: Any) -> None:
             pass
 
 
-def _hide_startup_custom_overlay(app: Any) -> None:
-    """A saved Custom profile must not cover the player every time Studio opens.
-
-    Selecting Custom later still opens its tuning surface normally. On startup we
-    preserve the saved profile but leave the advanced editor closed; Settings ->
-    Custom tuning remains the explicit way back into it.
-    """
-    if getattr(app, "_ux_round3_startup_custom_closed", False):
-        return
-    app._ux_round3_startup_custom_closed = True
-    try:
-        full_ui._hide_feature_overlay(app, "custom")
-    except (AttributeError, tk.TclError):
-        pass
-    panel = getattr(app, "custom_settings_frame", None)
-    if panel is not None:
-        try:
-            panel.grid_remove()
-            panel.place_forget()
-        except tk.TclError:
-            pass
-
-
 def _patch_custom_profile_summary() -> None:
     """Remove the stale 'panel below' direction after Custom became an overlay."""
     try:
@@ -292,7 +269,6 @@ def _patch_finalize() -> None:
 
     def finalize(app: Any) -> None:
         original(app)
-        _hide_startup_custom_overlay(app)
         _remove_duplicate_library_caption(app)
         _polish_primary_setup(app)
         _prepare_custom_grid(app)
