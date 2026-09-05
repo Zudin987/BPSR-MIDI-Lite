@@ -26,6 +26,17 @@ def _label_text(widget) -> str:
         return ""
 
 
+def _refresh_scroll_region(canvas) -> None:
+    """Synchronize a canvas scrollregion after responsive children reflow."""
+    try:
+        canvas.update_idletasks()
+        bounds = canvas.bbox("all")
+        if bounds:
+            canvas.configure(scrollregion=bounds)
+    except tk.TclError:
+        pass
+
+
 def _responsive_flow(frame, *, narrow_at: int, narrow_columns: int = 2) -> None:
     """Reflow a compact toolbar instead of letting its right side clip."""
     children = tuple(frame.winfo_children())
@@ -201,6 +212,31 @@ def _find_direct_frame(body, predicate):
     return None
 
 
+def _install_workspace_scroll_refresh(owner) -> None:
+    """Keep scrolling accurate after toolbars gain/lose rows at runtime."""
+    canvas = owner.workspace_canvas
+    body = owner.summary.master
+    pending = {"job": None}
+
+    def schedule(_event=None):
+        try:
+            if pending["job"] is not None:
+                canvas.after_cancel(pending["job"])
+            pending["job"] = canvas.after_idle(lambda: (
+                pending.__setitem__("job", None), _refresh_scroll_region(canvas)))
+        except tk.TclError:
+            pending["job"] = None
+
+    # A descendant toolbar can change requested height without producing a
+    # reliable body Configure event on every Windows/Tk scaling combination.
+    # Listen at both levels and refresh after geometry settles.
+    body.bind("<Configure>", schedule, add="+")
+    owner.workspace.bind("<Configure>", schedule, add="+")
+    for child in body.winfo_children():
+        child.bind("<Configure>", schedule, add="+")
+    schedule()
+
+
 def _apply_workspace_responsiveness(owner) -> None:
     _responsive_manual_row(owner)
     _responsive_search_row(owner)
@@ -222,6 +258,7 @@ def _apply_workspace_responsiveness(owner) -> None:
     if muted is not None:
         _responsive_flow(muted, narrow_at=650, narrow_columns=3)
     _responsive_flow(owner.save_button.master, narrow_at=560, narrow_columns=2)
+    _install_workspace_scroll_refresh(owner)
 
 
 def _responsive_source_setup(window) -> None:
@@ -259,6 +296,9 @@ def _responsive_source_setup(window) -> None:
     state = {"narrow": None}
     content._responsive_form_installed = True
 
+    def refresh():
+        _refresh_scroll_region(canvas)
+
     def render(event=None):
         width = int(getattr(event, "width", 0) or content.winfo_width() or 600)
         narrow = width < 560
@@ -293,6 +333,7 @@ def _responsive_source_setup(window) -> None:
                 actions.grid_configure(row=max_field_row + 2, column=0, columnspan=2, sticky="w")
             if intro is not None:
                 intro.grid_configure(row=0, column=0, columnspan=2, sticky="ew")
+        canvas.after_idle(refresh)
 
     content.bind("<Configure>", render, add="+")
     content.after_idle(render)
