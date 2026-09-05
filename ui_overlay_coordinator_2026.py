@@ -48,12 +48,16 @@ def install_overlay_coordinator() -> None:
     if getattr(full_ui, "_overlay_coordinator_2026_installed", False):
         return
 
+    import gaming_runtime_2026 as gaming_runtime
+    import gaming_ui_2026 as gaming_ui
     import playback_advanced_ui as advanced_ui
     import playback_calibration_ui as calibration_ui
+    import ui_persistent_library as persistent
 
     original_settings = full_ui._set_settings_visible
     original_feature = full_ui._show_feature_overlay
     original_library = full_ui._show_library
+    original_toggle_library = full_ui._toggle_library
     original_root = full_ui._responsive_root
     original_finalize = full_ui._finalize_app_ui
     original_custom_show = advanced_ui._show_custom_panel
@@ -96,12 +100,25 @@ def install_overlay_coordinator() -> None:
         # overlay. This also covers callers that use the persistent-library API
         # directly instead of going through the top-bar toggle.
         if user_opened:
+            app._ux_library_user_closed = False
             _close_band_if_needed(app)
             if bool(getattr(app, "_gaming_settings_visible", False)):
                 set_settings_visible(app, False)
             full_ui._hide_feature_overlay(app, "custom")
             full_ui._hide_feature_overlay(app, "calibration")
         original_library(app, user_opened=user_opened)
+
+    def toggle_library(app: Any) -> None:
+        # Remember an explicit close separately from the automatic compact
+        # collapse. Without this distinction, an early 1px Tk configure event
+        # can hide the default Library during startup and it never comes back on
+        # a normal desktop; conversely, blindly restoring it would ignore a real
+        # user choice to close Songs.
+        was_visible = bool(getattr(app, "_gaming_library_visible", False))
+        app._ux_library_user_closed = was_visible
+        original_toggle_library(app)
+        if not was_visible:
+            app._ux_library_user_closed = False
 
     def show_custom_panel(app: Any, visible: bool) -> None:
         # Advanced UI creates and grids/packs the panel before calling its final
@@ -136,6 +153,17 @@ def install_overlay_coordinator() -> None:
             original_root(app, width)
         finally:
             app._ux_settings_reflow_guard = False
+
+        body_width, _body_height = full_ui._safe_dimensions(getattr(app, "_gaming_body", app))
+        if (
+            body_width >= 820
+            and not bool(getattr(app, "_gaming_library_visible", False))
+            and not bool(getattr(app, "_ux_library_user_closed", False))
+        ):
+            # Recover from startup/temporary compact Configure events. This is an
+            # automatic restore, so it does not mark the Library as user-opened.
+            show_library(app, user_opened=False)
+
         if preserve_settings and bool(getattr(app, "_gaming_settings_visible", False)):
             full_ui._refresh_settings_position(app)
 
@@ -146,8 +174,12 @@ def install_overlay_coordinator() -> None:
     full_ui._set_settings_visible = set_settings_visible
     full_ui._show_feature_overlay = show_feature_overlay
     full_ui._show_library = show_library
+    full_ui._toggle_library = toggle_library
     full_ui._responsive_root = responsive_root
     full_ui._finalize_app_ui = finalize
+    gaming_ui._toggle_library = toggle_library
+    gaming_runtime._toggle_library = toggle_library
+    persistent._toggle_library_persistent = toggle_library
     advanced_ui._show_custom_panel = show_custom_panel
     calibration_ui._show_panel = show_calibration_panel
     full_ui._overlay_coordinator_2026_installed = True
