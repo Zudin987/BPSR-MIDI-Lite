@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tkinter as tk
 from typing import Any, Callable
 
 import ui_full_overhaul_2026 as full_ui
@@ -14,6 +15,23 @@ def _close_band_if_needed(app: Any) -> None:
         full_ui._hide_feature_overlay(app, "band")
 
 
+def _dedupe_songs_button(app: Any) -> None:
+    """Keep one top-bar Songs action instead of a hidden Library duplicate."""
+    songs = getattr(app, "_ux_songs_button", None)
+    library = full_ui._find_button(app, "Library")
+    if songs is None or library is None or songs is library:
+        return
+    try:
+        # The original Library command already routes through the patched gaming
+        # UI toggle. Reuse that real button and remove the overlay replacement
+        # that occupied the same grid cell.
+        library.configure(text="Songs")
+        songs.destroy()
+        app._ux_songs_button = library
+    except (tk.TclError, AttributeError):
+        pass
+
+
 def install_overlay_coordinator() -> None:
     """Make Studio's secondary surfaces mutually exclusive on compact screens."""
     if getattr(full_ui, "_overlay_coordinator_2026_installed", False):
@@ -23,6 +41,7 @@ def install_overlay_coordinator() -> None:
     original_feature = full_ui._show_feature_overlay
     original_library = full_ui._show_library
     original_root = full_ui._responsive_root
+    original_finalize = full_ui._finalize_app_ui
 
     def set_settings_visible(app: Any, visible: bool) -> None:
         # The product layout starts with Settings marked visible so the first
@@ -85,8 +104,13 @@ def install_overlay_coordinator() -> None:
         if preserve_settings and bool(getattr(app, "_gaming_settings_visible", False)):
             full_ui._refresh_settings_position(app)
 
+    def finalize(app: Any) -> None:
+        original_finalize(app)
+        _dedupe_songs_button(app)
+
     full_ui._set_settings_visible = set_settings_visible
     full_ui._show_feature_overlay = show_feature_overlay
     full_ui._show_library = show_library
     full_ui._responsive_root = responsive_root
+    full_ui._finalize_app_ui = finalize
     full_ui._overlay_coordinator_2026_installed = True
