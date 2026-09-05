@@ -139,6 +139,8 @@ def demucs(payload: dict, report) -> dict:
 
 
 def roformer(payload: dict, report) -> dict:
+    import numpy as np
+    import soundfile as sf
     from audio_separator.separator import Separator
     device = device_for(payload.get("device", "auto"))
     if device == "cpu":
@@ -152,14 +154,38 @@ def roformer(payload: dict, report) -> dict:
     report("Loading the HQ vocal separator (separate model download on first use)…")
     separator = Separator(model_file_dir=str(models), output_dir=str(target), output_format="WAV",
                           sample_rate=44100, use_soundfile=True, normalization_threshold=0.99,
-                          mdxc_params={"segment_size": 256, "override_model_segment_size": False, "batch_size": 1, "overlap": 8})
+                          # In this version the RoFormer overlap parameter is
+                          # the step in seconds, not a divisor: 4 gives overlap
+                          # between the selected checkpoint's 8-second windows.
+                          mdxc_params={"segment_size": 256, "override_model_segment_size": False, "batch_size": 1, "overlap": 4})
     separator.load_model(model_filename=HQ_MODEL)
-    outputs = separator.separate(payload["audio"], custom_output_names={"Vocals": "hq_vocals", "Instrumental": "hq_instrumental"})
+    samples, sample_rate = _audio(payload["audio"])
+    frames = len(samples)
+    config = separator.model_instance.model_data_cfgdict
+    minimum_frames = int(config.audio.hop_length * (config.inference.dim_t-1))
+    working_audio = payload["audio"]
+    padded = target / "_hq_model_input.wav"
+    try:
+        # Upstream's overlap-add assumes at least one whole model window.
+        # Add trailing context for short clips, preserving sample zero and
+        # restoring the SAME original end boundary on both returned stems.
+        if frames < minimum_frames:
+            sf.write(str(padded), np.pad(samples, ((0, minimum_frames-frames), (0, 0))), sample_rate, subtype="FLOAT")
+            working_audio = str(padded)
+        outputs = separator.separate(working_audio, custom_output_names={"Vocals": "hq_vocals", "Instrumental": "hq_instrumental"})
+    finally:
+        padded.unlink(missing_ok=True)
     paths = [Path(x) if Path(x).is_absolute() else target / x for x in outputs]
     vocals = next((p for p in paths if "hq_vocals" in p.name), None)
     instrumental = next((p for p in paths if "hq_instrumental" in p.name), None)
     if not vocals or not instrumental or not vocals.exists() or not instrumental.exists():
         raise ValueError("HQ separator did not return vocals and instrumental audio")
+    for path in (vocals, instrumental):
+        audio, sr = _audio(path)
+        if sr != sample_rate or len(audio) < frames:
+            raise ValueError("HQ separator changed the source timeline")
+        if len(audio) > frames:
+            sf.write(str(path), audio[:frames], sr, subtype="FLOAT")
     # A vocal RoFormer is not a six-stem model. The orchestrator runs Demucs on
     # this instrumental file, then uses this cleaner vocal stem for melody.
     return {"vocals": str(vocals), "instrumental": str(instrumental), "device": device,

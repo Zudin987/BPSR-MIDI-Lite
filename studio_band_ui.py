@@ -73,6 +73,7 @@ class BandAudioTab:
         ttk.Combobox(controls, textvariable=self.quality, values=("Auto", "Standard", "HQ"), width=10, state="readonly").grid(row=0, column=3, padx=6)
         ttk.Button(controls, text="Advanced", command=self.advanced).grid(row=0, column=4, padx=8)
         ttk.Label(body, textvariable=self.hardware, style="Hint.TLabel").grid(row=2, column=0, sticky="w")
+        ttk.Label(body, text="First use downloads several GB of models.", style="Hint.TLabel").grid(row=2, column=0, sticky="e")
         actions = ttk.Frame(body)
         actions.grid(row=3, column=0, sticky="w", pady=(8, 4))
         self.convert_button = ttk.Button(actions, text="Analyze & Convert", command=self.convert)
