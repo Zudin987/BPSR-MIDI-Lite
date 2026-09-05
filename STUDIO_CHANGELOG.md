@@ -1,5 +1,17 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.7
+
+- Overhauls the Studio desktop UI around a responsive 2026 layout contract instead of relying on fixed-width side panels and large minimum window geometry. Windows Per-Monitor-V2 DPI awareness is enabled on a best-effort basis before Tk creates the root window.
+- Reworks the MIDI Library into responsive 360 / 300 / 260 px modes. It stays useful on roomy desktops, collapses when the player needs space, and remains directly reopenable through the **Songs** action; compact layouts use it as an overlay instead of sacrificing the main workspace.
+- Makes Settings scrollable and moves rare/advanced Custom tuning, Calibration Lab and Band Room workflows into scrollable same-window overlays. Closing Band Room keeps Band Mode enabled and exposes a **Band room…** reopen action.
+- Fixes compact Band Room composition across its independently-added lineup and Room MIDI panels. Narrow layouts reserve separate rows for extension panels, reflow the four instrument toggles to 2×2 when needed, and stack Room MIDI permission/download controls rather than letting them collide or clip.
+- Improves progressive disclosure in the main player: Song Check details stay behind **Details**, metric cards reflow from four columns to 2×2, and Instrument / Unlocked category controls stack vertically when horizontal room is limited.
+- Simplifies Audio → Band without removing capability: the redundant one-choice source selector and repeated result action column are hidden, secondary actions use clearer labels, and the existing 640×480 scrolling/reflow protections remain in place.
+- Raises secondary text/table sizing instead of shrinking typography to make small windows fit. Main-window sizing is screen-aware and leaves desktop/taskbar headroom.
+- Adds Windows/Tk regression coverage for the real patched Studio UI, including an emergency 560 px compact Band Room overlay, scroll-to-bottom reachability, collision-free plugin panels and permanent playback-toolbar access. Audio → Band keeps its existing small-window workspace smoke and screenshot artifact.
+- Playback, Band synchronization, download/search, Audio → Band model inference, cached rearrangement and export behavior are intentionally unchanged by this presentation overhaul.
+
 ## 0.5.0-band-accurate-beta.6
 
 - Fixes Audio → Band conversion in the frozen Windows Studio EXE when a managed Python 3.11 model runtime is used. Beta.5 could launch `studio_band_worker.py` directly from PyInstaller's Python 3.10 `_MEI` extraction root, allowing Python 3.11 to import Python 3.10 extension modules such as `_socket.pyd` and fail with `Module use of python310.dll conflicts with this version of Python`.
