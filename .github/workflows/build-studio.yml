@@ -170,6 +170,14 @@ jobs:
           Copy-Item FFMPEG_BUILD_INFO.txt release-studio/FFMPEG_BUILD_INFO.txt
           $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+          $zipFiles = @(
+            "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
+            "release-studio/SHA256SUMS-STUDIO.txt"
+            "release-studio/STUDIO_THIRD_PARTY_NOTICES.md"
+            "release-studio/STUDIO_BAND_ACCURATE.md"
+            "release-studio/FFMPEG_BUILD_INFO.txt"
+          )
+          Compress-Archive -LiteralPath $zipFiles -DestinationPath release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip
 
       - name: Smoke test frozen Studio worker without launching the GUI
         shell: pwsh

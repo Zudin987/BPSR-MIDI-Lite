@@ -32,3 +32,24 @@ def test_release_workflows_do_not_add_marker_or_publisher_files():
     workflow_text = _workflow_text(LITE_WORKFLOW) + _workflow_text(STUDIO_WORKFLOW)
     assert "marker" not in workflow_text.lower()
     assert "publisher" not in workflow_text.lower()
+
+
+def test_studio_ci_builds_beta8_zip_and_real_audio_uses_clean_runtime():
+    build = _workflow_text(STUDIO_WORKFLOW)
+    smoke = _workflow_text(ROOT / ".github" / "workflows" / "studio-band-smoke.yml")
+    assert "BPSR-MIDI-Studio-beta.8-Windows.zip" in build
+    assert "Compress-Archive" in build
+    assert 'BPSR_STUDIO_CLEAN_RUNTIME: "1"' in smoke
+    assert "BPSR_STUDIO_BAND_HOME: ${{ runner.temp }}" in smoke
+    assert "clean first-use runtime and actual model inference" in smoke
+
+
+def test_downloader_smoke_runs_when_shared_runtime_code_changes():
+    smoke = _workflow_text(ROOT / ".github" / "workflows" / "studio-spotdl-smoke.yml")
+    for path in (
+        "studio_band/progress.py",
+        "studio_band/protocol.py",
+        "studio_band/runtime.py",
+        "studio_band/storage.py",
+    ):
+        assert smoke.count(f'"{path}"') == 2

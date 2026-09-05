@@ -1,6 +1,6 @@
 # Studio Audio → Band beta
 
-Studio **0.5.0-band-accurate-beta.6** converts a local song or an automatically acquired song into Piano, Guitar, Bass and Drums. This branch builds on the Band Mode v4 development branch (PR #35); it remains a beta for evaluation, not a stable release.
+Studio **0.5.0-band-accurate-beta.8** converts a local song or an automatically acquired song into Piano, Guitar, Bass and Drums. This branch builds on the Band Mode v4 development branch (PR #35); it remains a beta for evaluation, not a stable release.
 
 ## Use
 
@@ -45,6 +45,10 @@ Windows CI now creates an actual managed Python 3.11 environment and invokes the
 
 ## Analysis and recovery
 
+Before first analysis, Studio prepares every missing preferred runtime in a separate **First-time setup** phase. Downloaded components are cached for later songs. A setup/install/import failure ends the job immediately; it is never treated as a normal model-quality fallback. The persistent progress area shows the active stage, weighted overall percentage and elapsed time. Exact transferred bytes are shown only for downloads that expose a real content length; inference stages remain at their completed-phase boundary until the model returns.
+
+Subprocess exit, missing worker response and dead background-job conditions restore the controls and stop the progress bar. A concise reason stays in the main window, while captured stdout/stderr and progress history remain under **Details**. Two minutes without observable child-process output produces a health-check warning but does not kill valid long-running inference.
+
 | Stage | Preferred implementation | Recovery |
 | --- | --- | --- |
 | Audio preparation | Bundled FFmpeg; stereo 44.1 kHz floating-point WAV | Clear error for unreadable audio |
@@ -72,6 +76,8 @@ Drums are semantic events, never pitched Basic Pitch notes. The external [`profi
 ## Runtime, cache and packaging
 
 The Studio GUI imports no Torch, Demucs, Transkun, Beat This!, MT3 or RoFormer. Heavy engines run sequentially in separate managed Python 3.11 environments; Demucs's older Torch cannot conflict with the other engines or Basic Pitch. The pinned uv bootstrap archive is checked against its SHA-256 before use.
+
+On Windows, Transkun 2.0.1's unpinned `ncls` dependency is resolved through a generated uv constraint containing `ncls==0.0.68`, the release that provides a CPython 3.11 x64 Windows wheel. Studio also passes `--only-binary ncls`; if that compatible wheel ever becomes unavailable, setup fails clearly instead of trying to compile C code or asking the user to install MSVC. `transkun`, `ncls` and their exact versions are verified before the piano runtime receives a ready manifest.
 
 spotDL follows the same isolation principle but uses its own small runtime. On first search Studio uses the existing pinned/verified uv bootstrap to create `runtime/spotdl`, installs `spotdl==4.5.2`, records the resolved package freeze, and attempts spotDL's Deno helper. Studio passes its bundled FFmpeg explicitly to spotDL. No system Python or Spotify login is required for the normal automatic search path.
 
@@ -103,7 +109,7 @@ See `STUDIO_THIRD_PARTY_NOTICES.md` for runtime/tool notices including spotDL, y
 
 ## Development checks
 
-Run `python -m pytest -q` for regression tests. The Studio build workflow executes the real Tk workspace smoke at 640×480, validates cancellation/re-arrangement, builds the single EXE, verifies the frozen Basic Pitch worker, then creates managed Python 3.11 and verifies the external source-only model worker can load the provider registry without importing the frozen Python 3.10 payload. The separate Windows **Studio real audio smoke** workflow requires actual Demucs, Beat This!, Transkun and MR-MT3 execution; a separate job verifies HQ RoFormer separation and sample-count alignment.
+Run `python -m pytest -q` for regression tests. The Studio build workflow executes the real Tk workspace smoke at 640×480, validates failure/cancellation/re-arrangement, builds the single EXE, verifies the frozen Basic Pitch worker, then creates managed Python 3.11 and verifies the external source-only model worker can load the provider registry without importing the frozen Python 3.10 payload. The separate Windows **Studio real audio smoke** starts from a unique empty runtime root, enforces and records the compiler-free Transkun/NCLS policy, imports the installed packages and requires actual Demucs, Beat This!, Transkun and MR-MT3 execution; a separate job verifies HQ RoFormer separation and sample-count alignment.
 
 Downloader unit coverage validates result normalization, fallback scoring/selection, URL validation and shell-free command construction. Live downloader CI verifies public search results only and deliberately does not download copyrighted music.
 

@@ -27,9 +27,11 @@ jobs:
           cache-dependency-path: requirements-studio-build.txt
       - name: Install Studio and isolated runtime bootstrap
         run: python -m pip install -r requirements-studio-build.txt uv==0.8.22
-      - name: Run actual models on original synthetic audio
+      - name: Run clean first-use runtime and actual model inference
         env:
           BPSR_STUDIO_LIVE: "1"
+          BPSR_STUDIO_CLEAN_RUNTIME: "1"
+          BPSR_STUDIO_BAND_HOME: ${{ runner.temp }}\bpsr-studio-clean-${{ github.run_id }}-${{ github.run_attempt }}
         run: python -m pytest tests/test_studio_band_live.py -s -q
       - name: Upload provider verification report
         if: always()

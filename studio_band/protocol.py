@@ -12,6 +12,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
+from .progress import ProgressEvent, as_progress_event, emit_progress
 from .storage import atomic_json, read_json
 
 PROTOCOL_VERSION = 1
@@ -39,7 +40,15 @@ class Cancelled(RuntimeError):
 class StageError(RuntimeError):
     def __init__(self, stage: str, message: str, details: str = "", retryable: bool = True):
         super().__init__(f"{stage}: {message}")
-        self.stage, self.details, self.retryable = stage, details, retryable
+        self.stage, self.message, self.details, self.retryable = stage, message, details, retryable
+
+
+class RuntimeSetupError(StageError):
+    """A dependency/runtime preparation failure that must not become fallback."""
+
+    def __init__(self, runtime: str, message: str, details: str = "", retryable: bool = True):
+        super().__init__("Runtime setup", message, details, retryable)
+        self.runtime = runtime
 
 
 def check_cancel(cancel: threading.Event | None) -> None:
@@ -64,11 +73,30 @@ def stop_process(process: subprocess.Popen) -> None:
 
 def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
                 timeout: float = 7200, env: dict | None = None, cwd: Path | None = None,
-                progress_path: Path | None = None) -> str:
+                progress_path: Path | None = None, stall_warning_after: float = 120) -> str:
     check_cancel(cancel)
-    lines: deque[str] = deque(maxlen=120)
+    stdout_lines: deque[str] = deque(maxlen=400)
+    stderr_lines: deque[str] = deque(maxlen=400)
+    activity_lock = threading.Lock()
+    last_activity = [time.monotonic()]
+
+    def note_activity() -> None:
+        with activity_lock:
+            last_activity[0] = time.monotonic()
+
+    def technical_output() -> str:
+        with activity_lock:
+            stdout = list(stdout_lines)
+            stderr = list(stderr_lines)
+        sections = []
+        if stdout:
+            sections.append("[stdout]\n" + "".join(stdout).rstrip())
+        if stderr:
+            sections.append("[stderr]\n" + "".join(stderr).rstrip())
+        return "\n\n".join(sections)
+
     try:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    stdin=subprocess.DEVNULL, text=True, encoding="utf-8", errors="replace",
                                    env=env, cwd=cwd, start_new_session=os.name != "nt",
                                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
@@ -77,35 +105,58 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
     with _children_lock:
         _children.add(process)
 
-    def drain() -> None:
-        assert process.stdout is not None
-        for line in process.stdout:
-            lines.append(line[-4000:])
+    def drain(stream, lines: deque[str]) -> None:
+        assert stream is not None
+        for line in stream:
+            with activity_lock:
+                lines.append(line[-4000:])
+                last_activity[0] = time.monotonic()
 
-    reader = threading.Thread(target=drain, daemon=True)
-    reader.start()
-    deadline, last_progress = time.monotonic() + timeout, ""
+    stdout_reader = threading.Thread(target=drain, args=(process.stdout, stdout_lines), daemon=True)
+    stderr_reader = threading.Thread(target=drain, args=(process.stderr, stderr_lines), daemon=True)
+    stdout_reader.start()
+    stderr_reader.start()
+    deadline, last_progress, stall_reported_at = time.monotonic() + timeout, None, None
     try:
         while process.poll() is None:
             check_cancel(cancel)
             if time.monotonic() > deadline:
-                raise StageError(stage, "This stage exceeded its time limit. Retry on a shorter song or a faster device.")
+                raise StageError(stage, "This stage exceeded its time limit. Retry on a shorter song or a faster device.",
+                                 technical_output())
             if progress_path is not None and progress is not None:
                 try:
                     value = read_json(progress_path)
-                    message = str(value.get("message", ""))
-                    if message and message != last_progress:
-                        progress(message)
-                        last_progress = message
+                    event = as_progress_event(value)
+                    signature = tuple(sorted(event.to_dict().items()))
+                    if event.message and signature != last_progress:
+                        progress(event)
+                        last_progress = signature
+                        note_activity()
                 except (OSError, ValueError):
                     pass
+            with activity_lock:
+                activity_at = last_activity[0]
+            if stall_reported_at is not None and activity_at > stall_reported_at:
+                stall_reported_at = None
+            idle = time.monotonic() - activity_at
+            if progress is not None and stall_warning_after > 0 and idle >= stall_warning_after and stall_reported_at is None:
+                setup = "setup" in stage.casefold() or "install" in stage.casefold()
+                emit_progress(
+                    progress,
+                    "No setup activity for 2 minutes — checking worker…" if setup else
+                    "No worker activity for 2 minutes — the process is still running…",
+                    activity="waiting",
+                    indeterminate=True,
+                )
+                stall_reported_at = time.monotonic()
             if cancel is None:
                 time.sleep(0.1)
             else:
                 cancel.wait(0.1)
-        reader.join(timeout=2)
+        stdout_reader.join(timeout=2)
+        stderr_reader.join(timeout=2)
         check_cancel(cancel)
-        output = "".join(lines)
+        output = technical_output()
         if process.returncode:
             raise StageError(stage, "The component failed. Retry or repair its runtime in Advanced.", output)
         return output
@@ -114,9 +165,12 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
             stop_process(process)
         with _children_lock:
             _children.discard(process)
-        reader.join(timeout=2)
+        stdout_reader.join(timeout=2)
+        stderr_reader.join(timeout=2)
         if process.stdout:
             process.stdout.close()
+        if process.stderr:
+            process.stderr.close()
 
 
 class WorkerClient:
@@ -149,8 +203,12 @@ class WorkerClient:
             raise StageError(operation, "The worker returned an incompatible response.")
         if result.get("status") != "ok":
             error = result.get("error", {})
+            details = str(error.get("details", ""))
+            if failure and failure.details:
+                details = (details.rstrip() + "\n\nWorker process output\n---------------------\n" +
+                           failure.details).strip()
             raise StageError(operation, error.get("message", "The model could not complete this stage."),
-                             error.get("details", ""), error.get("retryable", True))
+                             details, error.get("retryable", True))
         if failure:
             raise failure
         if not isinstance(result.get("result"), dict):

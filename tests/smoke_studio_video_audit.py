@@ -213,6 +213,7 @@ def main() -> None:
             assert audio.workspace.title() == "Audio → Band"
             assert int(float(audio.bar.cget("value"))) == 0
             assert str(audio.bar.cget("mode")) == "determinate"
+            assert audio.progress_panel.winfo_viewable(), "Audio progress is not persistently visible"
             assert not audio.source_hscrollbar.winfo_ismapped(), "source horizontal scrollbar visible on wide workspace"
             assert not audio.summary_hscrollbar.winfo_ismapped(), "summary horizontal scrollbar visible on wide workspace"
             audio_text = []
@@ -231,6 +232,10 @@ def main() -> None:
             pump(app)
             assert audio.source_hscrollbar.winfo_manager() == "grid"
             assert audio.summary_hscrollbar.winfo_manager() == "grid"
+            assert audio.progress_panel.winfo_viewable(), "Audio progress clipped in compact workspace"
+            assert audio.progress_panel.winfo_rooty() + audio.progress_panel.winfo_height() <= (
+                audio.workspace.winfo_rooty() + audio.workspace.winfo_height() + 2
+            )
             capture(audio.workspace, reports / "video-audit-audio-band-640x480.png")
 
             checks["callbacks"] = errors

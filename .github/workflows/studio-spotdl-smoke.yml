@@ -5,6 +5,10 @@ on:
     paths:
       - "studio_spotdl*.py"
       - "studio_band/spotdl_worker.py"
+      - "studio_band/progress.py"
+      - "studio_band/protocol.py"
+      - "studio_band/runtime.py"
+      - "studio_band/storage.py"
       - "studio_youtube.py"
       - "requirements-studio*.txt"
       - ".github/workflows/studio-spotdl-smoke.yml"
@@ -14,6 +18,10 @@ on:
     paths:
       - "studio_spotdl*.py"
       - "studio_band/spotdl_worker.py"
+      - "studio_band/progress.py"
+      - "studio_band/protocol.py"
+      - "studio_band/runtime.py"
+      - "studio_band/storage.py"
       - "studio_youtube.py"
       - "requirements-studio*.txt"
       - ".github/workflows/studio-spotdl-smoke.yml"

@@ -79,6 +79,11 @@ TkDND notices. Optional AI engines run in separately installed environments;
 see [the model and checkpoint license notes](STUDIO_BAND_ACCURATE.md#third-party-modellicense-notes).
 The built-in spectral drum/beat fallback is project code.
 
+Transkun 2.0.1 depends on the MIT-licensed NCLS package. On Windows, Studio's
+isolated Python 3.11 runtime constrains this dependency to `ncls==0.0.68` and
+requires its published binary wheel; NCLS is downloaded at first use and is not
+bundled into the Studio EXE or the Lite application.
+
 Studio also contains dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.
 
 ## Online music source behavior

@@ -20,6 +20,7 @@ from studio_band.fusion import bass_contour, fuse, melody_contour, soft_align
 from studio_band.music import BeatMap, MasterSong, MusicEvent
 from studio_band.pipeline import BandPipeline, ConversionSettings
 from studio_band.preview import preview_messages
+from studio_band.progress import ProgressEvent
 from studio_band.protocol import Cancelled, StageError, WorkerClient, run_process
 from studio_band.runtime import Hardware, RuntimeManager, choose_separator
 from studio_band.storage import JobStore, atomic_json, cache_key, file_hash, file_lock, read_json
@@ -261,6 +262,24 @@ def test_worker_protocol_rejects_missing_and_mismatched_responses(tmp_path):
         client.call("x", "infer", {})
 
 
+def test_worker_error_keeps_response_trace_and_process_stderr(tmp_path):
+    script = tmp_path / "failed_worker.py"
+    script.write_text(
+        "import json,sys\n"
+        "request=json.load(open(sys.argv[1]))\n"
+        "sys.stderr.write('dependency warning from stderr\\n')\n"
+        "json.dump({'protocol':1,'id':request['id'],'status':'error','error':"
+        "{'message':'inference failed','details':'worker traceback'}},open(sys.argv[2],'w'))\n"
+        "raise SystemExit(1)\n",
+        encoding="utf-8",
+    )
+    client = WorkerClient(tmp_path / "requests", lambda _: [sys.executable, str(script)])
+    with pytest.raises(StageError, match="inference failed") as failure:
+        client.call("x", "infer", {})
+    assert "worker traceback" in failure.value.details
+    assert "dependency warning from stderr" in failure.value.details
+
+
 def test_real_worker_entrypoint_capabilities_and_error_protocol(tmp_path):
     script = Path("studio_band_worker.py").resolve()
     client = WorkerClient(tmp_path, lambda _: [sys.executable, str(script)])
@@ -280,6 +299,49 @@ def test_cancellation_terminates_real_subprocess():
         timer.cancel()
 
 
+def test_nonzero_subprocess_retains_stderr_and_returns_immediately():
+    with pytest.raises(StageError) as failure:
+        run_process(
+            [sys.executable, "-c", "import sys; print('setup stdout'); sys.stderr.write('ncls needs MSVC\\n'); raise SystemExit(7)"],
+            stage="Runtime setup",
+            timeout=5,
+        )
+    assert "setup stdout" in failure.value.details
+    assert "[stderr]" in failure.value.details
+    assert "ncls needs MSVC" in failure.value.details
+
+
+def test_live_subprocess_emits_nonfatal_stall_warning():
+    updates = []
+    run_process(
+        [sys.executable, "-c", "import time; time.sleep(.25)"],
+        stage="Runtime setup",
+        progress=updates.append,
+        timeout=2,
+        stall_warning_after=.05,
+    )
+    assert any("No setup activity" in update for update in updates)
+    assert any(isinstance(update, ProgressEvent) and update.activity == "waiting" for update in updates)
+
+
+def test_file_worker_progress_preserves_structured_metadata(tmp_path):
+    progress_path = tmp_path / "progress.json"
+    script = (
+        "import json,sys,time; "
+        "json.dump({'message':'Downloading model','activity':'download','stage_fraction':0.25,"
+        "'bytes_done':10,'bytes_total':40},open(sys.argv[1],'w')); time.sleep(.2)"
+    )
+    updates = []
+    run_process(
+        [sys.executable, "-c", script, str(progress_path)],
+        stage="infer", progress=updates.append, progress_path=progress_path, timeout=2,
+    )
+    event = next(update for update in updates if "Downloading model" in update)
+    assert isinstance(event, ProgressEvent)
+    assert event.activity == "download" and event.stage_fraction == .25
+    assert event.bytes_done == 10 and event.bytes_total == 40
+
+
 def test_cpu_selection_when_cuda_is_absent(monkeypatch):
     from studio_band.providers import device_for
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False)))
@@ -297,6 +359,54 @@ def test_auto_quality_checks_models_vram_and_ram():
 def test_missing_runtime_gives_actionable_error(tmp_path):
     with pytest.raises(StageError, match="runtime is missing"):
         RuntimeManager(tmp_path).command_for("transkun")
+
+
+def test_windows_transkun_policy_pins_binary_cp311_compatible_ncls():
+    policy = RuntimeManager.install_policy("piano", platform_name="nt")
+    assert policy == {"constraints": ["ncls==0.0.68"], "binary_only": ["ncls"]}
+    assert RuntimeManager.install_policy("piano", platform_name="posix") == {
+        "constraints": [], "binary_only": [],
+    }
+
+
+def test_windows_transkun_install_uses_constraint_binary_only_and_validation(tmp_path, monkeypatch):
+    import studio_band.runtime as runtime_module
+
+    manager = RuntimeManager(tmp_path)
+    monkeypatch.setattr(manager, "available", lambda _name: False)
+    monkeypatch.setattr(manager, "_uv", lambda *_args, **_kwargs: Path("uv"))
+    monkeypatch.setattr(
+        manager,
+        "install_policy",
+        lambda name: RuntimeManager.install_policy(name, platform_name="nt"),
+    )
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append([str(value) for value in command])
+        if "venv" in command:
+            python = manager.python("piano")
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"synthetic python")
+        if "freeze" in command:
+            return "[stdout]\ntranskun==2.0.1\nncls==0.0.68\n"
+        return ""
+
+    monkeypatch.setattr(runtime_module, "run_process", fake_run)
+    manager.install("piano", device="cuda")
+
+    install = next(command for command in commands if "transkun==2.0.1" in command)
+    constraint_index = install.index("--constraints") + 1
+    constraint = Path(install[constraint_index])
+    assert constraint.read_text(encoding="utf-8") == "ncls==0.0.68\n"
+    assert install[install.index("--only-binary") + 1] == "ncls"
+    assert "--strict" in install
+    assert not any("ncls==0.0.70" in value for command in commands for value in command)
+    validation = next(command[-1] for command in commands if len(command) >= 3 and command[-2] == "-c")
+    assert "import ncls, transkun" in validation and "0.0.68" in validation
+    record = read_json(manager.runtime_root / "piano" / "studio-runtime.json")
+    assert record["constraints"] == ["ncls==0.0.68"]
+    assert record["binary_only"] == ["ncls"] and record["validated"] is True
 
 
 def test_runtime_exposes_bundled_ffmpeg_under_standard_name(tmp_path, monkeypatch):

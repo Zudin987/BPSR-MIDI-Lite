@@ -31,7 +31,9 @@ def main(argv=None) -> int:
         if provider not in PROVIDERS:
             raise ValueError("Unknown Studio worker provider")
         def report(message):
-            atomic_json(progress_path, {"id": request_id, "message": str(message)})
+            from studio_band.progress import as_progress_event
+            event = as_progress_event(message)
+            atomic_json(progress_path, {"id": request_id, **event.to_dict()})
         if request["operation"] == "capabilities":
             import importlib.metadata
             from studio_band.providers import DISTRIBUTIONS

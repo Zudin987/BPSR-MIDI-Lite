@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import threading
+import time
 import tkinter as tk
 import webbrowser
 from dataclasses import replace
@@ -15,7 +16,8 @@ from studio_band.arrange import ArrangementSettings, PARTS, load_drum_profile
 from studio_band.export import copy_export
 from studio_band.pipeline import BandPipeline, ConversionSettings
 from studio_band.preview import PreviewPlayer
-from studio_band.protocol import Cancelled
+from studio_band.progress import ProgressEvent, as_progress_event, progress_context, progress_line
+from studio_band.protocol import Cancelled, RuntimeSetupError, StageError
 from studio_band.resolver import MusicResolver, ResolverConfig, ResolverTrack, SearchReport
 from studio_band.runtime import RUNTIMES, detect_hardware
 from studio_band.storage import atomic_json, read_json
@@ -83,6 +85,36 @@ def _scrollable_body(window, padding=14):
     return canvas, body, scrollbar
 
 
+def _job_error(exc: Exception, task: str) -> dict[str, object]:
+    cancelled = isinstance(exc, Cancelled)
+    if cancelled:
+        summary = str(exc)
+        heading = "Cancelled"
+    elif isinstance(exc, RuntimeSetupError):
+        summary = f"Conversion/setup failed · {exc.message}"
+        heading = "Runtime setup failed"
+    elif isinstance(exc, StageError):
+        summary = f"{task.title()} failed · {exc.message}"
+        heading = f"{exc.stage} failed"
+    else:
+        summary = f"{task.title()} failed · {str(exc) or type(exc).__name__}"
+        heading = "Unexpected failure"
+    details = getattr(exc, "details", "") or str(exc)
+    technical = json.dumps(
+        {
+            "summary": summary,
+            "stage": getattr(exc, "stage", task),
+            "exception": type(exc).__name__,
+            "retryable": bool(getattr(exc, "retryable", True)),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
+    if details:
+        technical += "\n\nTechnical log\n-------------\n" + str(details)
+    return {"summary": summary, "heading": heading, "technical": technical, "cancelled": cancelled}
+
+
 class BandAudioTab:
     def __init__(self, app):
         self.app, self.pipeline = app, BandPipeline()
@@ -91,6 +123,9 @@ class BandAudioTab:
         self.events, self.cancel, self.preview = queue.Queue(), threading.Event(), PreviewPlayer()
         self.busy, self.manifest, self.record, self.details = False, None, None, ""
         self.active_task, self.acquired_path, self.source_metadata = "", None, None
+        self.job_thread, self.job_started_at, self.last_activity_at = None, 0.0, 0.0
+        self.current_progress, self._last_elapsed_second = None, -1
+        self.progress_history: list[str] = []
         self.source_setup_window = None
         self.search_results: dict[str, ResolverTrack] = {}
         self.path = tk.StringVar(app)
@@ -106,6 +141,7 @@ class BandAudioTab:
         self.cross_check = tk.BooleanVar(app, value=True)
         self.install = tk.BooleanVar(app, value=True)
         self.status = tk.StringVar(app, value="Choose or drop a song to create four playable band parts.")
+        self.progress_context_var = tk.StringVar(app, value="Ready")
         self.hardware = tk.StringVar(app, value="Checking audio acceleration…")
         self.mutes = {p: tk.BooleanVar(app, value=False) for p in PARTS}
         self.tiers = {p: tk.StringVar(app, value=t) for p,t in {"piano": "tier4", "guitar": "tier3", "bass": "tier2"}.items()}
@@ -121,6 +157,34 @@ class BandAudioTab:
         self.workspace.title("Studio · Audio → Band Accurate")
         self.workspace_default_geometry = _fit_toplevel(self.workspace, 980, 780)
         self.workspace.protocol("WM_DELETE_WINDOW", self.hide_workspace)
+        # Conversion progress is fixed below the scrollable workspace so the
+        # current stage, percentage, elapsed time and Details remain visible at
+        # 1280x720 and compact window sizes.
+        self.progress_panel = ttk.Frame(self.workspace, padding=(12, 7, 12, 9))
+        self.progress_panel.pack(side="bottom", fill="x")
+        self.progress_panel.columnconfigure(0, weight=1)
+        self.progress_context_label = ttk.Label(
+            self.progress_panel, textvariable=self.progress_context_var,
+            style="Hint.TLabel", justify="left", wraplength=720,
+        )
+        self.progress_context_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.progress_details_button = ttk.Button(
+            self.progress_panel, text="Details…", command=self.show_details,
+        )
+        self.progress_details_button.grid(row=0, column=1, sticky="e")
+        self.bar = ttk.Progressbar(self.progress_panel, mode="determinate", maximum=100, value=0)
+        self.bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(5, 4))
+        self.progress_status_label = ttk.Label(
+            self.progress_panel, textvariable=self.status, justify="left", wraplength=720,
+        )
+        self.progress_status_label.grid(row=2, column=0, columnspan=2, sticky="ew")
+
+        def wrap_progress(event):
+            width = max(260, int(event.width) - 115)
+            self.progress_context_label.configure(wraplength=width)
+            self.progress_status_label.configure(wraplength=max(260, int(event.width) - 20))
+
+        self.progress_panel.bind("<Configure>", wrap_progress, add="+")
         self.workspace_canvas, body, self.workspace_scrollbar = _scrollable_body(self.workspace)
         body.columnconfigure(0, weight=1)
         source = ttk.LabelFrame(body, text="Audio source · local file is always supported", padding=9)
@@ -203,36 +267,30 @@ class BandAudioTab:
         ttk.Button(actions, text="Open arrangement", command=self.open_arrangement).pack(side="left", padx=6)
         self.rearrange_button = ttk.Button(actions, text="Apply melody / category", command=self.rearrange, state="disabled")
         self.rearrange_button.pack(side="left")
-        self.bar = ttk.Progressbar(body, mode="indeterminate")
-        self.bar.grid(row=4, column=0, sticky="ew", pady=5)
-        status = ttk.Label(body, textvariable=self.status, wraplength=720, justify="left")
-        status.grid(row=5, column=0, sticky="w")
-        body.bind("<Configure>", lambda event: status.configure(wraplength=max(300, event.width-10)))
         self.summary = ttk.Treeview(body, columns=("notes", "melody", "rejected", "simplified", "shifted"), show="tree headings", height=4)
         self.summary.heading("#0", text="Part")
         self.summary.column("#0", width=100, stretch=True)
         for name, label in (("notes", "Notes / hits"), ("melody", "Melody"), ("rejected", "Low confidence"), ("simplified", "Simplified"), ("shifted", "Range shifted")):
             self.summary.heading(name, text=label)
             self.summary.column(name, width=105, minwidth=65, anchor="center")
-        self.summary.grid(row=6, column=0, sticky="ew", pady=8)
+        self.summary.grid(row=4, column=0, sticky="ew", pady=8)
         listen = ttk.Frame(body)
-        listen.grid(row=7, column=0, sticky="w")
+        listen.grid(row=5, column=0, sticky="w")
         ttk.Button(listen, text="▶ Full Band", command=lambda: self.audition(set(PARTS))).pack(side="left")
         for part in PARTS:
             ttk.Button(listen, text=part.title(), command=lambda p=part: self.audition({p}), width=8).pack(side="left", padx=3)
         ttk.Button(listen, text="Stop", command=self.preview.stop, width=6).pack(side="left")
         muted = ttk.Frame(body)
-        muted.grid(row=8, column=0, sticky="w", pady=3)
+        muted.grid(row=6, column=0, sticky="w", pady=3)
         ttk.Label(muted, text="Mute for next preview:").pack(side="left")
         for part in PARTS:
             ttk.Checkbutton(muted, text=part.title(), variable=self.mutes[part]).pack(side="left", padx=4)
         footer = ttk.Frame(body)
-        footer.grid(row=9, column=0, sticky="w", pady=(6, 0))
+        footer.grid(row=7, column=0, sticky="w", pady=(6, 0))
         self.save_button = ttk.Button(footer, text="Export all files", command=self.save, state="disabled")
         self.save_button.pack(side="left")
         self.use_button = ttk.Button(footer, text="Use Full Band in BPSR", command=self.use, state="disabled")
         self.use_button.pack(side="left", padx=6)
-        ttk.Button(footer, text="Technical details", command=self.show_details).pack(side="left")
         self.tab.bind("<Destroy>", lambda event: self.close() if event.widget is self.tab else None)
         self.app.after(100, self.poll)
 
@@ -421,26 +479,89 @@ class BandAudioTab:
     def arrangement_settings(self):
         return ArrangementSettings(self.melody.get().lower(), {p:v.get() for p,v in self.tiers.items()})
 
+    def _render_progress(self, *, force: bool = False):
+        if self.current_progress is None or not self.job_started_at:
+            return
+        elapsed = max(0.0, time.monotonic() - self.job_started_at)
+        second = int(elapsed)
+        if not force and second == self._last_elapsed_second:
+            return
+        self._last_elapsed_second = second
+        self.status.set(progress_line(self.current_progress, elapsed))
+        self.progress_context_var.set(progress_context(self.current_progress))
+
+    def _accept_progress(self, value):
+        event = as_progress_event(value)
+        self.current_progress = event
+        self.last_activity_at = time.monotonic()
+        elapsed = max(0.0, self.last_activity_at - self.job_started_at) if self.job_started_at else 0.0
+        self.progress_history.append(f"{elapsed:8.1f}s  {event.message}")
+        self.progress_history = self.progress_history[-200:]
+        if event.overall is not None:
+            self.bar.stop()
+            self.bar.configure(mode="determinate", maximum=100, value=event.overall)
+        elif self.busy:
+            self.bar.configure(mode="indeterminate", maximum=100, value=0)
+            self.bar.start(12)
+        self._render_progress(force=True)
+
+    def request_cancel(self):
+        if not self.busy:
+            return
+        self.cancel.set()
+        self.cancel_button.configure(state="disabled")
+        overall = getattr(self.current_progress, "overall", None)
+        self.current_progress = ProgressEvent(
+            "Cancelling safely", phase="Cancelling", activity="waiting", overall=overall,
+            indeterminate=True,
+        )
+        self._render_progress(force=True)
+
+    def _restore_controls(self, *, retry: bool = False, cancelled: bool = False):
+        self.busy = False
+        self.bar.stop()
+        self.cancel_button.configure(state="disabled")
+        idle_text = getattr(self, "_convert_idle_text", "Analyze & Convert")
+        self.convert_button.configure(state="normal", text="Retry conversion" if retry and not cancelled else idle_text)
+        self.search_button.configure(state="normal")
+        self.rearrange_button.configure(state="normal" if self.manifest else "disabled")
+        self.source_selected()
+
     def start(self, action, success_kind="done", task="conversion"):
         if self.busy:
             return
         self.busy = True
         self.active_task = task
         self.cancel = threading.Event()
+        current_button_text = str(self.convert_button.cget("text"))
+        if current_button_text != "Retry conversion":
+            self._convert_idle_text = current_button_text
+        self.job_started_at = self.last_activity_at = time.monotonic()
+        self._last_elapsed_second = -1
+        self.progress_history = []
         self.preview.stop()
         self.convert_button.configure(state="disabled")
         self.rearrange_button.configure(state="disabled")
         self.search_button.configure(state="disabled")
         self.acquire_button.configure(state="disabled")
         self.open_source_button.configure(state="disabled")
-        self.cancel_button.configure(state="normal")
-        self.bar.start(12)
+        self.cancel_button.configure(command=self.request_cancel, state="normal")
+        if task == "conversion":
+            self._accept_progress(ProgressEvent(
+                "Checking runtime components", stage_id="runtime_setup", phase="First-time setup",
+                activity="install", overall=0, stage_fraction=0.0, indeterminate=True,
+            ))
+        else:
+            self._accept_progress(ProgressEvent(
+                task.title(), phase=task.title(), activity="processing", indeterminate=True,
+            ))
         def worker():
             try:
                 self.events.put((success_kind, action()))
             except Exception as exc:
-                self.events.put(("error", (str(exc), getattr(exc, "details", ""), isinstance(exc, Cancelled))))
-        threading.Thread(target=worker, daemon=True, name="studio-band-job").start()
+                self.events.put(("error", _job_error(exc, task)))
+        self.job_thread = threading.Thread(target=worker, daemon=True, name="studio-band-job")
+        self.job_thread.start()
 
     def convert(self):
         source = Path(self.path.get().strip().strip('"'))
@@ -455,7 +576,7 @@ class BandAudioTab:
         if self.manifest:
             settings, manifest = self.arrangement_settings(), self.manifest
             self.status.set("Re-arranging cached musical evidence…")
-            self.start(lambda: self.pipeline.rearrange(manifest, settings))
+            self.start(lambda: self.pipeline.rearrange(manifest, settings), task="rearrangement")
 
     def poll(self):
         try:
@@ -464,32 +585,46 @@ class BandAudioTab:
                 if kind == "hardware":
                     self.hardware.set(value)
                 elif kind == "progress":
-                    self.status.set(value)
+                    self._accept_progress(value)
                 elif kind in {"done", "error", "search_done", "acquired"}:
-                    self.busy = False
-                    self.bar.stop()
-                    self.cancel_button.configure(state="disabled")
-                    self.convert_button.configure(state="normal", text="Retry conversion" if kind == "error" and self.active_task == "conversion" else "Analyze & Convert")
-                    self.search_button.configure(state="normal")
-                    if kind == "done" and value:
-                        self.show_result(Path(value))
+                    error = value if kind == "error" else None
+                    cancelled = bool(error and error.get("cancelled"))
+                    self._restore_controls(retry=kind == "error" and self.active_task == "conversion",
+                                           cancelled=cancelled)
+                    if kind == "done":
+                        self.bar.configure(mode="determinate", maximum=100, value=100)
+                        self.progress_context_var.set("Complete — the requested work finished.")
+                        if value:
+                            self.show_result(Path(value))
                     elif kind == "search_done":
+                        self.bar.configure(mode="determinate", maximum=100, value=0)
+                        self.progress_context_var.set("Ready")
                         self.show_search_results(value)
                     elif kind == "acquired":
+                        self.bar.configure(mode="determinate", maximum=100, value=0)
                         self.acquired_path, self.source_metadata = Path(value.path), value.metadata
                         self.path.set(str(value.path))
                         self.resolver_status.set("Authorised audio acquired and checksum-cached. Starting Audio → Band…")
                         self.app.after(10, self.convert)
                     elif kind == "error":
-                        self.status.set(value[0])
-                        self.resolver_status.set(value[0] if self.active_task in {"music search", "audio acquisition"} else self.resolver_status.get())
-                        self.details = value[1] or value[0]
-                    self.rearrange_button.configure(state="normal" if self.manifest else "disabled")
-                    self.source_selected()
+                        self.status.set(str(error["summary"]))
+                        self.progress_context_var.set(
+                            "Cancelled — completed analysis remains cached." if cancelled else
+                            "Failed — open Details for the technical log. Controls are ready to retry."
+                        )
+                        if self.active_task in {"music search", "audio acquisition"}:
+                            self.resolver_status.set(str(error["summary"]))
+                        history = "\n".join(self.progress_history)
+                        self.details = str(error["technical"]) + ("\n\nProgress history\n----------------\n" + history if history else "")
         except queue.Empty:
             pass
         except (tk.TclError, ValueError, OSError, KeyError) as exc:
             self.status.set(str(exc))
+        if self.busy:
+            self._render_progress()
+            if self.job_thread is not None and not self.job_thread.is_alive() and self.events.empty():
+                failure = _job_error(RuntimeError("The background job stopped without returning a result."), self.active_task)
+                self.events.put(("error", failure))
         if self.tab.winfo_exists():
             self.app.after(100, self.poll)
 
@@ -505,7 +640,8 @@ class BandAudioTab:
         warnings = record.get("warnings", [])
         assignment = record["melody_assignment"]["part"]
         self.status.set(f"Ready · Main melody: {assignment.title() if assignment else 'not detected'}." +
-                        (f" {len(warnings)} quality note(s) in Technical details." if warnings else ""))
+                        (f" {len(warnings)} quality note(s) in Details." if warnings else ""))
+        self.progress_context_var.set("Complete — 100%. The arrangement is ready to preview or export.")
         engines = record.get("providers", {}).get("engines", [])
         self.hardware.set("GPU acceleration active" if any(e.get("device") == "cuda" for e in engines) else "CPU mode - conversion will be slower")
         self.details = json.dumps({"audio_source": record.get("source"), "quality_notes": warnings, "providers": record.get("providers"),
@@ -604,7 +740,7 @@ class BandAudioTab:
                                                    cancel=self.cancel, progress=lambda x: self.events.put(("progress", x)))
                 self.events.put(("progress", "Recommended model runtimes are ready. Models load when first used."))
                 return None
-            self.start(work)
+            self.start(work, task="runtime setup")
         ttk.Button(content, text="Install recommended runtimes", command=install).pack(anchor="w", pady=4)
         repair_row = ttk.Frame(content)
         repair_row.pack(anchor="w", pady=4)
@@ -614,7 +750,8 @@ class BandAudioTab:
             name, device = repair_name.get(), self.device.get()
             window.destroy()
             self.start(lambda: self.pipeline.runtimes.install(name, device=device, repair=True, cancel=self.cancel,
-                                                              progress=lambda x: self.events.put(("progress", x))))
+                                                              progress=lambda x: self.events.put(("progress", x))),
+                       task="runtime setup")
         ttk.Button(repair_row, text="Install / repair selected", command=repair).pack(side="left", padx=6)
         ttk.Button(content, text="Drum mapping", command=self.edit_drums).pack(anchor="w", pady=4)
 

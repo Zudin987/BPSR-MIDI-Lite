@@ -1,5 +1,15 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.8
+
+- Fixes clean Windows Transkun setup without requiring Visual Studio or Microsoft C++ Build Tools. The isolated Python 3.11 piano runtime constrains Transkun 2.0.1's unpinned dependency to `ncls==0.0.68` and tells uv to accept only a prebuilt `ncls` wheel. Runtime validation imports both packages and verifies their installed versions before the runtime is marked ready.
+- Makes automatic model-runtime preparation a distinct first-time phase before audio analysis. A dependency-installation failure is terminal rather than being swallowed as an optional inference fallback, so the job leaves its busy state immediately and exposes a concise retryable error.
+- Replaces the vague activity bar with structured weighted progress covering runtime setup, audio preparation, separation, timing, each instrument transcription, musical cross-check, fusion, BPSR arrangement and MIDI export. The fixed progress area shows the current stage, overall completion and elapsed time while distinguishing downloads, installation, CPU/GPU work, cache reuse, waiting and failure.
+- Reports exact byte progress only when a downloader supplies a real content length. Long inference stays at its completed-stage boundary instead of inventing precision, and a two-minute inactivity notice checks worker health without terminating legitimate AI processing.
+- Captures subprocess stdout and stderr separately for **Details**, detects non-zero exits or a dead background job, stops progress animation and restores Convert/Search/Cancel controls. Normal UI copy remains concise instead of displaying dependency warning floods.
+- Strengthens Windows CI so the real-audio smoke starts from a fresh Studio data root, installs the same external Transkun runtime used by a clean user machine, proves the `ncls==0.0.68` binary-only policy, imports both packages and completes real Transkun inference.
+- Keeps local MP3/WAV/FLAC/M4A/OGG input as a first-class path and keeps the progress panel visible at 1280×720 and 640×480.
+
 ## 0.5.0-band-accurate-beta.7
 
 - Overhauls the Studio desktop UI around a responsive 2026 layout contract instead of relying on fixed-width side panels and large minimum window geometry. Windows Per-Monitor-V2 DPI awareness is enabled on a best-effort basis before Tk creates the root window.

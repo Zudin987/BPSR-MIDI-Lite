@@ -31,6 +31,7 @@ def main():
         from studio_band.arrange import ArrangementSettings, arrange, load_drum_profile
         from studio_band.export import export_arrangement
         from studio_band.music import BeatMap, MasterSong, MusicEvent
+        from studio_band.protocol import RuntimeSetupError, StageError, run_process
         app = studio_launcher.app.App()
         errors = []
         app.report_callback_exception = lambda *error: errors.append(str(error))
@@ -103,6 +104,7 @@ def main():
                 assert not audio._ux_hidden_source_combo.winfo_ismapped(), "One-choice source combobox is still visible"
             assert _find_text(audio.workspace, "Models & quality…") is not None, "Advanced model controls were not renamed for users"
             assert _find_text(audio.workspace, "Details…") is not None, "Technical details were not demoted"
+            assert audio.progress_panel.winfo_viewable(), "Persistent progress panel is not visible"
 
             # A 640x480 Audio -> Band window keeps the manual input at the top
             # and footer controls reachable through vertical scrolling. Toolbars
@@ -124,9 +126,42 @@ def main():
             pump()
             assert audio.save_button.winfo_rooty() + audio.save_button.winfo_height() <= (
                 audio.workspace.winfo_rooty() + audio.workspace.winfo_height() + 2), "Footer cannot be reached at scroll bottom"
+            assert audio.progress_panel.winfo_viewable(), "Progress disappeared after scrolling"
+            assert audio.progress_panel.winfo_rooty() + audio.progress_panel.winfo_height() <= window_bottom + 2, "Progress panel clips below compact window"
             audio.workspace.geometry(initial_geometry)
             audio.workspace_canvas.yview_moveto(0)
             pump()
+
+            # The real ncls/MSVC class of setup failure must end the job and
+            # keep the concise reason in the normal UI while preserving the
+            # installer output under Details.
+            def failed_setup():
+                try:
+                    run_process(
+                        [sys.executable, "-c", (
+                            "import sys; sys.stderr.write('error: Microsoft Visual C++ 14.0 or greater is required.\\n'"
+                            "); sys.stderr.write('ncls==0.0.70\\n'); raise SystemExit(1)"
+                        )],
+                        stage="Runtime setup", timeout=10,
+                    )
+                except StageError as exc:
+                    raise RuntimeSetupError(
+                        "piano",
+                        "Could not prepare Transkun runtime. Windows dependency installation failed.",
+                        exc.details,
+                    ) from exc
+
+            audio.start(failed_setup, task="conversion")
+            pump(1)
+            assert not audio.busy, "Failed setup left Audio -> Band busy"
+            assert str(audio.cancel_button.cget("state")) == "disabled", "Cancel stayed active after failure"
+            assert str(audio.convert_button.cget("state")) == "normal", "Convert control did not restore"
+            assert str(audio.convert_button.cget("text")) == "Retry conversion", "Retry action was not exposed"
+            assert str(audio.bar.cget("mode")) == "determinate", "Failed progress bar kept animating"
+            assert str(audio.status.get()) == (
+                "Conversion/setup failed · Could not prepare Transkun runtime. Windows dependency installation failed."
+            )
+            assert "Microsoft Visual C++" in audio.details and "ncls==0.0.70" in audio.details
 
             # Each new job owns a fresh Event. The actual Cancel button must
             # cancel that job rather than the Event captured during UI creation.
@@ -168,6 +203,8 @@ def main():
                 "small_window_footer_access": True,
                 "small_window_toolbar_reflow": True,
                 "horizontal_table_scroll": True,
+                "persistent_progress": True,
+                "failed_setup_restores_controls": True,
                 "resolver_scrollbar": True,
                 "cancel_current_job": True,
                 "rearrange_without_models": True,

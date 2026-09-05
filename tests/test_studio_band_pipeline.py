@@ -6,7 +6,8 @@ import pytest
 from studio_band.arrange import ArrangementSettings
 from studio_band.music import MusicEvent
 from studio_band.pipeline import BandPipeline, ConversionSettings
-from studio_band.protocol import Cancelled, StageError
+from studio_band.progress import ProgressEvent
+from studio_band.protocol import Cancelled, RuntimeSetupError, StageError
 from studio_band.runtime import RuntimeManager
 from studio_band.storage import JobStore, read_json
 
@@ -84,6 +85,22 @@ def test_complete_pipeline_outputs_all_files_and_reuses_expensive_work(tmp_path)
     assert read_json(reopened)["melody_assignment"]["part"] == "guitar"
 
 
+def test_progress_is_weighted_monotonic_and_names_real_pipeline_stages(tmp_path):
+    source = tmp_path / "song.mp3"
+    source.write_bytes(b"legal synthetic fixture")
+    updates = []
+    pipeline(tmp_path).convert(source, progress=updates.append)
+
+    structured = [update for update in updates if isinstance(update, ProgressEvent)]
+    overall = [update.overall for update in structured if update.overall is not None]
+    assert overall == sorted(overall)
+    assert overall[0] == 18 and overall[-1] == 100
+    stage_ids = {update.stage_id for update in structured}
+    assert set(("prepare_audio", "separate", "beat", "piano", "guitar", "bass",
+                "drums", "cross_check", "fusion", "arrange", "export")) <= stage_ids
+    assert any(update.phase == "Analyzing song" and update.activity == "cpu" for update in structured)
+
+
 def test_provider_metadata_names_output_without_exposing_cached_filename(tmp_path):
     source = tmp_path / ("a" * 64 + ".flac")
     source.write_bytes(b"legal synthetic fixture")
@@ -119,6 +136,36 @@ def test_separator_failure_is_actionable_and_does_not_fake_stems(tmp_path):
     FixtureClient.fail = {"demucs"}
     with pytest.raises(StageError, match="six-stem separator"):
         converter.convert(source)
+    assert not list(tmp_path.rglob("* - Full Band.mid"))
+
+
+def test_runtime_install_failure_is_terminal_before_analysis_and_keeps_details(tmp_path):
+    class FailedSetupRuntimes(FixtureRuntimes):
+        def available(self, name):
+            return name != "piano" and super().available(name)
+
+        def install(self, name, **_kwargs):
+            raise RuntimeSetupError(
+                name,
+                "Could not prepare Transkun runtime. Windows dependency installation failed.",
+                "error: Microsoft Visual C++ 14.0 or greater is required\nncls==0.0.70",
+            )
+
+    source = tmp_path / "song.wav"
+    source.write_bytes(b"synthetic")
+    FixtureClient.calls, FixtureClient.fail = [], set()
+    converter = FixturePipeline(
+        JobStore(tmp_path / "cache"), FailedSetupRuntimes(tmp_path / "runtime"),
+        FixtureClient, ffmpeg=Path("synthetic-ffmpeg"),
+    )
+    updates = []
+    with pytest.raises(RuntimeSetupError, match="Windows dependency installation failed") as failure:
+        converter.convert(source, progress=updates.append)
+    assert "ncls==0.0.70" in failure.value.details
+    assert FixtureClient.calls == []
+    assert not any("cross-check" in str(update).casefold() for update in updates)
+    status = read_json(next((tmp_path / "cache").rglob("status.json")))
+    assert status["status"] == "failed" and "Microsoft Visual C++" in status["details"]
     assert not list(tmp_path.rglob("* - Full Band.mid"))
 
 

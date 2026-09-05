@@ -605,7 +605,9 @@ def _install_audio_workspace_patch() -> None:
         if not getattr(self, "busy", False):
             try:
                 self.bar.stop()
-                self.bar.configure(mode="determinate", value=0)
+                # Preserve 100% on success and the last completed weighted
+                # boundary on failure; only stop animation when the job ends.
+                self.bar.configure(mode="determinate")
             except tk.TclError:
                 pass
         return result

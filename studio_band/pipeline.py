@@ -10,8 +10,9 @@ from .arrange import ArrangementSettings, arrange, load_drum_profile
 from .export import export_arrangement, reopen, source_record
 from .fusion import build_master
 from .music import BeatMap, MusicEvent
-from .protocol import Cancelled, StageError, WorkerClient, check_cancel, run_process
-from .runtime import PROVIDER_RUNTIME, RuntimeManager, choose_separator, detect_hardware
+from .progress import PipelineProgress, ProgressEvent
+from .protocol import Cancelled, RuntimeSetupError, StageError, WorkerClient, check_cancel, run_process
+from .runtime import PROVIDER_RUNTIME, RUNTIME_LABELS, RuntimeManager, choose_separator, detect_hardware
 from .storage import JobStore, atomic_json, cache_key, file_hash, file_lock, read_json
 
 EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
@@ -51,7 +52,7 @@ class BandPipeline:
         try:
             run_process([str(ffmpeg), "-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i", str(original),
                          "-map", "0:a:0", "-vn", "-ac", "2", "-ar", "44100", "-c:a", "pcm_f32le", str(temporary)],
-                        stage="Preparing audio", cancel=cancel, timeout=600)
+                        stage="Preparing audio", cancel=cancel, progress=report, timeout=600)
             import soundfile as sf
             info = sf.info(str(temporary))
             if not 0 < info.duration <= 1800:
@@ -113,6 +114,46 @@ class BandPipeline:
         self.store.commit_stage(folder, key, result, files)
         return result
 
+    @staticmethod
+    def _runtime_plan(settings: ConversionSettings, separator: str) -> list[str]:
+        # Prepare preferred engines before touching the audio. This makes first
+        # use a distinct, truthful phase and ensures dependency failures cannot
+        # be mistaken for slow inference. Transkun is first so its small runtime
+        # is validated before multi-GB separator/cross-check installs.
+        plan = ["piano", "separator", "beat"]
+        if settings.cross_check:
+            plan.append("mt3")
+        if separator == "roformer":
+            plan.append("hq")
+        return plan
+
+    def _prepare_runtimes(self, settings: ConversionSettings, hardware, separator: str,
+                          cancel, flow: PipelineProgress) -> None:
+        required = self._runtime_plan(settings, separator)
+        missing = [name for name in required if not self.runtimes.available(name)]
+        if not settings.install_models:
+            flow.setup_ready("Runtime check complete; automatic installation is off")
+            return
+        if not missing:
+            flow.setup_ready("Runtime and transcription components ready")
+            return
+        device = "cuda" if settings.device != "cpu" and hardware.cuda else "cpu"
+        total = len(missing)
+        for index, name in enumerate(missing):
+            check_cancel(cancel)
+            label = RUNTIME_LABELS.get(name, name)
+            flow.setup(label, index, total, ProgressEvent(
+                f"Preparing {label} runtime (first use only)…",
+                activity="install", stage_fraction=0.0, indeterminate=True,
+            ))
+            self.runtimes.install(
+                name,
+                device=device,
+                cancel=cancel,
+                progress=lambda value, label=label, index=index: flow.setup(label, index, total, value),
+            )
+        flow.setup_ready("First-time transcription setup complete")
+
     def convert(self, source: Path, settings: ConversionSettings | None = None, *, cancel=None, progress=None,
                 source_metadata: dict | None = None) -> Path:
         settings = settings or ConversionSettings()
@@ -123,7 +164,7 @@ class BandPipeline:
             raise StageError("Preparing audio", "Choose an MP3, WAV, FLAC, M4A or OGG audio file.")
         if source.stat().st_size > 2 * 1024**3:
             raise StageError("Preparing audio", "This audio file is too large; choose a file below 2 GB.")
-        report = progress or (lambda _: None)
+        flow = PipelineProgress(progress)
         check_cancel(cancel)
         source_info = source_record(source_metadata, source.stem)
         digest = file_hash(source)
@@ -131,25 +172,47 @@ class BandPipeline:
         warnings, provenance, primary, reference = [], {}, [], []
         hardware = detect_hardware()
         provenance["hardware"] = asdict(hardware)
+        separator = choose_separator(settings.stem_quality, hardware,
+                                     self.runtimes.available("hq") and (self.runtimes.models / "roformer").exists())
         with file_lock(self.store.root / (job.name + ".lock")):
             atomic_json(job / "status.json", {"status": "running", "source_sha256": digest})
             try:
+                self._prepare_runtimes(settings, hardware, separator, cancel, flow)
                 original = self.store.copy_source(job, source, digest)
-                prepared, duration = self._prepare(original, job, cancel, report)
+                flow.stage("prepare_audio", activity="cpu")
+                prepared, duration = self._prepare(
+                    original, job, cancel,
+                    lambda value: flow.detail("prepare_audio", value, activity="cpu"),
+                )
+                flow.complete("prepare_audio")
                 from studio_youtube import _ffmpeg_executable
                 client = self.client_factory(job / "requests", self.runtimes.command_for,
                                              self.runtimes.environment(self.ffmpeg or _ffmpeg_executable()))
 
-                def run(provider, audio, **payload):
+                def provider_activity(provider):
+                    if provider in {"basic_pitch", "drums_dsp", "beat_dsp"}:
+                        return "cpu"
+                    return "gpu" if settings.device != "cpu" and hardware.cuda else "cpu"
+
+                def run(provider, audio, stage_id, **payload):
                     check_cancel(cancel)
-                    result = self._stage(client, job, provider, audio, payload, cancel, report, warnings, settings, hardware)
+                    activity = provider_activity(provider)
+                    result = self._stage(
+                        client, job, provider, audio, payload, cancel,
+                        lambda value: flow.detail(stage_id, value, activity=activity),
+                        warnings, settings, hardware,
+                    )
                     provenance.setdefault("engines", []).append(result.get("provenance", {"provider": provider}))
                     warnings.extend(result.get("warnings", []))
                     return result
 
-                def attempt(provider, audio, fallback=None, **payload):
+                def attempt(provider, audio, stage_id, fallback=None, **payload):
                     try:
-                        return run(provider, audio, **payload)
+                        return run(provider, audio, stage_id, **payload)
+                    except RuntimeSetupError:
+                        # A failed dependency installation is not an inference
+                        # quality fallback. End the busy job and surface setup.
+                        raise
                     except (StageError, OSError, ValueError, RuntimeError) as exc:
                         if isinstance(exc, Cancelled):
                             raise
@@ -157,23 +220,23 @@ class BandPipeline:
                         provenance.setdefault("fallbacks", []).append({"provider": provider, "replacement": fallback,
                                                                         "error": str(exc), "details": getattr(exc, "details", "")})
                         if fallback:
-                            return run(fallback, audio, **payload)
+                            return run(fallback, audio, stage_id, **payload)
                         return {"events": []}
 
-                report("Separating stems")
-                separator = choose_separator(settings.stem_quality, hardware,
-                                             self.runtimes.available("hq") and (self.runtimes.models / "roformer").exists())
+                flow.stage("separate", activity=provider_activity(separator))
                 vocal_hq = None
                 separator_audio = prepared
                 if separator == "roformer":
-                    result = attempt("roformer", prepared)
+                    result = attempt("roformer", prepared, "separate")
                     if result.get("vocals"):
                         vocal_hq = Path(result["vocals"])
                         separator_audio = Path(result["instrumental"])
                     else:
                         warnings.append("HQ separation unavailable; used standard six-stem separation.")
                 try:
-                    separated = run("demucs", separator_audio)
+                    separated = run("demucs", separator_audio, "separate")
+                except RuntimeSetupError:
+                    raise
                 except (StageError, OSError, ValueError) as exc:
                     raise StageError("Separating stems", "The six-stem separator could not run. Open Advanced to install/repair it, then Retry.",
                                      str(exc) + "\n" + getattr(exc, "details", "")) from exc
@@ -184,10 +247,12 @@ class BandPipeline:
                 provenance["separator"] = {"requested": settings.stem_quality, "actual": "roformer+demucs" if vocal_hq else "demucs",
                                              "model": "htdemucs_6s", "timeline": "original, untrimmed"}
                 provenance["stem_metrics"] = separated.get("metrics", {})
+                flow.complete("separate")
 
-                report("Detecting beat")
-                beat_result = attempt("beat_this", prepared, "beat_dsp")
+                flow.stage("beat", activity=provider_activity("beat_this"))
+                beat_result = attempt("beat_this", prepared, "beat", "beat_dsp")
                 beats = BeatMap(**beat_result["beat_map"])
+                flow.complete("beat")
 
                 def add(result, source_name=None, target=None):
                     container = primary if target is None else target
@@ -201,24 +266,31 @@ class BandPipeline:
                         e.event_id = f"{e.engine}:{e.source}:{index}"
                         container.append(e)
 
-                report("Transcribing vocals")
-                add(run("basic_pitch", stems["vocals"], source="vocals"))
-                report("Transcribing Piano")
-                add(attempt("transkun", stems["piano"], "basic_pitch", source="piano"))
-                report("Transcribing Guitar")
-                add(run("basic_pitch", stems["guitar"], source="guitar"))
-                report("Transcribing Bass")
-                add(run("basic_pitch", stems["bass"], source="bass"))
-                report("Transcribing other musical material")
-                add(run("basic_pitch", stems["other"], source="other"))
-                report("Transcribing Drums")
+                flow.stage("vocals", activity="cpu")
+                add(run("basic_pitch", stems["vocals"], "vocals", source="vocals"))
+                flow.complete("vocals")
+                flow.stage("piano", activity=provider_activity("transkun"))
+                add(attempt("transkun", stems["piano"], "piano", "basic_pitch", source="piano"))
+                flow.complete("piano")
+                flow.stage("guitar", activity="cpu")
+                add(run("basic_pitch", stems["guitar"], "guitar", source="guitar"))
+                flow.complete("guitar")
+                flow.stage("bass", activity="cpu")
+                add(run("basic_pitch", stems["bass"], "bass", source="bass"))
+                flow.complete("bass")
+                flow.stage("other", activity="cpu")
+                add(run("basic_pitch", stems["other"], "other", source="other"))
+                flow.complete("other")
+                flow.stage("drums", activity="cpu")
                 drum_backend = "adtof" if self.runtimes.available("drums") else "drums_dsp"
-                drum_result = attempt("adtof", stems["drums"], "drums_dsp") if drum_backend == "adtof" else run("drums_dsp", stems["drums"])
+                drum_result = (attempt("adtof", stems["drums"], "drums", "drums_dsp")
+                               if drum_backend == "adtof" else run("drums_dsp", stems["drums"], "drums"))
                 drum_backend = drum_result.get("provenance", {}).get("provider", drum_backend)
+                flow.complete("drums")
 
-                report("Running musical cross-check")
+                flow.stage("cross_check", activity=provider_activity("mr_mt3"))
                 if settings.cross_check:
-                    add(attempt("mr_mt3", prepared), target=reference)
+                    add(attempt("mr_mt3", prepared, "cross_check"), target=reference)
                 else:
                     warnings.append("Musical cross-check was disabled in Advanced.")
                 reference_drums = [e for e in reference if e.source == "drums"]
@@ -231,27 +303,31 @@ class BandPipeline:
                 else:
                     add(drum_result)
                     provenance["drum_backend"] = drum_backend
-                report("Building musical map")
+                flow.complete("cross_check")
+                flow.stage("fusion", activity="cpu")
                 master = build_master(digest, duration, beats, primary, reference, provenance, warnings)
                 atomic_json(job / "analysis" / "master.json", master.to_dict())
                 if not master.events:
                     raise StageError("Building musical map", "No reliable musical events were found. Try another recording or separation quality.")
+                flow.complete("fusion")
                 check_cancel(cancel)
-                report("Arranging for BPSR")
+                flow.stage("arrange", activity="cpu")
                 profile_path = self.runtimes.root / "profiles" / "bpsr_drums.json"
                 profile = load_drum_profile(profile_path if profile_path.exists() else None)
                 result = arrange(master, settings.arrangement, profile)
                 if not profile["calibrated"]:
                     master.warnings.append("Drum pads use a provisional semantic mapping; edit Advanced → Drum mapping after calibration.")
-                report("Exporting")
+                flow.complete("arrange")
+                flow.stage("export", activity="disk")
                 check_cancel(cancel)
                 output = export_arrangement(job / "output", source_info.get("title", source.stem), master, result,
                                             settings.arrangement, job, source_info)
                 atomic_json(job / "status.json", {"status": "done", "arrangement": str(output)})
-                report("Done")
+                flow.complete("export", "Conversion complete")
                 return output
             except Exception as exc:
-                atomic_json(job / "status.json", {"status": "cancelled" if isinstance(exc, Cancelled) else "failed", "error": str(exc)})
+                atomic_json(job / "status.json", {"status": "cancelled" if isinstance(exc, Cancelled) else "failed",
+                                                  "error": str(exc), "details": getattr(exc, "details", "")})
                 raise
 
     @staticmethod

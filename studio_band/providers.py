@@ -9,6 +9,7 @@ import statistics
 from pathlib import Path
 
 from .music import MusicEvent
+from .progress import ProgressEvent
 from .runtime import HQ_MODEL, PROVIDER_MODEL
 from .storage import atomic_json, file_hash
 
@@ -19,6 +20,12 @@ GM_DRUMS = {
     51: "RIDE", 53: "RIDE", 59: "RIDE",
     41: "TOM", 43: "TOM", 45: "TOM", 47: "TOM", 48: "TOM", 50: "TOM",
 }
+
+
+def _report(report, message: str, *, activity: str = "processing",
+            stage_fraction: float | None = None, indeterminate: bool = True) -> None:
+    report(ProgressEvent(message, activity=activity, stage_fraction=stage_fraction,
+                         indeterminate=indeterminate))
 
 
 def device_for(requested: str) -> str:
@@ -80,7 +87,8 @@ def basic_pitch(payload: dict, report) -> dict:
               "vocals": (65.41, 1396.91, 90.0), "piano": (27.5, 4186.01, 70.0),
               "other": (65.41, 2093.0, 120.0)}
     low, high, minimum = limits[source]
-    report("Listening for " + source + " notes…")
+    _report(report, "Listening for " + source + " notes with the bundled model…",
+            activity="cpu", stage_fraction=0.12)
     _, _, notes = predict(Path(payload["audio"]), _basic_pitch_model(),
                           onset_threshold=0.50 if source == "bass" else 0.55,
                           frame_threshold=0.30, minimum_note_length=minimum,
@@ -105,7 +113,15 @@ def demucs(payload: dict, report) -> dict:
     from demucs.pretrained import get_model
     device = device_for(payload.get("device", "auto"))
     torch.manual_seed(0)
-    report("Loading the six-instrument separator…")
+    checkpoint_root = Path(os.environ["TORCH_HOME"]) / "hub" / "checkpoints"
+    cached_weights = list(checkpoint_root.glob("5c90dfd2*"))
+    _report(
+        report,
+        "Loading the six-instrument separator…" if cached_weights else
+        "Downloading the six-instrument separator model…",
+        activity=device if cached_weights else "download",
+        stage_fraction=0.05,
+    )
     model = get_model("htdemucs_6s")
     model.eval()
     audio, sr = _audio(payload["audio"])
@@ -118,7 +134,8 @@ def demucs(payload: dict, report) -> dict:
         separated = torch.zeros((len(model.sources), *waveform.shape))
     else:
         normalized = (waveform - mean) / scale
-        report("Separating vocals, piano, guitar, bass and drums…")
+        _report(report, f"Separating vocals, piano, guitar, bass and drums on {device.upper()}…",
+                activity=device, stage_fraction=0.20)
         with torch.inference_mode():
             separated = apply_model(model, normalized[None], device=device, shifts=1, split=True,
                                     overlap=0.25, progress=False, num_workers=0)[0]
@@ -152,7 +169,13 @@ def roformer(payload: dict, report) -> dict:
     target.mkdir(parents=True, exist_ok=True)
     models = Path(payload["models"]) / "roformer"
     models.mkdir(parents=True, exist_ok=True)
-    report("Loading the HQ vocal separator (separate model download on first use)…")
+    model_cached = (models / HQ_MODEL).is_file()
+    _report(
+        report,
+        "Loading the HQ vocal separator…" if model_cached else "Downloading the HQ vocal separator model…",
+        activity=device if model_cached else "download",
+        stage_fraction=0.05,
+    )
     separator = Separator(model_file_dir=str(models), output_dir=str(target), output_format="WAV",
                           sample_rate=44100, use_soundfile=True, normalization_threshold=0.99,
                           # In this version the RoFormer overlap parameter is
@@ -160,6 +183,7 @@ def roformer(payload: dict, report) -> dict:
                           # between the selected checkpoint's 8-second windows.
                           mdxc_params={"segment_size": 256, "override_model_segment_size": False, "batch_size": 1, "overlap": 4})
     separator.load_model(model_filename=HQ_MODEL)
+    _report(report, f"Separating HQ vocals on {device.upper()}…", activity=device, stage_fraction=0.20)
     samples, sample_rate = _audio(payload["audio"])
     frames = len(samples)
     config = separator.model_instance.model_data_cfgdict
@@ -202,8 +226,17 @@ def roformer(payload: dict, report) -> dict:
 def beat_this(payload: dict, report) -> dict:
     from beat_this.inference import File2Beats
     device = device_for(payload.get("device", "auto"))
-    report("Detecting the song's master beat and downbeats…")
+    checkpoint = Path(os.environ["TORCH_HOME"]) / "hub" / "checkpoints" / "beat_this-final0.ckpt"
+    _report(
+        report,
+        "Loading the beat and timing model…" if checkpoint.is_file() else
+        "Downloading the beat and timing model…",
+        activity=device if checkpoint.is_file() else "download",
+        stage_fraction=0.05,
+    )
     tracker = File2Beats(checkpoint_path="final0", device=device, dbn=False)
+    _report(report, f"Detecting the song's beat and downbeats on {device.upper()}…",
+            activity=device, stage_fraction=0.20)
     beats, downbeats = tracker(payload["audio"])
     intervals = [float(b-a) for a, b in zip(beats, beats[1:]) if b > a]
     bpm = 60 / statistics.median(intervals) if intervals else None
@@ -224,7 +257,8 @@ def transkun(payload: dict, report) -> dict:
     device = device_for(payload.get("device", "auto"))
     root = Path(package.__file__).parent / "pretrained"
     weight, config = root / "2.0.pt", root / "2.0.conf"
-    report("Loading the piano specialist…")
+    _report(report, "Loading the Transkun piano specialist from the installed runtime…",
+            activity=device, stage_fraction=0.10)
     configuration = moduleconf.parseFromFile(str(config))["Model"]
     model = configuration.module.TransKun(conf=configuration.config).to(device)
     checkpoint = torch.load(str(weight), map_location=device, weights_only=False)
@@ -235,7 +269,7 @@ def transkun(payload: dict, report) -> dict:
     audio, sr = _audio(payload["audio"])
     if sr != model.fs:
         audio = soxr.resample(audio, sr, model.fs)
-    report("Transcribing piano performance…")
+    _report(report, f"Transcribing Piano on {device.upper()}…", activity=device, stage_fraction=0.20)
     with torch.inference_mode():
         notes = model.transcribe(torch.from_numpy(np.asarray(audio, dtype="float32")).to(device),
                                  stepInSecond=None, segmentSizeInSecond=None, discardSecondHalf=False)
@@ -250,12 +284,21 @@ def mr_mt3(payload: dict, report) -> dict:
     import soxr
     from mt3_infer import load_model
     device = device_for(payload.get("device", "auto"))
-    report("Loading the independent musical cross-check…")
+    weights = list(Path(os.environ["MT3_CHECKPOINT_DIR"]).rglob("mt3.pth"))
+    _report(
+        report,
+        "Loading the independent musical cross-check…" if weights else
+        "Downloading the independent musical cross-check model…",
+        activity=device if weights else "download",
+        stage_fraction=0.05,
+    )
     model = load_model("mr_mt3", device=device, auto_download=True)
     audio, sr = _audio(payload["audio"])
     audio = audio.mean(axis=1)
     if sr != 16000:
         audio = soxr.resample(audio, sr, 16000)
+    _report(report, f"Cross-checking musical evidence on {device.upper()}…",
+            activity=device, stage_fraction=0.20)
     midi = model.transcribe(audio, sr=16000)
     target = Path(payload["output"]) / "mr-mt3.mid"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -270,7 +313,7 @@ def adtof(payload: dict, report) -> dict:
     device = device_for(payload.get("device", "auto"))
     target = Path(payload["output"]) / "adtof.mid"
     target.parent.mkdir(parents=True, exist_ok=True)
-    report("Transcribing drum hits with the optional drum model…")
+    _report(report, f"Transcribing drum hits on {device.upper()}…", activity=device, stage_fraction=0.15)
     kwargs = {"device": device} if "device" in inspect.signature(transcribe_to_midi).parameters else {}
     transcribe_to_midi(payload["audio"], str(target), **kwargs)
     import adtof_pytorch
@@ -298,7 +341,7 @@ def _onset_features(audio_path: str):
 def drums_dsp(payload: dict, report) -> dict:
     from scipy.signal import find_peaks
     np, times, bands = _onset_features(payload["audio"])
-    report("Detecting drum attacks with the conservative fallback…")
+    _report(report, "Detecting drum attacks on CPU…", activity="cpu", stage_fraction=0.15)
     events = []
     for (energy, flux), role in zip(bands, ("KICK", "SNARE", "CLOSED_HAT")):
         if len(flux) < 4 or float(np.max(energy)) < 1e-10:
