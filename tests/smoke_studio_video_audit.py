@@ -127,27 +127,28 @@ def main() -> None:
             full_ui._set_settings_visible(app, False)
             pump(app)
 
-            # Band Room should replace the center workflow, not float over Song
-            # Check/Live MIDI with a detached Close button.
+            # Band Mode now behaves like Audio -> Band: checking the mode opens
+            # a dedicated resizable workspace instead of replacing/covering the
+            # main player. Closing the window hides only the workspace; Band Mode
+            # remains enabled and the Band room button can reopen it.
+            assert not app._band_window.winfo_viewable()
             app._band_enabled_var.set(True)
-            band_ui._set_band_frame_visible(app, True)
+            band_ui._toggle_band_mode(app)
             pump(app)
-            full_ui._responsive_root(app)
+            assert app._band_window.winfo_viewable()
+            assert app._band_window.title() == "Band Room"
+            assert app._band_frame.master is app._band_window_body
+            assert app._band_frame.winfo_manager() == "grid"
+            assert app.winfo_viewable(), "Main player disappeared when Band Room opened"
+            capture(app._band_window, reports / "video-audit-band-room-1280x720.png")
+            app._band_window.event_generate("<Escape>")
             pump(app)
-            band_state = full_ui._overlay_state(app, "band")
-            assert band_state.get("visible")
-            assert app._band_frame.winfo_manager() == "place"
-            assert band_state["close_button"].master is app._band_frame.master
-            if band_state.get("scrollbar") is not None:
-                assert band_state["scrollbar"].master is app._band_frame.master
-            band_leaks = mapped_content_siblings(
-                app._band_frame,
-                band_state.get("close_button"),
-                band_state.get("scrollbar"),
-            )
-            assert not band_leaks, band_leaks
-            capture(app, reports / "video-audit-band-room-1280x720.png")
-            full_ui._hide_feature_overlay(app, "band")
+            assert not app._band_window.winfo_viewable()
+            assert bool(app._band_enabled_var.get())
+            app._ux_band_room_button.invoke()
+            pump(app)
+            assert app._band_window.winfo_viewable(), "Band room reopen button did not restore workspace"
+            app._band_window.withdraw()
             pump(app)
 
             # Compact focused surfaces keep a real side margin instead of
