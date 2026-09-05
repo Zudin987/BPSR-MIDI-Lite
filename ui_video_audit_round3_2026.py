@@ -185,6 +185,64 @@ def _remove_duplicate_library_caption(app: Any) -> None:
             pass
 
 
+def _polish_primary_setup(app: Any) -> None:
+    """Use labels that describe what the primary controls actually select."""
+    frame = getattr(app, "_product_setup_frame", None)
+    if frame is None:
+        return
+    for widget in (frame, *full_ui._walk(frame)):
+        try:
+            if widget.winfo_class() == "TLabel" and _text(widget) == "Unlocked category":
+                widget.configure(text="Playback profile")
+        except tk.TclError:
+            pass
+
+
+def _hide_startup_custom_overlay(app: Any) -> None:
+    """A saved Custom profile must not cover the player every time Studio opens.
+
+    Selecting Custom later still opens its tuning surface normally. On startup we
+    preserve the saved profile but leave the advanced editor closed; Settings ->
+    Custom tuning remains the explicit way back into it.
+    """
+    if getattr(app, "_ux_round3_startup_custom_closed", False):
+        return
+    app._ux_round3_startup_custom_closed = True
+    try:
+        full_ui._hide_feature_overlay(app, "custom")
+    except (AttributeError, tk.TclError):
+        pass
+    panel = getattr(app, "custom_settings_frame", None)
+    if panel is not None:
+        try:
+            panel.grid_remove()
+            panel.place_forget()
+        except tk.TclError:
+            pass
+
+
+def _patch_custom_profile_summary() -> None:
+    """Remove the stale 'panel below' direction after Custom became an overlay."""
+    try:
+        import playback_advanced_ui as advanced
+    except Exception:
+        return
+    original = advanced._custom_profile_summary
+    if getattr(original, "_video_round3_copy", False):
+        return
+
+    def summary(app: Any) -> tuple[str, str]:
+        text, notice = original(app)
+        text = text.replace(
+            "Use the advanced panel below to tune mapping, chord detail, note timing and sustain.",
+            "Open Custom tuning to adjust mapping, chord detail, note timing and sustain.",
+        )
+        return text, notice
+
+    summary._video_round3_copy = True
+    advanced._custom_profile_summary = summary
+
+
 def _polish_audio_nested_copy(owner: Any) -> None:
     root = getattr(owner, "workspace", None)
     if root is None:
@@ -234,11 +292,14 @@ def _patch_finalize() -> None:
 
     def finalize(app: Any) -> None:
         original(app)
+        _hide_startup_custom_overlay(app)
         _remove_duplicate_library_caption(app)
+        _polish_primary_setup(app)
         _prepare_custom_grid(app)
         try:
             app.after_idle(lambda: (
                 _remove_duplicate_library_caption(app),
+                _polish_primary_setup(app),
                 _prepare_custom_grid(app),
                 _reflow_custom_panel(app),
             ))
@@ -252,6 +313,7 @@ def _patch_finalize() -> None:
 def install_video_audit_round3() -> None:
     if getattr(full_ui, "_video_audit_round3_installed", False):
         return
+    _patch_custom_profile_summary()
     _patch_audio_init()
     _patch_finalize()
     full_ui._video_audit_round3_installed = True
