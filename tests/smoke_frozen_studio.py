@@ -1,11 +1,12 @@
-"""Run the windowed PyInstaller child protocol with real bundled Basic Pitch."""
+"""Run both frozen Studio worker boundaries against real Python runtimes."""
 import json
-import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+from studio_band.protocol import run_process
+from studio_band.runtime import RuntimeManager
 from studio_synthetic_audio import make_song
 
 
@@ -26,7 +27,32 @@ def main():
         assert process.returncode == 0 and result["status"] == "ok", result
         assert result["id"] == "frozen-smoke"
         assert result["result"]["events"], "Bundled Basic Pitch returned no synthetic notes"
-        print("Frozen worker, Basic Pitch model, JSON protocol and note events verified.")
+
+        # Reproduce the boundary that failed on beta.5: a Python 3.10 one-file
+        # Studio starts an external managed Python 3.11 model worker. The frozen
+        # EXE must stage source outside _MEI so 3.11 can never import PyInstaller's
+        # Python 3.10 extension modules such as _socket.pyd.
+        manager = RuntimeManager(root / "runtime-smoke")
+        uv = manager._uv()
+        runtime = manager.runtime_root / "python311-smoke"
+        run_process(
+            [str(uv), "venv", "--python", "3.11", "--managed-python", str(runtime)],
+            stage="Python 3.11 smoke setup",
+            env=manager.environment(),
+            timeout=900,
+        )
+        python311 = manager.python("python311-smoke")
+        external_report = root / "external-worker-smoke.json"
+        external = subprocess.run(
+            [str(executable), "--studio-external-worker-smoke", str(python311), str(external_report)],
+            timeout=300,
+        )
+        assert external_report.exists(), "Frozen external worker smoke did not write its report"
+        external_result = json.loads(external_report.read_text(encoding="utf-8"))
+        assert external.returncode == 0 and external_result.get("ok") is True, external_result
+        assert external_result.get("worker_outside_mei") is True, external_result
+        assert "(3, 11)" in external_result.get("external_python", ""), external_result
+        print("Frozen Basic Pitch worker and isolated external Python 3.11 model worker verified.")
 
 
 if __name__ == "__main__":
