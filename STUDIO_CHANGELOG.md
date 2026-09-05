@@ -1,5 +1,14 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.1
+
+- Adds the Audio → Band tab with local audio import, progress/cancellation, Piano/Guitar/Auto melody ownership, preview, category controls and four-part MIDI export.
+- Separates six stems and runs isolated instrument specialists, beat detection and MR-MT3 cross-check before confidence fusion and BPSR arrangement.
+- Saves a common musical map and self-contained arrangement manifest; changing melody ownership or categories reuses analysis without repeating AI inference.
+- Adds external, explicitly provisional drum mapping, runtime installation/repair, cache integrity checks and recorded fallbacks.
+- Adds real-model and frozen-worker Windows smoke checks while keeping AI/audio dependencies out of Lite.
+- See [the beta guide](STUDIO_BAND_ACCURATE.md) for setup, limitations and model/license notes.
+
 ## 0.4.2-experimental-beta
 
 - Inherits Lite v3.4.0's evidence-driven arranger refinements and responsive product UI.

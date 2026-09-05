@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "version": "bpsr-drums-provisional-1",
+  "calibrated": false,
+  "description": "Verified C4-B5 transport; semantics are provisional legacy GM-offset defaults. Edit after in-game pad calibration.",
+  "min_pitch": 60,
+  "max_pitch": 83,
+  "slot_count": 24,
+  "high_octave": false,
+  "low_octave": false,
+  "page_switching": false,
+  "minimum_retrigger_seconds": 0.05,
+  "hit_duration_seconds": 0.07,
+  "max_polyphony": 6,
+  "mapping": {
+    "KICK": 61,
+    "SNARE": 63,
+    "CLOSED_HAT": 67,
+    "OPEN_HAT": 71,
+    "CRASH": 74,
+    "RIDE": 76,
+    "TOM": 70,
+    "PERCUSSION": 64
+  },
+  "preview_gm": {
+    "KICK": 36,
+    "SNARE": 38,
+    "CLOSED_HAT": 42,
+    "OPEN_HAT": 46,
+    "CRASH": 49,
+    "RIDE": 51,
+    "TOM": 45,
+    "PERCUSSION": 39
+  }
+}

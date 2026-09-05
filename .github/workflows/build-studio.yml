@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - "studio_band/**"
+      - "profiles/bpsr_drums.json"
       - "studio_*.py"
       - "studio_version_info.txt"
       - "local_search_integration.py"
@@ -30,6 +32,8 @@ on:
       - "theme.py"
   pull_request:
     paths:
+      - "studio_band/**"
+      - "profiles/bpsr_drums.json"
       - "studio_*.py"
       - "studio_version_info.txt"
       - "local_search_integration.py"
@@ -143,9 +147,14 @@ jobs:
           New-Item -ItemType Directory -Force release-studio | Out-Null
           Copy-Item "dist/BPSR-MIDI-Studio.exe" "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
           Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
+          Copy-Item STUDIO_BAND_ACCURATE.md release-studio/STUDIO_BAND_ACCURATE.md
           Copy-Item FFMPEG_BUILD_INFO.txt release-studio/FFMPEG_BUILD_INFO.txt
           $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+
+      - name: Smoke test frozen Studio worker without launching the GUI
+        shell: pwsh
+        run: python tests/smoke_frozen_studio.py dist/BPSR-MIDI-Studio.exe
 
       - name: Upload Studio artifact
         uses: actions/upload-artifact@v6

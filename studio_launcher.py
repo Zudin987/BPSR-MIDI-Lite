@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import sys
+
+# Dispatch before importing app/Tk/pynput. A frozen child must never create a
+# second GUI, install input hooks, or inherit the parent's worker argv as a song.
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-worker":
+    from studio_band_worker import main as worker_main
+    raise SystemExit(worker_main(sys.argv[2:]))
+
 import app
 from band_arranger_identity import install_band_arranger_identity
 from band_cloudflare import install_cloudflare_band_transport
@@ -31,13 +39,14 @@ from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
+from studio_band_ui import install_band_audio
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.4.2-experimental-beta"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.1"
 
 install_core_transcription()
 install_online_search_bridge()
@@ -71,6 +80,7 @@ install_band_midi_sharing(app)
 install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
+install_band_audio(app)
 
 
 if __name__ == "__main__":

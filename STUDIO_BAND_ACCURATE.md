@@ -1,0 +1,140 @@
+# Studio Audio → Band beta
+
+Studio **0.5.0-band-accurate-beta.1** adds local audio conversion to Piano,
+Guitar, Bass and Drums. This branch builds on the Band Mode v4 development
+branch (PR #35); it is a beta for evaluation, not a stable release.
+
+## Use
+
+1. Open Studio's **Audio → Band** tab and choose or drop MP3, WAV, FLAC, M4A or OGG audio.
+2. Leave **Main melody: Auto** and **Stem quality: Auto**, or choose Piano/Guitar explicitly.
+3. Click **Convert**. First use downloads separate Python runtimes and models;
+   allow several GB of disk space and time for installation. No system Python is required on Windows.
+4. Review the four parts and warnings. Preview the whole band, solo a part or mute parts.
+   Preview uses Windows' MIDI synthesizer and sends no game keyboard input.
+5. Change melody ownership or instrument categories and apply the arrangement again.
+   This uses the saved musical map and does not rerun audio models.
+6. Export the MIDI files and `Arrangement.json` to keep them outside the temporary cache.
+   **Use FullBand in player** opens the existing Song Check/player without starting playback.
+
+The export contains `Song-Piano.mid`, `Song-Guitar.mid`, `Song-Bass.mid`,
+`Song-Drums.mid`, `Song-FullBand.mid` and `Arrangement.json` (with the actual song
+name). All parts share the original audio clock, including leading silence.
+High-confidence beat intervals provide a shared MIDI tempo map. Unknown tempo
+uses a 120 BPM transport without claiming that it is the detected song tempo.
+
+## Analysis and recovery
+
+| Stage | Preferred implementation | Recovery |
+| --- | --- | --- |
+| Audio preparation | Bundled FFmpeg; stereo 44.1 kHz floating-point WAV | Clear error for unreadable audio |
+| Standard separation | Demucs `htdemucs_6s` | CPU retry after a CUDA failure; repair runtime if unavailable |
+| HQ separation | BS-RoFormer vocals/instrumental, then Demucs instrumental stems | Standard six-stem separation |
+| Beat/downbeat | Beat This! `final0` | Low-confidence spectral tempo estimate; no invented downbeats |
+| Vocal melody | Basic Pitch ONNX plus monophonic cleanup | Report transcription failure |
+| Piano | Transkun V2 | Basic Pitch with a piano register |
+| Guitar / bass / other | Separately tuned Basic Pitch ONNX | Report transcription failure |
+| Musical cross-check | MR-MT3 | Continue without cross-check and record the failure |
+| Drums | Optional user-installed ADTOF PyTorch | MR-MT3 kit events validated against dedicated spectral onsets; spectral kick/snare/hat detection when MR-MT3 is unavailable |
+
+Auto uses HQ only when its runtime/model directory already exists and the
+machine reports at least 6 GB NVIDIA VRAM and 16 GB RAM. Explicit HQ can install
+the additional backend. Each worker tests an actual CUDA kernel and otherwise
+uses CPU. CPU conversion can be much slower than the song duration. Current
+input limits are 2 GB and 30 minutes. Six aligned stems are required; an
+unseparated mix is never represented as six isolated instruments.
+
+The common musical map records source, role, pitch or drum semantics, onset,
+duration, velocity, confidence and provenance. Cross-check evidence adjusts
+confidence; it does not append every detected note. Missing cross-check notes
+are weak negative evidence, not a veto. Repeated riffs, melody continuity,
+harmonics, register, shared beat proximity and sustained polyphony inform
+cleanup and arrangement. Small timing corrections are bounded; grace notes,
+swing and intentional offsets are retained rather than hard-quantized.
+
+Confidence values are **heuristic evidence scores**, not calibrated probabilities.
+Basic Pitch activation amplitude, MIDI-only engine priors and source-quality
+priors are identified in the manifest. Demucs stem RMS is measured; source
+purity is left unknown. Synthetic CI verifies actual execution, alignment and
+export, not transcription accuracy on commercial songs. Dense mixes, unusual
+instruments and poor separation still require listening and beta feedback.
+
+## BPSR arrangement and drums
+
+Auto chooses one main-melody owner for the song using register, octave fitting,
+phrase density, riff load and accompaniment pressure. Explicit Piano/Guitar
+ownership wins. Vocal melody has priority over accompaniment; actual piano
+chords remain available when Guitar owns melody. The existing Band v4 phrase
+classifier handles ambiguous material, and the existing BPSR range, contour
+and sustained-note state planner fit the resulting pitched parts. Stable
+playback uses no page changes. Chord/root support, melodic contour and strong
+beats take priority when reducing polyphony.
+
+Drums are semantic events, never pitched Basic Pitch notes. The external
+[`profiles/bpsr_drums.json`](profiles/bpsr_drums.json) constrains them to the
+verified 24 pads, MIDI 60–83 (C4–B5), with no octave/page modifiers. **The pad
+range is verified; kick/snare/hat/tom/cymbal assignments are provisional.**
+Use **Advanced → Drum mapping** after in-game calibration. Preview converts
+these semantics to General MIDI sounds; exported Drums use the BPSR pad map.
+The complete map and its calibration flag travel with each arrangement.
+
+## Runtime, cache and packaging
+
+The Studio GUI imports no Torch, Demucs, Transkun, Beat This!, MT3 or RoFormer.
+Heavy engines run sequentially in separate managed Python 3.11 environments;
+Demucs's older Torch cannot conflict with the other engines or Basic Pitch.
+The pinned uv bootstrap archive is checked against its SHA-256 before use.
+Dependencies are pinned in `studio_band/runtime.py`; resolved packages and
+model hashes are recorded. Optional engines and weights are downloaded on the
+user's machine, not embedded in either executable. Lite's requirements,
+launcher and spec have no new Studio dependencies.
+
+The default per-user location is `%LOCALAPPDATA%/BPSR-MIDI-Studio/band-accurate`
+(or `BPSR_STUDIO_BAND_HOME` when set). Jobs keep source/prepared audio, stems,
+raw analysis, the master map, manifests and exports. Stage keys include audio
+SHA-256, engine/model identity, installed package manifest and settings; output
+hashes detect incomplete or corrupted cache entries. Atomic writes and job
+locks permit retry after failure. Cancellation kills the worker process tree
+and retains completed stages. Idle jobs expire after 14 days or when the
+20 GB job cache budget is exceeded; active jobs and exported copies are kept.
+Model downloads are managed separately and are not silently evicted.
+
+`Arrangement.json` is self-contained: reopening and changing ownership works
+without the source audio, cached stems or model runtimes. Errors expose stage
+details and recorded fallbacks. Advanced offers install/repair controls.
+
+## Third-party model/license notes
+
+| Component | Upstream / packaging decision |
+| --- | --- |
+| Basic Pitch | [Spotify, Apache-2.0](https://github.com/spotify/basic-pitch); existing Studio ONNX engine |
+| Demucs | [Meta, MIT code](https://github.com/facebookresearch/demucs); separate package and model download |
+| Transkun V2 | [Yujia Yan, MIT](https://github.com/Yujia-Yan/Transkun); separate runtime, pretrained files supplied by its package |
+| Beat This! | [CPJKU, MIT](https://github.com/CPJKU/beat_this); separate checkpoint download |
+| MR-MT3 | [Official implementation, MIT](https://github.com/gudgud96/MR-MT3); [mt3-infer wrapper](https://github.com/openmirlab/mt3-infer) selects `mr_mt3` explicitly, not the default model alias |
+| BS-RoFormer | [audio-separator, MIT wrapper](https://github.com/nomadkaraoke/python-audio-separator); fixed vocal checkpoint downloaded separately, no assertion of checkpoint redistribution rights |
+| ADTOF | [Original project, CC BY-NC-SA 4.0](https://github.com/MZehren/ADTOF); [PyTorch port](https://github.com/xavriley/ADTOF-pytorch) has no declared repository license; never bundled or automatically installed |
+| uv | [Astral, MIT / Apache-2.0](https://github.com/astral-sh/uv); separately downloaded runtime manager |
+| tkinterdnd2 | [MIT wrapper and included TkDND notices](https://github.com/pmgagne/tkinterdnd2); Studio-only file drop support |
+
+Code licenses do not establish redistribution rights for every model weight.
+No optional AI weights are committed to this repository. Users who have an
+appropriate ADTOF installation may provide it in `runtime/drums` with
+`adtof_pytorch.transcribe_to_midi`; Studio detects this optional environment.
+There is no claim of an official drum-specific Basic Pitch model. The built-in
+spectral drum fallback is project code and exposes its limited kit vocabulary.
+
+## Development checks
+
+Run `python -m pytest -q` for regression tests. The Studio build workflow also
+executes Basic Pitch through the frozen EXE's file protocol on original
+synthetic audio. The separate Windows **Studio real audio smoke** workflow
+installs isolated environments and requires actual Demucs, Beat This!, Transkun
+and MR-MT3 execution. It uploads provider/model manifests and fallback warnings.
+To run that slower check locally, install Studio build requirements and uv,
+set `BPSR_STUDIO_LIVE=1`, then run
+`python -m pytest tests/test_studio_band_live.py -s -q`.
+
+Windows CI builds both applications and checks that Lite's archive has no AI,
+ONNX, FFmpeg or Studio payload. Builds from this development PR remain beta
+artifacts; they do not publish a stable release or merge the Band Mode branch.
