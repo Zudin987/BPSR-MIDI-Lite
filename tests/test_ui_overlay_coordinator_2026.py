@@ -22,6 +22,17 @@ def test_user_opened_settings_survives_compact_configure_reflow() -> None:
     assert "full_ui._responsive_root = responsive_root" in SOURCE
 
 
+def test_hidden_custom_and_calibration_panels_are_physically_unmapped() -> None:
+    assert "def _force_unmap(panel" in SOURCE
+    assert 'for method_name in ("grid_remove", "pack_forget", "place_forget")' in SOURCE
+    assert "original_custom_show = advanced_ui._show_custom_panel" in SOURCE
+    assert "original_calibration_show = calibration_ui._show_panel" in SOURCE
+    assert '_force_unmap(getattr(app, "custom_settings_frame", None))' in SOURCE
+    assert '_force_unmap(getattr(app, "_calibration_panel", None))' in SOURCE
+    assert "advanced_ui._show_custom_panel = show_custom_panel" in SOURCE
+    assert "calibration_ui._show_panel = show_calibration_panel" in SOURCE
+
+
 def test_topbar_reuses_original_library_button_as_single_songs_action() -> None:
     assert "_dedupe_songs_button" in SOURCE
     assert 'full_ui._find_button(app, "Library")' in SOURCE
