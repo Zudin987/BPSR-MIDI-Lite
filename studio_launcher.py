@@ -39,6 +39,7 @@ from studio_audio_latency import install_studio_audio_latency
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
+from studio_band_responsive import install_responsive_band_audio
 from studio_band_ui import install_band_audio
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
@@ -80,6 +81,7 @@ install_band_midi_sharing(app)
 install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
+install_responsive_band_audio()
 install_band_audio(app)
 
 
