@@ -241,10 +241,36 @@ def _patch_audio_copy() -> None:
         return
     original_init = cls.__init__
     original_poll = cls.poll
+    original_source_selected = cls.source_selected
+    original_show_search_results = cls.show_search_results
 
     def init(self, app):
         original_init(self, app)
         _polish_audio(self)
+
+    def source_selected(self):
+        result = original_source_selected(self)
+        track = self._selected_source()
+        if track is not None:
+            try:
+                provider = str(getattr(track, "provider", ""))
+                self.resolver_status.set(
+                    "Ready to download from the fallback source."
+                    if provider == "yt_dlp"
+                    else "Ready to download. Studio will choose the best available audio source automatically."
+                )
+            except tk.TclError:
+                pass
+        return result
+
+    def show_search_results(self, report):
+        result = original_show_search_results(self, report)
+        try:
+            current = str(self.resolver_status.get()).replace("Technical details", "Details")
+            self.resolver_status.set(current)
+        except tk.TclError:
+            pass
+        return result
 
     def poll(self):
         result = original_poll(self)
@@ -257,6 +283,8 @@ def _patch_audio_copy() -> None:
         return result
 
     cls.__init__ = init
+    cls.source_selected = source_selected
+    cls.show_search_results = show_search_results
     cls.poll = poll
     cls._video_round2_copy_installed = True
 
