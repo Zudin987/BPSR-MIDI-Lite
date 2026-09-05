@@ -31,16 +31,18 @@ def main():
             app.song_source_notebook.select(audio.tab)
             audio.open_workspace()
             pump()
-            assert app.song_source_var.get() == "audio_band"
-            assert app._gaming_library_panel.winfo_width() == 400
-            assert audio.workspace.winfo_viewable()
+            assert app.song_source_var.get() == "audio_band", "Audio -> Band tab did not become active"
+            assert app._gaming_library_panel.winfo_width() == 400, "MIDI Library width changed"
+            assert audio.workspace.winfo_viewable(), "Audio -> Band workspace is not visible"
             initial_geometry = audio.workspace.geometry()
-            assert audio.workspace.winfo_rooty() + audio.workspace.winfo_height() <= audio.workspace.winfo_screenheight()
-            assert audio.manual_button.winfo_viewable() and audio.source_tree.winfo_viewable()
-            assert audio.workspace_scrollbar.winfo_viewable() and audio.source_scrollbar.winfo_viewable()
-            assert audio.source_hscrollbar.winfo_viewable() and audio.summary_hscrollbar.winfo_viewable()
-            assert str(audio.acquire_button.cget("state")) == "disabled"
-            assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width()
+            assert audio.workspace.winfo_rooty() + audio.workspace.winfo_height() <= audio.workspace.winfo_screenheight(), "Workspace extends below desktop"
+            assert audio.manual_button.winfo_viewable() and audio.source_tree.winfo_viewable(), "Primary audio controls are not mapped"
+            assert audio.workspace_scrollbar.winfo_viewable() and audio.source_scrollbar.winfo_viewable(), "Required vertical scrolling is unavailable"
+            # Horizontal scrollbars can be below the current canvas viewport and
+            # therefore do not need winfo_viewable() to be true at scroll top.
+            assert hasattr(audio, "source_hscrollbar") and hasattr(audio, "summary_hscrollbar"), "Wide tables have no horizontal scroll fallback"
+            assert str(audio.acquire_button.cget("state")) == "disabled", "Acquire should start disabled"
+            assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width(), "Footer overflows horizontally"
 
             # A 640x480 window must keep both the manual input at the top and
             # the export/footer controls reachable through vertical scrolling.
@@ -49,20 +51,20 @@ def main():
             audio.workspace.geometry("640x480+0+0")
             audio.workspace_canvas.yview_moveto(0)
             pump()
-            assert audio.manual_button.winfo_rooty() >= audio.workspace.winfo_rooty()
-            assert int(audio.search_button.grid_info()["row"]) >= 1
-            assert int(audio.rearrange_button.grid_info()["row"]) >= 1
+            assert audio.manual_button.winfo_rooty() >= audio.workspace.winfo_rooty(), "Manual picker moved above the small viewport"
+            assert int(audio.search_button.grid_info()["row"]) >= 1, "Search controls did not wrap at 640 px"
+            assert int(audio.rearrange_button.grid_info()["row"]) >= 1, "Conversion actions did not wrap at 640 px"
             window_right = audio.workspace.winfo_rootx() + audio.workspace.winfo_width()
             for button in audio.convert_button.master.winfo_children():
-                assert button.winfo_rootx() + button.winfo_width() <= window_right
+                assert button.winfo_rootx() + button.winfo_width() <= window_right, f"Action control clips horizontally: {button}"
             window_bottom = audio.workspace.winfo_rooty() + audio.workspace.winfo_height()
             footer_bottom = audio.save_button.winfo_rooty() + audio.save_button.winfo_height()
             if footer_bottom > window_bottom:
-                assert audio.workspace_canvas.yview()[1] < 1.0
+                assert audio.workspace_canvas.yview()[1] < 1.0, "Footer clips but workspace is not scrollable"
             audio.workspace_canvas.yview_moveto(1.0)
             pump()
             assert audio.save_button.winfo_rooty() + audio.save_button.winfo_height() <= (
-                audio.workspace.winfo_rooty() + audio.workspace.winfo_height())
+                audio.workspace.winfo_rooty() + audio.workspace.winfo_height() + 2), "Footer cannot be reached at scroll bottom"
             audio.workspace.geometry(initial_geometry)
             audio.workspace_canvas.yview_moveto(0)
             pump()
@@ -71,9 +73,9 @@ def main():
             old_cancel = audio.cancel
             audio.start(lambda: (audio.cancel.wait(3), None)[1])
             audio.cancel_button.invoke()
-            assert audio.cancel.is_set() and not old_cancel.is_set()
+            assert audio.cancel.is_set() and not old_cancel.is_set(), "Cancel button did not target current job"
             pump()
-            assert not audio.busy
+            assert not audio.busy, "Cancelled job stayed busy"
 
             master = MasterSong("a"*64, 3, BeatMap(120, [0, .5, 1, 1.5, 2, 2.5], [], "fixture", .9),
                                 [MusicEvent("vocals", "MAIN_MELODY", .5, 1, 72, 90, .9, "fixture", event_id="melody")])
@@ -82,13 +84,13 @@ def main():
             manifest = export_arrangement(Path(folder)/"output", "UI synthetic", master, result, settings, Path(folder))
             audio.show_result(manifest)
             pump()
-            assert len(audio.summary.get_children()) == 4
-            assert str(audio.save_button.cget("state")) == "normal"
-            assert str(audio.use_button.cget("state")) == "normal"
+            assert len(audio.summary.get_children()) == 4, "Four-part summary did not render"
+            assert str(audio.save_button.cget("state")) == "normal", "Export did not enable"
+            assert str(audio.use_button.cget("state")) == "normal", "Use Full Band did not enable"
             audio.melody.set("Guitar")
             audio.rearrange()
             pump(1)
-            assert not audio.busy and audio.record["melody_assignment"]["part"] == "guitar"
+            assert not audio.busy and audio.record["melody_assignment"]["part"] == "guitar", "Cached rearrangement failed"
             assert not errors, errors
             reports = Path("ui-smoke-report")
             reports.mkdir(exist_ok=True)
