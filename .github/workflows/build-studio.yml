@@ -17,6 +17,7 @@ on:
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/smoke_studio*.py"
       - "tests/test_playback*.py"
       - "tests/test_band*.py"
       - "tests/test_local_search.py"
@@ -44,6 +45,7 @@ on:
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/smoke_studio*.py"
       - "tests/test_playback*.py"
       - "tests/test_band*.py"
       - "tests/test_local_search.py"
@@ -129,6 +131,7 @@ jobs:
         run: |
           python tests/smoke_studio_band_ui.py
           python tests/smoke_studio_responsive_ui.py
+          python tests/smoke_studio_video_audit.py
 
       - name: Upload Studio workspace verification
         if: always()
