@@ -69,6 +69,31 @@ def main() -> None:
             pump(app)
             full_ui._responsive_root(app)
             pump(app)
+
+            # Custom tuning and Calibration are built as real Tk frames before
+            # their first hide call. They must already be physically unmapped on
+            # first launch, otherwise they leak into the player/Band Room before
+            # their feature-overlay registry entries exist.
+            checks["custom_hidden_initially"] = not bool(app.custom_settings_frame.winfo_ismapped())
+            checks["calibration_hidden_initially"] = not bool(app._calibration_panel.winfo_ismapped())
+            assert checks["custom_hidden_initially"]
+            assert checks["calibration_hidden_initially"]
+
+            # There is one Song Library action, not a generated Songs button
+            # sitting on top of the legacy Library button in the same grid cell.
+            top = app._ux_songs_button.master
+            top_text = []
+            for widget in top.winfo_children():
+                try:
+                    if widget.winfo_class() == "TButton":
+                        top_text.append(str(widget.cget("text")))
+                except Exception:
+                    pass
+            checks["songs_button_count"] = top_text.count("Songs")
+            checks["legacy_library_button_count"] = top_text.count("Library")
+            assert checks["songs_button_count"] == 1, top_text
+            assert checks["legacy_library_button_count"] == 0, top_text
+
             checks["main_1280x720"] = True
             checks["library_visible_1280"] = bool(app._gaming_library_visible)
             checks["toolbar_visible_1280"] = inside_window(app, app.stop_button)
@@ -108,6 +133,8 @@ def main() -> None:
             checks["library_collapsed_720"] = not bool(app._gaming_library_visible)
             assert checks["toolbar_visible_720"]
             assert checks["library_collapsed_720"]
+            assert not app.custom_settings_frame.winfo_ismapped()
+            assert not app._calibration_panel.winfo_ismapped()
             capture(app, reports / "main-720x640.png")
 
             app._band_enabled_var.set(True)
@@ -118,6 +145,8 @@ def main() -> None:
             band_state = full_ui._overlay_state(app, "band")
             assert band_state.get("visible")
             assert app._band_frame.winfo_manager() == "place"
+            assert not app.custom_settings_frame.winfo_ismapped()
+            assert not app._calibration_panel.winfo_ismapped()
             capture(app, reports / "band-room-720x640.png")
             checks["band_overlay_720"] = True
 
