@@ -165,6 +165,7 @@ def roformer(payload: dict, report) -> dict:
     minimum_frames = int(config.audio.hop_length * (config.inference.dim_t-1))
     working_audio = payload["audio"]
     padded = target / "_hq_model_input.wav"
+    previous_directory = Path.cwd()
     try:
         # Upstream's overlap-add assumes at least one whole model window.
         # Add trailing context for short clips, preserving sample zero and
@@ -172,8 +173,13 @@ def roformer(payload: dict, report) -> dict:
         if frames < minimum_frames:
             sf.write(str(padded), np.pad(samples, ((0, minimum_frames-frames), (0, 0))), sample_rate, subtype="FLOAT")
             working_audio = str(padded)
+        # audio-separator 0.30.2's soundfile writer omits output_dir even though
+        # the API returns relative paths. Isolate that upstream behavior inside
+        # the worker's own output directory.
+        os.chdir(target)
         outputs = separator.separate(working_audio, custom_output_names={"Vocals": "hq_vocals", "Instrumental": "hq_instrumental"})
     finally:
+        os.chdir(previous_directory)
         padded.unlink(missing_ok=True)
     paths = [Path(x) if Path(x).is_absolute() else target / x for x in outputs]
     vocals = next((p for p in paths if "hq_vocals" in p.name), None)
