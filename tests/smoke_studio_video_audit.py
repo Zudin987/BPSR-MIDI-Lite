@@ -35,10 +35,11 @@ def capture(window, path: Path) -> None:
         print("Desktop capture unavailable:", exc)
 
 
-def mapped_siblings(panel) -> list[str]:
+def mapped_content_siblings(panel, *chrome) -> list[str]:
+    ignored = {widget for widget in chrome if widget is not None}
     result: list[str] = []
     for widget in panel.master.winfo_children():
-        if widget is panel:
+        if widget is panel or widget in ignored:
             continue
         try:
             if widget.winfo_ismapped():
@@ -92,10 +93,15 @@ def main() -> None:
             settings_state = full_ui._overlay_state(app, "settings")
             assert settings_state.get("visible")
             assert app._gaming_settings_panel.winfo_manager() == "place"
-            assert not mapped_siblings(app._gaming_settings_panel), mapped_siblings(app._gaming_settings_panel)
             assert settings_state["close_button"].master is app._gaming_settings_panel.master
             if settings_state.get("scrollbar") is not None:
                 assert settings_state["scrollbar"].master is app._gaming_settings_panel.master
+            settings_leaks = mapped_content_siblings(
+                app._gaming_settings_panel,
+                settings_state.get("close_button"),
+                settings_state.get("scrollbar"),
+            )
+            assert not settings_leaks, settings_leaks
             capture(app, reports / "video-audit-settings-1280x720.png")
             full_ui._set_settings_visible(app, False)
             pump(app)
@@ -110,10 +116,15 @@ def main() -> None:
             band_state = full_ui._overlay_state(app, "band")
             assert band_state.get("visible")
             assert app._band_frame.winfo_manager() == "place"
-            assert not mapped_siblings(app._band_frame), mapped_siblings(app._band_frame)
             assert band_state["close_button"].master is app._band_frame.master
             if band_state.get("scrollbar") is not None:
                 assert band_state["scrollbar"].master is app._band_frame.master
+            band_leaks = mapped_content_siblings(
+                app._band_frame,
+                band_state.get("close_button"),
+                band_state.get("scrollbar"),
+            )
+            assert not band_leaks, band_leaks
             capture(app, reports / "video-audit-band-room-1280x720.png")
             full_ui._hide_feature_overlay(app, "band")
             pump(app)
