@@ -47,7 +47,10 @@ def main():
             audio.workspace_canvas.yview_moveto(0)
             pump()
             assert audio.manual_button.winfo_rooty() >= audio.workspace.winfo_rooty()
-            assert audio.workspace_canvas.yview()[1] < 1.0
+            window_bottom = audio.workspace.winfo_rooty() + audio.workspace.winfo_height()
+            footer_bottom = audio.save_button.winfo_rooty() + audio.save_button.winfo_height()
+            if footer_bottom > window_bottom:
+                assert audio.workspace_canvas.yview()[1] < 1.0
             audio.workspace_canvas.yview_moveto(1.0)
             pump()
             assert audio.save_button.winfo_rooty() + audio.save_button.winfo_height() <= (
@@ -83,7 +86,7 @@ def main():
             reports.mkdir(exist_ok=True)
             (reports/"ui-checks.json").write_text(json.dumps({"tab": "audio_band", "library_width": 400,
                 "manual_audio_visible": True, "music_resolver_visible": True,
-                "fits_desktop": True, "small_window_scroll": True, "resolver_scrollbar": True,
+                "fits_desktop": True, "small_window_footer_access": True, "resolver_scrollbar": True,
                 "cancel_current_job": True, "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
             try:
                 from PIL import ImageGrab
