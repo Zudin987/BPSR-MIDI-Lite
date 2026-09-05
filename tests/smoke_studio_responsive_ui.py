@@ -161,8 +161,9 @@ def main() -> None:
 
             # Calibration used to retain its seven-column desktop form here,
             # clipping Value and feedback controls off the right edge. At compact
-            # width it must stack into the responsive rows and remain horizontally
-            # reachable, while the generic overlay can handle vertical scrolling.
+            # width it must stack into responsive rows. Studio-only add-ons
+            # (latency diagnostics, guided search and reset/provenance) must stack
+            # below the base form instead of colliding with its rows 4-7.
             calibration_ui._show_panel(app, True)
             pump(app)
             full_ui._responsive_root(app)
@@ -186,7 +187,50 @@ def main() -> None:
                 and str(widget.cget("textvariable")) == str(app._calibration_value_var)
             )
             assert inside_window_horizontally(app, value_spin)
+
+            extension_widgets = []
+            for widget in app._calibration_panel.winfo_children():
+                remembered = getattr(widget, "_ux_calibration_grid", None)
+                if not isinstance(remembered, dict):
+                    continue
+                try:
+                    original_row = int(remembered.get("row", -1))
+                except (TypeError, ValueError):
+                    continue
+                if original_row >= 4:
+                    extension_widgets.append(widget)
+            assert len(extension_widgets) >= 5, "Studio Calibration extension widgets were not discovered"
+            extension_rows = [int(widget.grid_info().get("row", -1)) for widget in extension_widgets]
+            assert min(extension_rows) >= 8, extension_rows
+            assert len(extension_rows) == len(set(extension_rows)), extension_rows
+            for widget in extension_widgets:
+                assert inside_window_horizontally(app, widget), (
+                    widget.winfo_class(),
+                    getattr(widget, "grid_info", lambda: {})(),
+                    widget.winfo_rootx(),
+                    widget.winfo_width(),
+                    app.winfo_width(),
+                )
+            checks["calibration_extension_rows"] = sorted(extension_rows)
             capture(app, reports / "calibration-720x640.png")
+
+            # The stacked add-ons make the compact overlay taller, so verify the
+            # generic feature scrollbar reaches the final Reset control instead
+            # of hiding it below the desktop/taskbar.
+            _width, _requested, _viewport, calibration_maximum = full_ui._overlay_geometry(app, "calibration")
+            checks["calibration_scroll_needed_720"] = calibration_maximum > 0
+            if calibration_maximum > 0:
+                scrollbar = calibration_state.get("scrollbar")
+                assert scrollbar is not None and scrollbar.winfo_manager() == "place"
+                full_ui._overlay_scroll_command(app, "calibration", "moveto", "1.0")
+                pump(app)
+                capture(app, reports / "calibration-720x640-bottom.png")
+                body_bottom = app._gaming_body.winfo_rooty() + app._gaming_body.winfo_height()
+                reset_bottom = app._calibration_reset_button.winfo_rooty() + app._calibration_reset_button.winfo_height()
+                assert reset_bottom <= body_bottom + 2
+                checks["calibration_bottom_reachable_720"] = True
+            else:
+                checks["calibration_bottom_reachable_720"] = inside_window(app, app._calibration_reset_button)
             calibration_ui._show_panel(app, False)
             pump(app)
             checks["calibration_compact_no_horizontal_clip"] = True
