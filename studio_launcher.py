@@ -50,6 +50,7 @@ from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
 from ui_band_responsive_2026 import install_band_responsive_patch
 from ui_compact_toolbar_2026 import install_compact_toolbar_patch
 from ui_full_overhaul_2026 import install_full_ui_overhaul
+from ui_overlay_coordinator_2026 import install_overlay_coordinator
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
@@ -98,6 +99,7 @@ install_band_audio(app)
 install_full_ui_overhaul(app)
 install_compact_toolbar_patch()
 install_band_responsive_patch()
+install_overlay_coordinator()
 
 
 if __name__ == "__main__":
