@@ -48,6 +48,7 @@ from studio_polish import install_studio_polish
 from studio_spotdl import install_spotdl_band_audio
 from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
 from ui_band_responsive_2026 import install_band_responsive_patch
+from ui_band_visibility_guard_2026 import install_band_visibility_guard
 from ui_calibration_extension_reflow_2026 import install_calibration_extension_reflow
 from ui_compact_toolbar_2026 import install_compact_toolbar_patch
 from ui_full_overhaul_2026 import install_full_ui_overhaul
@@ -100,6 +101,7 @@ install_band_audio(app)
 install_full_ui_overhaul(app)
 install_compact_toolbar_patch()
 install_band_responsive_patch()
+install_band_visibility_guard()
 install_overlay_coordinator()
 install_calibration_extension_reflow()
 
