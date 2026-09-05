@@ -37,7 +37,7 @@ def test_live_midi_visualizer_is_capped_at_30_fps() -> None:
     assert "app.after(VISUALIZER_FRAME_MS" in runtime
 
 
-def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> None:
+def test_lite_and_studio_keep_shared_2026_ui_while_studio_adds_final_beta_layer() -> None:
     lite = Path("modern_launcher.py").read_text(encoding="utf-8")
     studio = Path("studio_launcher.py").read_text(encoding="utf-8")
 
@@ -52,8 +52,9 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_calibration_provenance(app)" in launcher
         assert "install_product_ui_overhaul(app)" in launcher
         assert "install_persistent_library(app)" in launcher
-        assert "install_full_ui_overhaul(app)" in launcher
 
+    assert "install_full_ui_overhaul(app)" not in lite
+    assert "install_full_ui_overhaul(app)" in studio
     assert 'app.APP_VERSION = "3.4.0"' in lite
     assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.7"' in studio
 
