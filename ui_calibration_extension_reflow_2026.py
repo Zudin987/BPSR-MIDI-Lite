@@ -33,6 +33,28 @@ def _extension_widgets(panel: Any) -> list[Any]:
     return [widget for _row, _column, widget in widgets]
 
 
+def _schedule_overlay_refresh(app: Any, panel: Any, signature: tuple[int, int, tuple[int, ...]]) -> None:
+    if getattr(panel, "_ux_calibration_extension_signature", None) == signature:
+        return
+    panel._ux_calibration_extension_signature = signature
+    if bool(getattr(panel, "_ux_calibration_extension_refresh_pending", False)):
+        return
+    panel._ux_calibration_extension_refresh_pending = True
+
+    def refresh() -> None:
+        panel._ux_calibration_extension_refresh_pending = False
+        try:
+            if coordinator.full_ui._overlay_state(app, "calibration").get("visible"):
+                coordinator.full_ui._refresh_feature_overlay(app, "calibration")
+        except (tk.TclError, AttributeError):
+            pass
+
+    try:
+        app.after_idle(refresh)
+    except tk.TclError:
+        panel._ux_calibration_extension_refresh_pending = False
+
+
 def _reflow_extensions(app: Any) -> None:
     panel = getattr(app, "_calibration_panel", None)
     if panel is None:
@@ -45,10 +67,14 @@ def _reflow_extensions(app: Any) -> None:
     # The coordinator restores every child's remembered desktop grid before it
     # returns to wide mode, so this layer only needs to intervene in compact mode.
     if width >= 700:
+        panel._ux_calibration_extension_signature = None
         return
 
-    for index, widget in enumerate(_extension_widgets(panel)):
+    extension_widgets = _extension_widgets(panel)
+    current_rows: list[int] = []
+    for index, widget in enumerate(extension_widgets):
         row = 8 + index
+        current_rows.append(row)
         try:
             class_name = str(widget.winfo_class())
             sticky = "ew" if class_name in {"TLabel", "TSeparator"} else "w"
@@ -64,6 +90,13 @@ def _reflow_extensions(app: Any) -> None:
                 widget.configure(wraplength=max(220, width - 30), justify="left")
         except (tk.TclError, TypeError):
             pass
+
+    try:
+        panel.update_idletasks()
+        requested = int(panel.winfo_reqheight())
+    except (tk.TclError, TypeError, ValueError):
+        requested = 0
+    _schedule_overlay_refresh(app, panel, (width, requested, tuple(current_rows)))
 
 
 def install_calibration_extension_reflow() -> None:
