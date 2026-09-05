@@ -54,7 +54,7 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_persistent_library(app)" in launcher
 
     assert 'app.APP_VERSION = "3.4.0"' in lite
-    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.5"' in studio
+    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.6"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:
