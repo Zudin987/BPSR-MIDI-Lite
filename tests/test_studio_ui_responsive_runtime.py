@@ -25,6 +25,8 @@ import time
 from pathlib import Path
 
 import band_ui
+import playback_advanced_ui as advanced_ui
+import playback_calibration_ui as calibration_ui
 import studio_launcher
 import ui_full_overhaul_2026 as full_ui
 
@@ -54,6 +56,16 @@ def capture(app, name):
         pass
 
 
+def assert_overlay_inside_body(app, panel):
+    body = app._gaming_body
+    left = panel.winfo_rootx()
+    right = left + panel.winfo_width()
+    body_left = body.winfo_rootx()
+    body_right = body_left + body.winfo_width()
+    assert left >= body_left - 2, (left, body_left)
+    assert right <= body_right + 2, (right, body_right)
+
+
 app = studio_launcher.app.App()
 try:
     # The normal product min-width can be larger on a roomy CI desktop. Lower
@@ -73,6 +85,7 @@ try:
     assert app._band_frame.winfo_manager() == "place"
     assert app._band_frame.winfo_width() < 560, app._band_frame.winfo_width()
     assert str(app._ux_band_room_button.cget("state")) == "normal"
+    assert_overlay_inside_body(app, app._band_frame)
 
     status_rows = {
         row(widget)
@@ -127,6 +140,62 @@ try:
     assert not full_ui._overlay_state(app, "band").get("visible")
     assert bool(app._band_enabled_var.get())
     assert str(app._ux_band_room_button.cget("state")) == "normal"
+
+    # Secondary interfaces are real responsive surfaces too, not just the main
+    # page. Exercise Settings, Custom tuning and Calibration at the same width.
+    full_ui._set_settings_visible(app, True)
+    pump(app)
+    assert app._gaming_settings_visible
+    assert app._gaming_settings_panel.winfo_manager() == "place"
+    assert_overlay_inside_body(app, app._gaming_settings_panel)
+    capture(app, "main-settings-compact.png")
+    full_ui._set_settings_visible(app, False)
+
+    advanced_ui._show_custom_panel(app, True)
+    pump(app)
+    custom_state = full_ui._overlay_state(app, "custom")
+    assert custom_state.get("visible") is True
+    assert app.custom_settings_frame.winfo_manager() == "place"
+    assert_overlay_inside_body(app, app.custom_settings_frame)
+    capture(app, "main-custom-tuning-compact.png")
+    advanced_ui._show_custom_panel(app, False)
+
+    calibration_ui._show_panel(app, True)
+    pump(app)
+    calibration_state = full_ui._overlay_state(app, "calibration")
+    assert calibration_state.get("visible") is True
+    assert app._calibration_panel.winfo_manager() == "place"
+    assert_overlay_inside_body(app, app._calibration_panel)
+    capture(app, "main-calibration-compact.png")
+    calibration_ui._show_panel(app, False)
+
+    # Do not allow two independent side/feature overlays to pile on top of each
+    # other. Opening Settings, Custom tuning, or user-opened Songs replaces Band.
+    band_ui._set_band_frame_visible(app, True)
+    pump(app)
+    assert full_ui._overlay_state(app, "band").get("visible")
+    full_ui._set_settings_visible(app, True)
+    pump(app)
+    assert not full_ui._overlay_state(app, "band").get("visible")
+    assert app._gaming_settings_visible
+    full_ui._set_settings_visible(app, False)
+
+    band_ui._set_band_frame_visible(app, True)
+    pump(app)
+    advanced_ui._show_custom_panel(app, True)
+    pump(app)
+    assert not full_ui._overlay_state(app, "band").get("visible")
+    assert full_ui._overlay_state(app, "custom").get("visible")
+    advanced_ui._show_custom_panel(app, False)
+
+    band_ui._set_band_frame_visible(app, True)
+    pump(app)
+    full_ui._hide_library(app)
+    full_ui._show_library(app, user_opened=True)
+    pump(app)
+    assert not full_ui._overlay_state(app, "band").get("visible")
+    assert app._gaming_library_visible and app._ux_library_overlay
+    full_ui._hide_library(app)
 finally:
     app.destroy()
 '''
