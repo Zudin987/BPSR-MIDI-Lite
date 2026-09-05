@@ -35,9 +35,22 @@ class BandAudioTab:
         self.mutes = {p: tk.BooleanVar(app, value=False) for p in PARTS}
         self.tiers = {p: tk.StringVar(app, value=t) for p,t in {"piano": "tier4", "guitar": "tier3", "bass": "tier2"}.items()}
         self.tab = ttk.Frame(app.song_source_notebook, padding=(10, 8))
-        self.tab.columnconfigure(0, weight=1)
-        app.song_source_notebook.add(self.tab, text="Audio → Band Accurate")
-        row = ttk.Frame(self.tab)
+        app.song_source_notebook.add(self.tab, text="Audio → Band")
+        ttk.Label(self.tab, text="Turn a song into Piano, Guitar, Bass and Drums.", wraplength=320).pack(anchor="w", pady=(0, 8))
+        ttk.Button(self.tab, text="Open Audio → Band workspace", command=self.open_workspace).pack(anchor="w")
+        ttk.Label(self.tab, textvariable=self.status, wraplength=320).pack(anchor="w", pady=8)
+        # The established MIDI Library is fixed at 400 px. Give analysis and
+        # preview a separate resizable workspace instead of clipping its controls.
+        self.workspace = tk.Toplevel(app)
+        self.workspace.withdraw()
+        self.workspace.title("Studio · Audio → Band Accurate")
+        self.workspace.geometry("860x620")
+        self.workspace.minsize(760, 540)
+        self.workspace.protocol("WM_DELETE_WINDOW", self.hide_workspace)
+        body = ttk.Frame(self.workspace, padding=14)
+        body.pack(fill="both", expand=True)
+        body.columnconfigure(0, weight=1)
+        row = ttk.Frame(body)
         row.grid(row=0, column=0, sticky="ew")
         row.columnconfigure(0, weight=1)
         entry = ttk.Entry(row, textvariable=self.path)
@@ -52,45 +65,47 @@ class BandAudioTab:
             # Elevated Windows apps cannot always receive Explorer file drops;
             # the file picker is always available, including without TkDnD.
             pass
-        controls = ttk.Frame(self.tab)
+        controls = ttk.Frame(body)
         controls.grid(row=1, column=0, sticky="w", pady=8)
         ttk.Label(controls, text="Main Melody").grid(row=0, column=0, sticky="w")
         ttk.Combobox(controls, textvariable=self.melody, values=("Auto", "Piano", "Guitar"), width=9, state="readonly").grid(row=0, column=1, padx=(6, 18))
         ttk.Label(controls, text="Stem Quality").grid(row=0, column=2)
         ttk.Combobox(controls, textvariable=self.quality, values=("Auto", "Standard", "HQ"), width=10, state="readonly").grid(row=0, column=3, padx=6)
         ttk.Button(controls, text="Advanced", command=self.advanced).grid(row=0, column=4, padx=8)
-        ttk.Label(self.tab, textvariable=self.hardware, style="Hint.TLabel").grid(row=2, column=0, sticky="w")
-        actions = ttk.Frame(self.tab)
+        ttk.Label(body, textvariable=self.hardware, style="Hint.TLabel").grid(row=2, column=0, sticky="w")
+        actions = ttk.Frame(body)
         actions.grid(row=3, column=0, sticky="w", pady=(8, 4))
         self.convert_button = ttk.Button(actions, text="Analyze & Convert", command=self.convert)
         self.convert_button.pack(side="left")
-        self.cancel_button = ttk.Button(actions, text="Cancel", command=self.cancel.set, state="disabled")
+        self.cancel_button = ttk.Button(actions, text="Cancel", command=lambda: self.cancel.set(), state="disabled")
         self.cancel_button.pack(side="left", padx=6)
         ttk.Button(actions, text="Open arrangement", command=self.open_arrangement).pack(side="left", padx=6)
         self.rearrange_button = ttk.Button(actions, text="Apply melody / category", command=self.rearrange, state="disabled")
         self.rearrange_button.pack(side="left")
-        self.bar = ttk.Progressbar(self.tab, mode="indeterminate")
+        self.bar = ttk.Progressbar(body, mode="indeterminate")
         self.bar.grid(row=4, column=0, sticky="ew", pady=5)
-        ttk.Label(self.tab, textvariable=self.status, wraplength=720, justify="left").grid(row=5, column=0, sticky="w")
-        self.summary = ttk.Treeview(self.tab, columns=("notes", "melody", "rejected", "simplified", "shifted"), show="tree headings", height=4)
+        status = ttk.Label(body, textvariable=self.status, wraplength=720, justify="left")
+        status.grid(row=5, column=0, sticky="w")
+        body.bind("<Configure>", lambda event: status.configure(wraplength=max(300, event.width-10)))
+        self.summary = ttk.Treeview(body, columns=("notes", "melody", "rejected", "simplified", "shifted"), show="tree headings", height=4)
         self.summary.heading("#0", text="Part")
         self.summary.column("#0", width=100, stretch=True)
         for name, label in (("notes", "Notes / hits"), ("melody", "Melody"), ("rejected", "Low confidence"), ("simplified", "Simplified"), ("shifted", "Range shifted")):
             self.summary.heading(name, text=label)
             self.summary.column(name, width=105, minwidth=65, anchor="center")
         self.summary.grid(row=6, column=0, sticky="ew", pady=8)
-        listen = ttk.Frame(self.tab)
+        listen = ttk.Frame(body)
         listen.grid(row=7, column=0, sticky="w")
         ttk.Button(listen, text="▶ Full Band", command=lambda: self.audition(set(PARTS))).pack(side="left")
         for part in PARTS:
             ttk.Button(listen, text=part.title(), command=lambda p=part: self.audition({p}), width=8).pack(side="left", padx=3)
         ttk.Button(listen, text="Stop", command=self.preview.stop, width=6).pack(side="left")
-        muted = ttk.Frame(self.tab)
+        muted = ttk.Frame(body)
         muted.grid(row=8, column=0, sticky="w", pady=3)
         ttk.Label(muted, text="Mute for next preview:").pack(side="left")
         for part in PARTS:
             ttk.Checkbutton(muted, text=part.title(), variable=self.mutes[part]).pack(side="left", padx=4)
-        footer = ttk.Frame(self.tab)
+        footer = ttk.Frame(body)
         footer.grid(row=9, column=0, sticky="w", pady=(6, 0))
         self.save_button = ttk.Button(footer, text="Export all files", command=self.save, state="disabled")
         self.save_button.pack(side="left")
@@ -105,6 +120,14 @@ class BandAudioTab:
             self.events.put(("hardware", "GPU detected · each model checks CUDA support" if info.cuda else "CPU mode - conversion will be slower"))
             self.pipeline.store.cleanup()
         threading.Thread(target=hardware, daemon=True).start()
+
+    def open_workspace(self):
+        self.workspace.deiconify()
+        self.workspace.lift()
+
+    def hide_workspace(self):
+        self.preview.stop()
+        self.workspace.withdraw()
 
     def browse(self):
         if self.busy:
@@ -241,7 +264,7 @@ class BandAudioTab:
             self.app.status_var.set("Full Band loaded. Select your Band part, then use the normal BPSR playback controls.")
 
     def show_details(self):
-        window = tk.Toplevel(self.app)
+        window = tk.Toplevel(self.workspace)
         window.title("Audio conversion details")
         text = tk.Text(window, width=100, height=30, wrap="word")
         text.pack(fill="both", expand=True)
@@ -249,7 +272,7 @@ class BandAudioTab:
         text.configure(state="disabled")
 
     def advanced(self):
-        window = tk.Toplevel(self.app)
+        window = tk.Toplevel(self.workspace)
         window.title("Audio → Band · Advanced")
         content = ttk.Frame(window, padding=14)
         content.pack(fill="both", expand=True)

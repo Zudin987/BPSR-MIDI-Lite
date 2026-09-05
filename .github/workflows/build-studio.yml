@@ -124,6 +124,19 @@ jobs:
         shell: pwsh
         run: pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
 
+      - name: Verify Studio workspace and cancellation
+        shell: pwsh
+        run: python tests/smoke_studio_band_ui.py
+
+      - name: Upload Studio workspace verification
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Studio-workspace-verification
+          path: ui-smoke-report/*
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Verify single EXE contains Studio runtimes
         shell: pwsh
         run: |

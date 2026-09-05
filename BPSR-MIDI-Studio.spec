@@ -6,11 +6,11 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, copy_metadata
 
 project = Path(SPECPATH)
 
-basic_pitch_datas = collect_data_files("basic_pitch")
+basic_pitch_datas = collect_data_files("basic_pitch") + copy_metadata("basic-pitch") + copy_metadata("scipy")
 imageio_datas = collect_data_files("imageio_ffmpeg")
 soundcard_datas = collect_data_files("soundcard")
 drop_datas = collect_data_files("tkinterdnd2")

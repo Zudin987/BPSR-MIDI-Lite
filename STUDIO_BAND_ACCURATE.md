@@ -6,7 +6,7 @@ branch (PR #35); it is a beta for evaluation, not a stable release.
 
 ## Use
 
-1. Open Studio's **Audio → Band** tab and choose or drop MP3, WAV, FLAC, M4A or OGG audio.
+1. Open Studio's **Audio → Band** tab, open its workspace and choose or drop MP3, WAV, FLAC, M4A or OGG audio.
 2. Leave **Main melody: Auto** and **Stem quality: Auto**, or choose Piano/Guitar explicitly.
 3. Click **Convert**. First use downloads separate Python runtimes and models;
    allow several GB of disk space and time for installation. No system Python is required on Windows.

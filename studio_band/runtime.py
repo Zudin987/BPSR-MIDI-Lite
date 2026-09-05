@@ -23,7 +23,7 @@ HQ_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
 # Do not add these to either application's requirements. Each row is a separate
 # venv; Demucs's older torch and Studio's numpy<2 never constrain other engines.
 RUNTIMES = {
-    "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1"],
+    "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "piano": ["transkun==2.0.1", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "beat": ["beat-this==1.1.0", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
     "mt3": ["mt3-infer==0.2.0", "torch==2.5.1", "torchaudio==2.5.1", "torchvision==0.20.1", "transformers==4.44.2", "numpy==1.26.4"],
