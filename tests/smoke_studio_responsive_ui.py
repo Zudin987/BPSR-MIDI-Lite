@@ -35,6 +35,14 @@ def inside_window(app, widget) -> bool:
     )
 
 
+def inside_window_horizontally(app, widget) -> bool:
+    left = widget.winfo_rootx()
+    right = left + widget.winfo_width()
+    root_left = app.winfo_rootx()
+    root_right = root_left + app.winfo_width()
+    return left >= root_left - 2 and right <= root_right + 2
+
+
 def capture(app, path: Path) -> bool:
     try:
         from PIL import ImageGrab
@@ -73,14 +81,23 @@ def main() -> None:
             full_ui._responsive_root(app)
             pump(app)
 
-            # Custom tuning and Calibration are built as real Tk frames before
-            # their first hide call. They must already be physically unmapped on
-            # first launch, otherwise they leak into the player/Band Room before
-            # their feature-overlay registry entries exist.
-            checks["custom_hidden_initially"] = not bool(app.custom_settings_frame.winfo_ismapped())
+            # Calibration is not a selected product mode and must never leak out
+            # of its overlay during construction. Custom tuning is different: a
+            # saved Custom profile legitimately opens its tuning surface, so test
+            # that state according to the active profile instead of assuming it
+            # is always hidden.
+            initial_profile = app._profile_code() if hasattr(app, "_profile_code") else ""
+            checks["initial_profile"] = initial_profile
             checks["calibration_hidden_initially"] = not bool(app._calibration_panel.winfo_ismapped())
-            assert checks["custom_hidden_initially"]
             assert checks["calibration_hidden_initially"]
+            if initial_profile == "custom":
+                checks["custom_profile_overlay_initially"] = bool(
+                    full_ui._overlay_state(app, "custom").get("visible")
+                )
+                assert checks["custom_profile_overlay_initially"]
+            else:
+                checks["custom_hidden_initially"] = not bool(app.custom_settings_frame.winfo_ismapped())
+                assert checks["custom_hidden_initially"]
 
             # There is one Song Library action, not a generated Songs button
             # sitting on top of the legacy Library button in the same grid cell.
@@ -96,6 +113,7 @@ def main() -> None:
             checks["legacy_library_button_count"] = top_text.count("Library")
             assert checks["songs_button_count"] == 1, top_text
             assert checks["legacy_library_button_count"] == 0, top_text
+            assert app._ux_songs_button.winfo_manager(), "Songs action exists but is not mapped"
 
             checks["main_1280x720"] = True
             checks["library_visible_1280"] = bool(app._gaming_library_visible)
@@ -140,6 +158,38 @@ def main() -> None:
             assert not app.custom_settings_frame.winfo_ismapped()
             assert not app._calibration_panel.winfo_ismapped()
             capture(app, reports / "main-720x640.png")
+
+            # Calibration used to retain its seven-column desktop form here,
+            # clipping Value and feedback controls off the right edge. At compact
+            # width it must stack into the responsive rows and remain horizontally
+            # reachable, while the generic overlay can handle vertical scrolling.
+            calibration_ui._show_panel(app, True)
+            pump(app)
+            full_ui._responsive_root(app)
+            pump(app)
+            calibration_state = full_ui._overlay_state(app, "calibration")
+            assert calibration_state.get("visible")
+            assert app._calibration_panel.winfo_width() < 700
+            assert int(app._calibration_play_button.grid_info().get("row", -1)) == 4
+            for button in app._calibration_feedback_buttons:
+                assert int(button.grid_info().get("row", -1)) == 5
+                assert inside_window_horizontally(app, button), (
+                    button.cget("text"),
+                    button.winfo_rootx(),
+                    button.winfo_width(),
+                    app.winfo_width(),
+                )
+            value_spin = next(
+                widget
+                for widget in app._calibration_panel.winfo_children()
+                if widget.winfo_class() == "TSpinbox"
+                and str(widget.cget("textvariable")) == str(app._calibration_value_var)
+            )
+            assert inside_window_horizontally(app, value_spin)
+            capture(app, reports / "calibration-720x640.png")
+            calibration_ui._show_panel(app, False)
+            pump(app)
+            checks["calibration_compact_no_horizontal_clip"] = True
 
             app._band_enabled_var.set(True)
             band_ui._set_band_frame_visible(app, True)
