@@ -14,8 +14,6 @@ from pathlib import Path
 from tkinter import messagebox
 from urllib.parse import urlsplit
 
-import imageio_ffmpeg
-
 import studio_band_ui
 from studio_band.protocol import StageError, check_cancel, run_process
 from studio_band.resolver import (
@@ -296,6 +294,13 @@ class SpotDLResolver:
             metadata = {**track.public_metadata(), "spotdl_version": SPOTDL_VERSION, "sha256": file_hash(cached)}
             return AcquiredAudio(cached, metadata)
         check_cancel(cancel)
+        # Keep Studio-only FFmpeg out of Lite's import/test environment. The
+        # Studio spec explicitly bundles imageio_ffmpeg, so import it only when
+        # a user actually starts a spotDL audio acquisition.
+        try:
+            import imageio_ffmpeg
+        except ImportError as exc:
+            raise SpotDLError("Studio's bundled FFmpeg runtime could not be loaded.", str(exc)) from exc
         ffmpeg = Path(imageio_ffmpeg.get_ffmpeg_exe())
         if not ffmpeg.is_file():
             raise SpotDLError("Studio's bundled FFmpeg could not be found.")
