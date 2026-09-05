@@ -1,16 +1,72 @@
-"""Tiny worker executed inside Studio's isolated spotDL runtime."""
+"""Tiny worker executed inside Studio's isolated spotDL runtime.
+
+Search intentionally uses Spotify's raw search payload instead of hydrating each
+result through ``Song.from_url``.  Hydrating ten results can fan one title search
+out into dozens of track/artist/album requests and makes the desktop look hung.
+"""
 from __future__ import annotations
 
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 
-def _song_payload(song) -> dict:
-    value = song.json
+def _clean(value: Any, maximum: int = 300) -> str:
+    return " ".join(str(value or "").split())[:maximum]
+
+
+def _raw_track_payload(item: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one Spotify search item using data already in that response."""
+    if not isinstance(item, dict):
+        raise TypeError("Spotify returned malformed track metadata")
+    track_id = _clean(item.get("id"), 100)
+    title = _clean(item.get("name"))
+    if not track_id or not title:
+        raise ValueError("Spotify returned a track without an id or title")
+
+    artists_raw = item.get("artists")
+    artists = []
+    if isinstance(artists_raw, list):
+        for artist in artists_raw:
+            if isinstance(artist, dict):
+                name = _clean(artist.get("name"), 120)
+            else:
+                name = _clean(artist, 120)
+            if name:
+                artists.append(name)
+
+    album = item.get("album") if isinstance(item.get("album"), dict) else {}
+    external_urls = item.get("external_urls") if isinstance(item.get("external_urls"), dict) else {}
+    external_ids = item.get("external_ids") if isinstance(item.get("external_ids"), dict) else {}
+    duration_ms = item.get("duration_ms")
+    try:
+        duration = max(0.0, float(duration_ms) / 1000.0) if duration_ms is not None else None
+    except (TypeError, ValueError):
+        duration = None
+
+    return {
+        "song_id": track_id,
+        "name": title,
+        "artists": artists,
+        "artist": artists[0] if artists else "",
+        "album_name": _clean(album.get("name")),
+        "duration": duration,
+        "isrc": _clean(external_ids.get("isrc"), 32),
+        "date": _clean(album.get("release_date"), 32),
+        "url": _clean(external_urls.get("spotify"), 1000)
+        or f"https://open.spotify.com/track/{track_id}",
+    }
+
+
+def _track_items(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, dict):
-        raise TypeError("spotDL returned malformed song metadata")
-    return value
+        return []
+    tracks = value.get("tracks")
+    if not isinstance(tracks, dict):
+        return []
+    items = tracks.get("items")
+    return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,11 +89,24 @@ def main(argv: list[str] | None = None) -> int:
         # when client credentials are empty. No Spotify account is required for
         # normal track search.
         SpotifyClient.init(client_id="", client_secret="")
+        client = SpotifyClient()
         if query.startswith("https://open.spotify.com/track/"):
-            songs = [Song.from_url(query)]
+            raw = client.track(query)
+            items = [raw] if isinstance(raw, dict) else []
         else:
-            songs = Song.list_from_search_term(query)
-        payload = [_song_payload(song) for song in list(songs)[:limit]]
+            # One Spotify request is enough. Song.list_from_search_term() would
+            # re-fetch track + artist + album data for every result and was the
+            # source of the long beta.4 search delay.
+            items = _track_items(Song.search(query))
+
+        payload = []
+        for item in items:
+            try:
+                payload.append(_raw_track_payload(item))
+            except (TypeError, ValueError):
+                continue
+            if len(payload) >= limit:
+                break
         response = {"ok": True, "tracks": payload}
     except Exception as exc:  # worker boundary: return a compact user-facing error
         response = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
