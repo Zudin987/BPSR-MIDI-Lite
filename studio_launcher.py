@@ -55,11 +55,12 @@ from ui_full_overhaul_2026 import install_full_ui_overhaul
 from ui_overlay_coordinator_2026 import install_overlay_coordinator
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
+from ui_video_audit_2026 import install_video_audit_ui
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.7"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.8"
 
 install_core_transcription()
 install_online_search_bridge()
@@ -104,6 +105,7 @@ install_band_responsive_patch()
 install_band_visibility_guard()
 install_overlay_coordinator()
 install_calibration_extension_reflow()
+install_video_audit_ui()
 
 
 if __name__ == "__main__":
