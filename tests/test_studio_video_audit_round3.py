@@ -60,6 +60,20 @@ try:
             pass
     assert "Songs" not in nested_titles, nested_titles
 
+    # The second primary selector is a playback profile, not an unlocked-category
+    # selector. Custom's summary must also stop directing users to a panel 'below'
+    # now that the editor is a focused overlay.
+    setup_labels = []
+    for widget in walk(app._product_setup_frame):
+        try:
+            if widget.winfo_class() == "TLabel":
+                setup_labels.append(str(widget.cget("text")))
+        except Exception:
+            pass
+    assert "Playback profile" in setup_labels, setup_labels
+    assert "Unlocked category" not in setup_labels, setup_labels
+    assert "advanced panel below" not in str(app.profile_summary_var.get()).lower(), app.profile_summary_var.get()
+
     # Reproduce the exact compact Custom-tuning surface that clipped Retrigger
     # gap and its help line in the user's recording.
     advanced_ui._show_custom_panel(app, True)
@@ -70,7 +84,6 @@ try:
     assert panel.winfo_manager() == "place"
     panel_left = panel.winfo_rootx()
     panel_right = panel_left + panel.winfo_width()
-    panel_top = panel.winfo_rooty()
     visible = []
     for widget in panel.winfo_children():
         try:
