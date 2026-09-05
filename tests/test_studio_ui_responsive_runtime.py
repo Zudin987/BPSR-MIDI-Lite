@@ -16,6 +16,7 @@ SCRIPT = r'''
 import time
 from pathlib import Path
 
+import band_ui
 import studio_launcher
 import ui_full_overhaul_2026 as full_ui
 
@@ -31,13 +32,34 @@ def row(widget):
     return int(widget.grid_info().get("row", -1))
 
 
+def capture(app, name):
+    try:
+        from PIL import ImageGrab
+
+        reports = Path("ui-smoke-report")
+        reports.mkdir(exist_ok=True)
+        x, y = app.winfo_rootx(), app.winfo_rooty()
+        ImageGrab.grab((x, y, x + app.winfo_width(), y + app.winfo_height())).save(
+            reports / name
+        )
+    except OSError:
+        pass
+
+
 app = studio_launcher.app.App()
 try:
     app.geometry("560x700+0+0")
-    app._band_frame.grid()
+    pump(app)
+    app._band_enabled_var.set(True)
+    band_ui._set_band_frame_visible(app, True)
     pump(app)
     full_ui._responsive_root(app)
     pump(app)
+
+    state = full_ui._overlay_state(app, "band")
+    assert state.get("visible") is True
+    assert app._band_frame.winfo_manager() == "place"
+    assert str(app._ux_band_room_button.cget("state")) == "normal"
 
     status_rows = {
         row(widget)
@@ -56,33 +78,42 @@ try:
     assert lineup_row >= 8, lineup_row
     assert share_row > lineup_row, (lineup_row, share_row)
     assert lineup_row not in status_rows and share_row not in status_rows
-
     assert row(app._band_share_checkbox) == 1
     assert row(app._band_download_button) == 2
 
+    # The permanent playback toolbar must stay both vertically and horizontally
+    # reachable while the secondary Band Room overlay is open.
     window_bottom = app.winfo_rooty() + app.winfo_height()
+    window_right = app.winfo_rootx() + app.winfo_width()
     toolbar_bottom = app.stop_button.winfo_rooty() + app.stop_button.winfo_height()
+    toolbar_right = app.stop_button.winfo_rootx() + app.stop_button.winfo_width()
     assert toolbar_bottom <= window_bottom + 2, (toolbar_bottom, window_bottom)
+    assert toolbar_right <= window_right + 2, (toolbar_right, window_right)
 
-    # Expanded Band Mode must not merely be mapped; its last controls need to
-    # remain physically reachable inside the main body at a compact desktop.
+    capture(app, "main-band-room-compact.png")
+
+    # If the Band Room is taller than the compact viewport, the final UI must
+    # expose a scrollbar and make the bottom Room MIDI controls reachable.
+    _width, _requested, _viewport, maximum = full_ui._overlay_geometry(app, "band")
     body_bottom = app._gaming_body.winfo_rooty() + app._gaming_body.winfo_height()
+    if maximum > 0:
+        scrollbar = state.get("scrollbar")
+        assert scrollbar is not None and scrollbar.winfo_manager() == "place"
+        full_ui._overlay_scroll_command(app, "band", "moveto", "1.0")
+        pump(app)
+        capture(app, "main-band-room-compact-bottom.png")
     share_bottom = app._band_share_frame.winfo_rooty() + app._band_share_frame.winfo_height()
     download_bottom = app._band_download_button.winfo_rooty() + app._band_download_button.winfo_height()
     assert share_bottom <= body_bottom + 2, (share_bottom, body_bottom)
     assert download_bottom <= body_bottom + 2, (download_bottom, body_bottom)
 
-    reports = Path("ui-smoke-report")
-    reports.mkdir(exist_ok=True)
-    try:
-        from PIL import ImageGrab
-
-        x, y = app.winfo_rootx(), app.winfo_rooty()
-        ImageGrab.grab((x, y, x + app.winfo_width(), y + app.winfo_height())).save(
-            reports / "main-band-room-compact.png"
-        )
-    except OSError:
-        pass
+    # Closing the overlay keeps Band Mode selected and exposes a direct reopen
+    # action instead of requiring the user to toggle the feature off/on.
+    full_ui._hide_feature_overlay(app, "band")
+    pump(app)
+    assert not full_ui._overlay_state(app, "band").get("visible")
+    assert bool(app._band_enabled_var.get())
+    assert str(app._ux_band_room_button.cget("state")) == "normal"
 finally:
     app.destroy()
 '''
