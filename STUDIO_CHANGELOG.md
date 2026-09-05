@@ -1,5 +1,14 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.2
+
+- Adds a provider-neutral Music Resolver inside Audio → Band while keeping local MP3/WAV/FLAC/M4A/OGG selection visible and available at all times.
+- Uses Apple Music (with a developer token) or Apple's public storefront search for MY/ID-aware song discovery and metadata. Apple previews are never downloaded or sent to the AI pipeline.
+- Adds MassiveMusic catalogue search and OAuth-signed purchased-track delivery for commercially licensed partners with an entitled user.
+- Adds authenticated Bandcamp OpenSubsonic search/download for music already present in the user's own collection.
+- Requires an explicit rights confirmation before provider audio enters analysis, verifies download size/type/signature/SHA-256, caches atomically, and records only non-secret source provenance in `Arrangement.json`.
+- Deliberately excludes SoundCloud acquisition because its current API terms prohibit using API content as input to AI source separation; Spotify and streaming rip paths remain unsupported.
+
 ## 0.5.0-band-accurate-beta.1
 
 - Adds the Audio → Band tab with local audio import, progress/cancellation, Piano/Guitar/Auto melody ownership, preview, category controls and four-part MIDI export.

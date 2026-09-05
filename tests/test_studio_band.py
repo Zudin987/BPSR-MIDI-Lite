@@ -185,7 +185,10 @@ def test_exports_align_variable_tempo_and_keep_leading_silence(tmp_path):
 def test_export_roundtrip_and_rearrangement_require_no_audio_or_workers(tmp_path):
     master = song([note(), note(72, source="vocals", role="MAIN_MELODY", event_id="v")])
     settings = ArrangementSettings()
-    output = export_arrangement(tmp_path, "My Song", master, arrange(master, settings, load_drum_profile()), settings)
+    source = {"input_mode": "provider", "provider": "bandcamp_collection", "provider_id": "owned-1",
+              "title": "My Song", "artist": "Artist", "acquisition": "owned_collection_download"}
+    output = export_arrangement(tmp_path, "My Song", master, arrange(master, settings, load_drum_profile()),
+                                settings, source_metadata=source)
     record = read_json(output)
     assert len(list(output.parent.glob("*.mid"))) == 5
     assert record["source_audio_sha256"] == "a"*64
@@ -195,6 +198,7 @@ def test_export_roundtrip_and_rearrangement_require_no_audio_or_workers(tmp_path
     opened = reopen(moved / output.name, ArrangementSettings(main_melody="guitar"), tmp_path / "new")
     assert read_json(opened)["melody_assignment"]["part"] == "guitar"
     assert read_json(opened)["master_song"] == record["master_song"]
+    assert read_json(opened)["source"] == record["source"]
 
 
 def test_generated_full_band_is_compatible_with_band_arranger_v4(tmp_path):
@@ -299,11 +303,19 @@ def test_runtime_exposes_bundled_ffmpeg_under_standard_name(tmp_path, monkeypatc
     executable = tmp_path / "imageio-ffmpeg-versioned.exe"
     executable.write_bytes(b"original synthetic executable fixture")
     monkeypatch.setenv("PYTEST_CURRENT_TEST", "must not alter third-party runtime behavior")
+    monkeypatch.setenv("BPSR_APPLE_MUSIC_TOKEN", "apple-secret")
+    monkeypatch.setenv("BPSR_MASSIVEMUSIC_CONSUMER_SECRET", "massive-secret")
+    monkeypatch.setenv("BPSR_BANDCAMP_PASSWORD", "bandcamp-secret")
+    monkeypatch.setenv("BPSR_MUSIC_STOREFRONT", "ID")
     environment = RuntimeManager(tmp_path / "managed").environment(executable)
     import os
     alias = Path(environment["PATH"].split(os.pathsep)[0]) / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
     assert alias.read_bytes() == executable.read_bytes()
     assert "PYTEST_CURRENT_TEST" not in environment
+    assert "BPSR_APPLE_MUSIC_TOKEN" not in environment
+    assert "BPSR_MASSIVEMUSIC_CONSUMER_SECRET" not in environment
+    assert "BPSR_BANDCAMP_PASSWORD" not in environment
+    assert environment["BPSR_MUSIC_STOREFRONT"] == "ID"
 
 
 def test_preview_mutes_parts_and_uses_gm_drums_without_game_input():

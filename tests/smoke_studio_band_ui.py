@@ -34,6 +34,8 @@ def main():
             assert app.song_source_var.get() == "audio_band"
             assert app._gaming_library_panel.winfo_width() == 400
             assert audio.workspace.winfo_viewable()
+            assert audio.manual_button.winfo_viewable() and audio.source_tree.winfo_viewable()
+            assert str(audio.acquire_button.cget("state")) == "disabled"
             assert audio.save_button.winfo_rootx()+audio.save_button.winfo_width() <= audio.workspace.winfo_rootx()+audio.workspace.winfo_width()
             # Each new job owns a fresh Event. The actual Cancel button must
             # cancel that job rather than the Event captured during UI creation.
@@ -62,6 +64,7 @@ def main():
             reports = Path("ui-smoke-report")
             reports.mkdir(exist_ok=True)
             (reports/"ui-checks.json").write_text(json.dumps({"tab": "audio_band", "library_width": 400,
+                "manual_audio_visible": True, "music_resolver_visible": True,
                 "cancel_current_job": True, "rearrange_without_models": True, "callbacks": errors}), encoding="utf-8")
             try:
                 from PIL import ImageGrab

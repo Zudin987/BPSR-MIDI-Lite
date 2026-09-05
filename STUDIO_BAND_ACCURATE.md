@@ -1,20 +1,22 @@
 # Studio Audio → Band beta
 
-Studio **0.5.0-band-accurate-beta.1** adds local audio conversion to Piano,
+Studio **0.5.0-band-accurate-beta.2** adds local or authorised-provider audio conversion to Piano,
 Guitar, Bass and Drums. This branch builds on the Band Mode v4 development
 branch (PR #35); it is a beta for evaluation, not a stable release.
 
 ## Use
 
-1. Open Studio's **Audio → Band** tab, open its workspace and choose or drop MP3, WAV, FLAC, M4A or OGG audio.
-2. Leave **Main melody: Auto** and **Stem quality: Auto**, or choose Piano/Guitar explicitly.
-3. Click **Convert**. First use downloads separate Python runtimes and models;
+1. Open Studio's **Audio → Band** tab and its workspace.
+2. Either choose/drop a local MP3, WAV, FLAC, M4A or OGG file, or search the MY/ID music catalogue. Local input remains visible and works without any music-service account.
+3. A discovery-only result opens its provider so you can obtain an authorised file and choose it locally. An entitled Bandcamp/MassiveMusic result offers **Acquire & Analyze** after an explicit rights confirmation.
+4. Leave **Main melody: Auto** and **Stem quality: Auto**, or choose Piano/Guitar explicitly.
+5. Click **Analyze & Convert** for local audio. First use downloads separate Python runtimes and models;
    allow several GB of disk space and time for installation. No system Python is required on Windows.
-4. Review the four parts and warnings. Preview the whole band, solo a part or mute parts.
+6. Review the four parts and warnings. Preview the whole band, solo a part or mute parts.
    Preview uses Windows' MIDI synthesizer and sends no game keyboard input.
-5. Change melody ownership or instrument categories and apply the arrangement again.
+7. Change melody ownership or instrument categories and apply the arrangement again.
    This uses the saved musical map and does not rerun audio models.
-6. Export the MIDI files and `Arrangement.json` to keep them outside the temporary cache.
+8. Export the MIDI files and `Arrangement.json` to keep them outside the temporary cache.
    **Use FullBand in player** opens the existing Song Check/player without starting playback.
 
 The export contains `Song - Piano.mid`, `Song - Guitar.mid`, `Song - Bass.mid`,
@@ -22,6 +24,46 @@ The export contains `Song - Piano.mid`, `Song - Guitar.mid`, `Song - Bass.mid`,
 name). All parts share the original audio clock, including leading silence.
 High-confidence beat intervals provide a shared MIDI tempo map. Unknown tempo
 uses a 120 BPM transport without claiming that it is the detected song tempo.
+
+## Music Resolver and manual input
+
+The resolver separates **finding a recording** from **permission to retrieve its
+audio**. Search results never imply that a full audio file is licensed for MIDI
+conversion. The local file picker and drag/drop path are permanent first-class
+inputs and do not require provider setup.
+
+| Source | Studio behavior | Full audio used by AI? |
+| --- | --- | --- |
+| [Apple Music API](https://developer.apple.com/documentation/applemusicapi) | MY/ID-aware discovery with title, artist, album, duration, release date and ISRC when a developer token is configured | No; catalog/preview content is metadata-only |
+| [Apple public storefront search](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/) | No-key discovery fallback with a direct Apple store link | No; preview URLs are ignored and never cached |
+| [MassiveMusic / 7digital](https://docs.massivemusic.com/reference/about-this-api) | Searches the download catalogue with a commercial consumer key; purchased-track delivery also requires partner OAuth credentials and an entitled user | Only after the endpoint confirms an entitled download and the user confirms rights |
+| [Bandcamp](https://blog.bandcamp.com/2026/07/16/discover-improvements-and-subsonic-implementation/) | Searches/downloads the signed-in fan's existing collection through Bandcamp's official OpenSubsonic beta | Only for a collection item, after the user confirms rights |
+| Local file | User chooses or drops MP3/WAV/FLAC/M4A/OGG | Yes; this always remains available |
+
+Source setup is intentionally per-session so secrets are not written to disk.
+For repeat use, set these Windows environment variables before starting Studio:
+
+- `BPSR_MUSIC_STOREFRONT` (`MY` by default; `ID` for Indonesia)
+- `BPSR_APPLE_MUSIC_TOKEN`
+- `BPSR_MASSIVEMUSIC_CONSUMER_KEY`, `BPSR_MASSIVEMUSIC_CONSUMER_SECRET`, `BPSR_MASSIVEMUSIC_USER_ID`
+- optional `BPSR_MASSIVEMUSIC_USER_TOKEN`, `BPSR_MASSIVEMUSIC_USER_TOKEN_SECRET`
+- either `BPSR_BANDCAMP_USERNAME` plus `BPSR_BANDCAMP_PASSWORD`, or `BPSR_BANDCAMP_API_KEY`
+
+MassiveMusic credentials are available only under a commercial agreement and
+not every media-delivery endpoint is enabled for every partner. Bandcamp
+credentials are generated in **Fan Settings → Subsonic** and expose only that
+fan's collection. Provider downloads use HTTPS, a 2 GB cap, file-signature and
+SHA-256 checks, atomic publication and a 14-day cache. Credentials, preview
+URLs and local source paths are excluded from `Arrangement.json`; safe source
+identity and acquisition provenance remain so results can be audited.
+
+SoundCloud is deliberately not connected to analysis: its current [API terms](https://developers.soundcloud.com/docs/api/terms-of-use)
+explicitly prohibit using API content as input to AI technologies, including
+audio source separation. Spotify streams, Apple previews, Bandcamp catalog
+scraping and stream-ripping paths are likewise unsupported. Owning or being
+able to play a track does not automatically grant every derivative-use right;
+the user/partner remains responsible for ensuring the intended conversion is
+permitted.
 
 ## Analysis and recovery
 
@@ -97,7 +139,9 @@ hashes detect incomplete or corrupted cache entries. Atomic writes and job
 locks permit retry after failure. Cancellation kills the worker process tree
 and retains completed stages. Idle jobs expire after 14 days or when the
 20 GB job cache budget is exceeded; active jobs and exported copies are kept.
-Model downloads are managed separately and are not silently evicted.
+Model downloads are managed separately and are not silently evicted. Entitled
+provider audio uses a separate verified `acquired-audio` cache under the same
+root and follows the same 14-day/20 GB cleanup policy.
 
 `Arrangement.json` is self-contained: reopening and changing ownership works
 without the source audio, cached stems or model runtimes. Errors expose stage

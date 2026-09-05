@@ -150,6 +150,7 @@ jobs:
           $analysis = Get-Content "build/BPSR-MIDI-Studio/Analysis-00.toc" -Raw
           if ($analysis -notmatch 'studio_core_transcription') { throw "PyInstaller did not discover the Studio core transcription module" }
           if ($analysis -notmatch 'studio_audio_latency') { throw "PyInstaller did not discover the Studio audio-latency module" }
+          if ($analysis -notmatch 'studio_band.resolver') { throw "PyInstaller did not discover the Studio music resolver" }
           $size = (Get-Item "dist/BPSR-MIDI-Studio.exe").Length
           if ($size -lt 50000000) { throw "Studio EXE is unexpectedly small; bundled runtime may be missing" }
           Write-Host "Studio single EXE size: $size bytes"

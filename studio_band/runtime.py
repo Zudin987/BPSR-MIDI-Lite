@@ -104,6 +104,12 @@ class RuntimeManager:
         # Avoid inheriting frozen app / caller Python state into other frameworks.
         for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "PYTEST_CURRENT_TEST"):
             env.pop(key, None)
+        # Resolver credentials belong only to the desktop process.  Never pass
+        # catalogue or entitlement secrets to AI/model worker subprocesses.
+        for key in list(env):
+            if (key == "BPSR_APPLE_MUSIC_TOKEN" or
+                    key.startswith(("BPSR_MASSIVEMUSIC_", "BPSR_BANDCAMP_"))):
+                env.pop(key, None)
         env.update({"PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "PYTHONNOUSERSITE": "1",
                     "TORCH_HOME": str(self.models / "torch"),
                     "HF_HOME": str(self.models / "huggingface"),

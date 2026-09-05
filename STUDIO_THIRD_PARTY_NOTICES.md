@@ -66,3 +66,18 @@ see [the model and checkpoint license notes](STUDIO_BAND_ACCURATE.md#third-party
 The built-in spectral drum/beat fallback is project code.
 
 Studio also contains dependencies pulled by Basic Pitch and the existing BPSR MIDI Lite build. Their upstream licenses remain applicable.
+
+## Online music services
+
+The Audio → Band Music Resolver uses HTTPS calls implemented with Python's
+standard library; no provider SDK is redistributed. Apple Music/iTunes Search
+is used only for catalogue discovery, never as an audio downloader. A
+MassiveMusic/7digital connection requires the user's own commercial API
+agreement and accesses purchased media only when that partner endpoint is
+enabled. Bandcamp access is limited to the user's own collection through its
+OpenSubsonic beta credentials.
+
+Each service's current API and content terms apply independently. SoundCloud
+audio is not integrated because SoundCloud's API terms prohibit feeding its
+content into AI audio source separation. Spotify streams and other protected
+streaming content are not downloaded or converted by the Music Resolver.

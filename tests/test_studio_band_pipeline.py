@@ -74,6 +74,7 @@ def test_complete_pipeline_outputs_all_files_and_reuses_expensive_work(tmp_path)
     output = converter.convert(source)
     record = read_json(output)
     assert set(record["files"]) == {"piano", "guitar", "bass", "drums", "full"}
+    assert record["source"] == {"input_mode": "manual", "title": "song"}
     assert {p for p,_ in FixtureClient.calls} >= {"demucs", "transkun", "basic_pitch", "beat_this", "drums_dsp", "mr_mt3"}
     calls = list(FixtureClient.calls)
     converter.convert(source, ConversionSettings(arrangement=ArrangementSettings(main_melody="guitar")))
@@ -81,6 +82,20 @@ def test_complete_pipeline_outputs_all_files_and_reuses_expensive_work(tmp_path)
     reopened = converter.rearrange(output, ArrangementSettings(main_melody="guitar"))
     assert FixtureClient.calls == calls
     assert read_json(reopened)["melody_assignment"]["part"] == "guitar"
+
+
+def test_provider_metadata_names_output_without_exposing_cached_filename(tmp_path):
+    source = tmp_path / ("a" * 64 + ".flac")
+    source.write_bytes(b"legal synthetic fixture")
+    converter = pipeline(tmp_path)
+    output = converter.convert(source, source_metadata={
+        "input_mode": "provider", "provider": "bandcamp_collection", "provider_id": "owned-7",
+        "title": "Actual Song", "artist": "Artist", "password": "must-not-leak",
+    })
+    record = read_json(output)
+    assert record["title"] == "Actual Song" and output.parent.name == "Actual Song"
+    assert record["source"]["provider_id"] == "owned-7"
+    assert "must-not-leak" not in output.read_text(encoding="utf-8")
 
 
 def test_missing_specialists_use_recorded_fallbacks(tmp_path):

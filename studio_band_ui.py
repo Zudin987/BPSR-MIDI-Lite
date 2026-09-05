@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 import os
 import queue
-import shutil
 import threading
 import tkinter as tk
+import webbrowser
+from dataclasses import replace
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -15,6 +16,7 @@ from studio_band.export import copy_export
 from studio_band.pipeline import BandPipeline, ConversionSettings
 from studio_band.preview import PreviewPlayer
 from studio_band.protocol import Cancelled
+from studio_band.resolver import MusicResolver, ResolverConfig, ResolverTrack, SearchReport
 from studio_band.runtime import RUNTIMES, detect_hardware
 from studio_band.storage import atomic_json, read_json
 
@@ -22,9 +24,19 @@ from studio_band.storage import atomic_json, read_json
 class BandAudioTab:
     def __init__(self, app):
         self.app, self.pipeline = app, BandPipeline()
+        self.resolver_config = ResolverConfig.from_environment()
+        self.resolver = MusicResolver(self.resolver_config)
         self.events, self.cancel, self.preview = queue.Queue(), threading.Event(), PreviewPlayer()
         self.busy, self.manifest, self.record, self.details = False, None, None, ""
+        self.active_task, self.acquired_path, self.source_metadata = "", None, None
+        self.search_results: dict[str, ResolverTrack] = {}
         self.path = tk.StringVar(app)
+        self.music_query = tk.StringVar(app)
+        self.storefront = tk.StringVar(app, value=self.resolver_config.storefront)
+        self.resolver_status = tk.StringVar(app, value=(
+            "Search Apple catalogue metadata, your Bandcamp collection, or licensed MassiveMusic. "
+            "Local audio above always remains available."
+        ))
         self.melody = tk.StringVar(app, value="Auto")
         self.quality = tk.StringVar(app, value="Auto")
         self.device = tk.StringVar(app, value="auto")
@@ -44,18 +56,22 @@ class BandAudioTab:
         self.workspace = tk.Toplevel(app)
         self.workspace.withdraw()
         self.workspace.title("Studio · Audio → Band Accurate")
-        self.workspace.geometry("860x620")
-        self.workspace.minsize(760, 540)
+        self.workspace.geometry("980x780")
+        self.workspace.minsize(820, 680)
         self.workspace.protocol("WM_DELETE_WINDOW", self.hide_workspace)
         body = ttk.Frame(self.workspace, padding=14)
         body.pack(fill="both", expand=True)
         body.columnconfigure(0, weight=1)
-        row = ttk.Frame(body)
+        source = ttk.LabelFrame(body, text="Audio source · local file is always supported", padding=9)
+        source.grid(row=0, column=0, sticky="nsew")
+        source.columnconfigure(0, weight=1)
+        row = ttk.Frame(source)
         row.grid(row=0, column=0, sticky="ew")
         row.columnconfigure(0, weight=1)
         entry = ttk.Entry(row, textvariable=self.path)
         entry.grid(row=0, column=0, sticky="ew")
-        ttk.Button(row, text="Choose song", command=self.browse).grid(row=0, column=1, padx=(6, 0))
+        self.manual_button = ttk.Button(row, text="Choose local MP3 / WAV", command=self.browse)
+        self.manual_button.grid(row=0, column=1, padx=(6, 0))
         try:
             from tkinterdnd2 import DND_FILES, TkinterDnD
             TkinterDnD._require(app)
@@ -65,6 +81,40 @@ class BandAudioTab:
             # Elevated Windows apps cannot always receive Explorer file drops;
             # the file picker is always available, including without TkDnD.
             pass
+        ttk.Label(source, text="or find an exact track", style="Hint.TLabel").grid(row=1, column=0, sticky="w", pady=(8, 3))
+        search = ttk.Frame(source)
+        search.grid(row=2, column=0, sticky="ew")
+        search.columnconfigure(0, weight=1)
+        self.music_search_entry = ttk.Entry(search, textvariable=self.music_query)
+        self.music_search_entry.grid(row=0, column=0, sticky="ew")
+        self.music_search_entry.bind("<Return>", lambda _event: self.search_music())
+        ttk.Combobox(search, textvariable=self.storefront, values=("MY", "ID", "SG", "JP", "US"),
+                     state="readonly", width=5).grid(row=0, column=1, padx=(6, 0))
+        self.search_button = ttk.Button(search, text="Search music", command=self.search_music)
+        self.search_button.grid(row=0, column=2, padx=(6, 0))
+        ttk.Button(search, text="Source setup", command=self.source_setup).grid(row=0, column=3, padx=(6, 0))
+        self.source_tree = ttk.Treeview(source, columns=("artist", "provider", "availability"),
+                                        show="tree headings", height=4, selectmode="browse")
+        self.source_tree.heading("#0", text="Track")
+        self.source_tree.heading("artist", text="Artist")
+        self.source_tree.heading("provider", text="Source")
+        self.source_tree.heading("availability", text="Audio")
+        self.source_tree.column("#0", width=275, minwidth=150, stretch=True)
+        self.source_tree.column("artist", width=190, minwidth=100, stretch=True)
+        self.source_tree.column("provider", width=125, minwidth=90, stretch=False)
+        self.source_tree.column("availability", width=190, minwidth=140, stretch=False)
+        self.source_tree.grid(row=3, column=0, sticky="ew", pady=(6, 0))
+        self.source_tree.bind("<<TreeviewSelect>>", lambda _event: self.source_selected())
+        source_actions = ttk.Frame(source)
+        source_actions.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+        self.acquire_button = ttk.Button(source_actions, text="Acquire & Analyze", command=self.acquire_selected,
+                                         state="disabled")
+        self.acquire_button.pack(side="left")
+        self.open_source_button = ttk.Button(source_actions, text="Open provider", command=self.open_selected_source,
+                                             state="disabled")
+        self.open_source_button.pack(side="left", padx=6)
+        ttk.Label(source_actions, textvariable=self.resolver_status, style="Hint.TLabel", wraplength=650,
+                  justify="left").pack(side="left", padx=(8, 0), fill="x", expand=True)
         controls = ttk.Frame(body)
         controls.grid(row=1, column=0, sticky="w", pady=8)
         ttk.Label(controls, text="Main Melody").grid(row=0, column=0, sticky="w")
@@ -120,6 +170,7 @@ class BandAudioTab:
             info = detect_hardware()
             self.events.put(("hardware", "GPU detected · each model checks CUDA support" if info.cuda else "CPU mode - conversion will be slower"))
             self.pipeline.store.cleanup()
+            self.resolver.store.cleanup()
         threading.Thread(target=hardware, daemon=True).start()
 
     def open_workspace(self):
@@ -136,39 +187,181 @@ class BandAudioTab:
         path = filedialog.askopenfilename(parent=self.app, title="Choose a song", filetypes=[("Audio", "*.mp3 *.wav *.flac *.m4a *.ogg")])
         if path:
             self.path.set(path)
+            self.acquired_path, self.source_metadata = None, None
+            self.status.set("Local audio selected. Adjust options, then click Analyze & Convert.")
 
     def drop(self, event):
         files = self.app.tk.splitlist(event.data)
         if not self.busy and files:
             self.path.set(files[0])
+            self.acquired_path, self.source_metadata = None, None
+            self.status.set("Local audio selected. Adjust options, then click Analyze & Convert.")
         return event.action
+
+    def _selected_source(self):
+        selection = self.source_tree.selection()
+        return self.search_results.get(str(selection[0])) if selection else None
+
+    def source_selected(self):
+        track = self._selected_source()
+        self.acquire_button.configure(state="normal" if track and track.can_acquire and not self.busy else "disabled")
+        self.open_source_button.configure(state="normal" if track and track.store_url and not self.busy else "disabled")
+        if track:
+            self.resolver_status.set(
+                "Full audio can be acquired from this entitled account." if track.can_acquire else
+                "Discovery only. Open the provider, obtain an authorised file, then choose it locally."
+            )
+
+    def _refresh_resolver(self):
+        country = self.storefront.get().strip().upper()
+        self.resolver_config = replace(self.resolver_config, storefront=country)
+        self.resolver = MusicResolver(self.resolver_config, self.resolver.store)
+
+    def search_music(self):
+        if self.busy:
+            return
+        query = self.music_query.get().strip()
+        try:
+            self._refresh_resolver()
+        except ValueError as exc:
+            self.resolver_status.set(str(exc))
+            return
+        self.source_tree.delete(*self.source_tree.get_children())
+        self.search_results.clear()
+        self.acquire_button.configure(state="disabled")
+        self.open_source_button.configure(state="disabled")
+        self.resolver_status.set("Searching legal music sources…")
+        self.start(lambda: self.resolver.search(query, cancel=self.cancel,
+                                                progress=lambda text: self.events.put(("progress", text))),
+                   "search_done", "music search")
+
+    def show_search_results(self, report: SearchReport):
+        provider_names = {"apple_music": "Apple Music", "apple_catalog": "Apple catalogue",
+                          "massive_music": "MassiveMusic", "bandcamp_collection": "Bandcamp collection"}
+        availability = {"metadata_only": "Discovery only", "catalogue_only": "Catalogue / purchase",
+                        "entitled_partner_download": "Entitled download", "owned_collection_download": "Owned download"}
+        for index, track in enumerate(report.tracks):
+            iid = f"source:{index}"
+            self.search_results[iid] = track
+            self.source_tree.insert("", "end", iid=iid, text=track.title,
+                                    values=(track.artist or "—", provider_names.get(track.provider, track.provider),
+                                            availability.get(track.acquisition, track.acquisition)))
+        warning = f" {len(report.warnings)} setup note(s); see Technical details." if report.warnings else ""
+        self.resolver_status.set(f"Found {len(report.tracks)} result(s). Select one.{warning}")
+        if report.warnings:
+            self.details = json.dumps({"music_source_notes": report.warnings}, indent=2, ensure_ascii=False)
+
+    def open_selected_source(self):
+        track = self._selected_source()
+        if not track or not track.store_url:
+            self.resolver_status.set("This result has no safe provider page.")
+            return
+        try:
+            opened = bool(webbrowser.open(track.store_url, new=2, autoraise=True))
+        except webbrowser.Error:
+            opened = False
+        self.resolver_status.set("Opened the provider in your browser." if opened else "Could not open your web browser.")
+
+    def acquire_selected(self):
+        track = self._selected_source()
+        if not track or not track.can_acquire or self.busy:
+            self.resolver_status.set("Choose an owned or licensed downloadable result first.")
+            return
+        allowed = messagebox.askyesno(
+            "Confirm audio rights",
+            "Only continue if this account owns the track or your licence permits local audio analysis and MIDI conversion.\n\n"
+            "Studio will never use an Apple preview or streaming-only audio.",
+            parent=self.workspace,
+        )
+        if not allowed:
+            return
+        self.start(lambda: self.resolver.acquire(track, cancel=self.cancel,
+                                                 progress=lambda text: self.events.put(("progress", text))),
+                   "acquired", "audio acquisition")
+
+    def source_setup(self):
+        if self.busy:
+            return
+        window = tk.Toplevel(self.workspace)
+        window.title("Music source setup · session only")
+        window.geometry("720x520")
+        window.minsize(650, 470)
+        content = ttk.Frame(window, padding=14)
+        content.pack(fill="both", expand=True)
+        ttk.Label(content, text=(
+            "Apple is discovery-only. Bandcamp uses your Fan Settings → Subsonic collection. "
+            "MassiveMusic requires a commercial partner agreement and an entitled user. "
+            "Secrets stay only in memory for this Studio session."
+        ), wraplength=670, justify="left").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        fields = [
+            ("Apple developer token (optional)", "apple_token"),
+            ("MassiveMusic consumer key", "massive_consumer_key"),
+            ("MassiveMusic consumer secret", "massive_consumer_secret"),
+            ("MassiveMusic user ID", "massive_user_id"),
+            ("MassiveMusic user token (optional)", "massive_user_token"),
+            ("MassiveMusic token secret (optional)", "massive_user_token_secret"),
+            ("Bandcamp Subsonic username", "bandcamp_username"),
+            ("Bandcamp Subsonic password", "bandcamp_password"),
+            ("Bandcamp OpenSubsonic API key", "bandcamp_api_key"),
+        ]
+        values = {}
+        for row, (label, name) in enumerate(fields, 1):
+            ttk.Label(content, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            value = tk.StringVar(window, value=getattr(self.resolver_config, name))
+            values[name] = value
+            secret = any(word in name for word in ("token", "secret", "password", "api_key"))
+            ttk.Entry(content, textvariable=value, show="•" if secret else "").grid(row=row, column=1, sticky="ew", padx=(10, 0), pady=3)
+        content.columnconfigure(1, weight=1)
+        ttk.Label(content, text=(
+            "For repeat use, set the matching BPSR_APPLE_MUSIC_*, BPSR_MASSIVEMUSIC_* or "
+            "BPSR_BANDCAMP_* environment variables. Credentials are never written to Arrangement.json."
+        ), style="Hint.TLabel", wraplength=670, justify="left").grid(row=len(fields)+1, column=0, columnspan=2,
+                                                                     sticky="w", pady=(10, 6))
+        def apply():
+            try:
+                self.resolver_config = ResolverConfig(storefront=self.storefront.get(),
+                                                       **{name: value.get().strip() for name, value in values.items()})
+                self.resolver = MusicResolver(self.resolver_config, self.resolver.store)
+            except ValueError as exc:
+                messagebox.showerror("Invalid music source setup", str(exc), parent=window)
+                return
+            window.destroy()
+            self.resolver_status.set("Music source setup applied for this Studio session.")
+        ttk.Button(content, text="Apply for this session", command=apply).grid(row=len(fields)+2, column=0,
+                                                                                columnspan=2, sticky="w", pady=5)
 
     def arrangement_settings(self):
         return ArrangementSettings(self.melody.get().lower(), {p:v.get() for p,v in self.tiers.items()})
 
-    def start(self, action):
+    def start(self, action, success_kind="done", task="conversion"):
         if self.busy:
             return
         self.busy = True
+        self.active_task = task
         self.cancel = threading.Event()
         self.preview.stop()
         self.convert_button.configure(state="disabled")
         self.rearrange_button.configure(state="disabled")
+        self.search_button.configure(state="disabled")
+        self.acquire_button.configure(state="disabled")
+        self.open_source_button.configure(state="disabled")
         self.cancel_button.configure(state="normal")
         self.bar.start(12)
         def worker():
             try:
-                self.events.put(("done", action()))
+                self.events.put((success_kind, action()))
             except Exception as exc:
                 self.events.put(("error", (str(exc), getattr(exc, "details", ""), isinstance(exc, Cancelled))))
         threading.Thread(target=worker, daemon=True, name="studio-band-job").start()
 
     def convert(self):
         source = Path(self.path.get().strip().strip('"'))
+        metadata = self.source_metadata if self.acquired_path and source == self.acquired_path else None
         settings = ConversionSettings(self.quality.get().lower(), self.device.get(), self.install.get(),
                                       self.cross_check.get(), self.arrangement_settings())
-        self.start(lambda: self.pipeline.convert(source, settings, cancel=self.cancel,
-                                                 progress=lambda text: self.events.put(("progress", text))))
+        self.start(lambda: self.pipeline.convert(source, settings, cancel=self.cancel, source_metadata=metadata,
+                                                 progress=lambda text: self.events.put(("progress", text))),
+                   "done", "conversion")
 
     def rearrange(self):
         if self.manifest:
@@ -184,17 +377,27 @@ class BandAudioTab:
                     self.hardware.set(value)
                 elif kind == "progress":
                     self.status.set(value)
-                elif kind in {"done", "error"}:
+                elif kind in {"done", "error", "search_done", "acquired"}:
                     self.busy = False
                     self.bar.stop()
                     self.cancel_button.configure(state="disabled")
-                    self.convert_button.configure(state="normal", text="Analyze & Convert" if kind == "done" else "Retry conversion")
+                    self.convert_button.configure(state="normal", text="Retry conversion" if kind == "error" and self.active_task == "conversion" else "Analyze & Convert")
+                    self.search_button.configure(state="normal")
                     if kind == "done" and value:
                         self.show_result(Path(value))
+                    elif kind == "search_done":
+                        self.show_search_results(value)
+                    elif kind == "acquired":
+                        self.acquired_path, self.source_metadata = Path(value.path), value.metadata
+                        self.path.set(str(value.path))
+                        self.resolver_status.set("Authorised audio acquired and checksum-cached. Starting Audio → Band…")
+                        self.app.after(10, self.convert)
                     elif kind == "error":
                         self.status.set(value[0])
+                        self.resolver_status.set(value[0] if self.active_task in {"music search", "audio acquisition"} else self.resolver_status.get())
                         self.details = value[1] or value[0]
                     self.rearrange_button.configure(state="normal" if self.manifest else "disabled")
+                    self.source_selected()
         except queue.Empty:
             pass
         except (tk.TclError, ValueError, OSError, KeyError) as exc:
@@ -217,7 +420,7 @@ class BandAudioTab:
                         (f" {len(warnings)} quality note(s) in Technical details." if warnings else ""))
         engines = record.get("providers", {}).get("engines", [])
         self.hardware.set("GPU acceleration active" if any(e.get("device") == "cuda" for e in engines) else "CPU mode - conversion will be slower")
-        self.details = json.dumps({"quality_notes": warnings, "providers": record.get("providers"),
+        self.details = json.dumps({"audio_source": record.get("source"), "quality_notes": warnings, "providers": record.get("providers"),
                                    "melody_assignment": record["melody_assignment"]}, indent=2, ensure_ascii=False)
         self.save_button.configure(state="normal")
         self.use_button.configure(state="normal")

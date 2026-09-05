@@ -46,7 +46,7 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.1"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.2"
 
 install_core_transcription()
 install_online_search_bridge()

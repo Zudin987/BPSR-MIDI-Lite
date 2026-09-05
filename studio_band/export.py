@@ -18,12 +18,38 @@ PPQ = 960
 PART_NAMES = {"piano": "Piano", "guitar": "Guitar", "bass": "Bass", "drums": "Drum"}
 PROGRAMS = {"piano": 0, "guitar": 24, "bass": 33, "drums": 0}
 CHANNELS = {"piano": 0, "guitar": 1, "bass": 2, "drums": 9}
+SOURCE_FIELDS = {"input_mode", "provider", "provider_id", "title", "artist", "album",
+                 "duration_seconds", "isrc", "release_date", "store_url", "acquisition", "audio_sha256"}
 
 
 def safe_name(title: str) -> str:
     result = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title).strip(" .")[:90] or "Song"
     if result.upper().split(".")[0] in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1,10)), *(f"LPT{i}" for i in range(1,10))}:
         result = "Song_" + result
+    return result
+
+
+def source_record(value: dict | None, fallback_title: str = "") -> dict:
+    """Keep useful acquisition provenance without paths, credentials or arbitrary data."""
+    source = value if isinstance(value, dict) else {}
+    result = {"input_mode": "provider" if source.get("input_mode") == "provider" else "manual"}
+    for key in SOURCE_FIELDS - {"input_mode"}:
+        item = source.get(key)
+        if item is None:
+            continue
+        if key == "duration_seconds":
+            try:
+                number = float(item)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= number <= 1800:
+                result[key] = number
+            continue
+        text = " ".join(str(item).split())[:1000 if key == "store_url" else 240]
+        if text:
+            result[key] = text
+    if "title" not in result and fallback_title:
+        result["title"] = " ".join(str(fallback_title).split())[:240]
     return result
 
 
@@ -94,7 +120,8 @@ def write_midi(path: Path, parts: dict[str, list[MusicEvent]], beats: BeatMap, d
 
 
 def export_arrangement(target: Path, title: str, master: MasterSong, arrangement: dict,
-                       settings: ArrangementSettings, job: Path | None = None) -> Path:
+                       settings: ArrangementSettings, job: Path | None = None,
+                       source_metadata: dict | None = None) -> Path:
     name = safe_name(title)
     target.mkdir(parents=True, exist_ok=True)
     staging = target / (".export_" + uuid.uuid4().hex)
@@ -111,6 +138,7 @@ def export_arrangement(target: Path, title: str, master: MasterSong, arrangement
         write_midi(staging / filenames["full"], parts, master.beat_map, master.duration)
         record = {
             "schema_version": 1, "title": title, "source_audio_sha256": master.source_sha256,
+            "source": source_record(source_metadata, title),
             "created_utc": datetime.now(timezone.utc).isoformat(), "settings": asdict(settings),
             "bpm": master.beat_map.bpm, "beat_map": asdict(master.beat_map),
             "melody_assignment": arrangement["melody_assignment"], "summary": arrangement["summary"],
@@ -135,7 +163,8 @@ def reopen(path: Path, settings: ArrangementSettings, output: Path, drum_profile
         raise ValueError("Unsupported arrangement version")
     master = MasterSong.from_dict(record["master_song"])
     result = arrange(master, settings, drum_profile or record["drum_profile"])
-    return export_arrangement(output, record["title"], master, result, settings)
+    return export_arrangement(output, record["title"], master, result, settings,
+                              source_metadata=record.get("source"))
 
 
 def copy_export(path: Path, folder: Path) -> Path:

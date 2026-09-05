@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .arrange import ArrangementSettings, arrange, load_drum_profile
-from .export import export_arrangement, reopen
+from .export import export_arrangement, reopen, source_record
 from .fusion import build_master
 from .music import BeatMap, MusicEvent
 from .protocol import Cancelled, StageError, WorkerClient, check_cancel, run_process
@@ -113,7 +113,8 @@ class BandPipeline:
         self.store.commit_stage(folder, key, result, files)
         return result
 
-    def convert(self, source: Path, settings: ConversionSettings | None = None, *, cancel=None, progress=None) -> Path:
+    def convert(self, source: Path, settings: ConversionSettings | None = None, *, cancel=None, progress=None,
+                source_metadata: dict | None = None) -> Path:
         settings = settings or ConversionSettings()
         settings.arrangement.validate()
         if settings.device not in {"auto", "cpu", "cuda"}:
@@ -124,6 +125,7 @@ class BandPipeline:
             raise StageError("Preparing audio", "This audio file is too large; choose a file below 2 GB.")
         report = progress or (lambda _: None)
         check_cancel(cancel)
+        source_info = source_record(source_metadata, source.stem)
         digest = file_hash(source)
         job = self.store.job(source, digest)
         warnings, provenance, primary, reference = [], {}, [], []
@@ -243,7 +245,8 @@ class BandPipeline:
                     master.warnings.append("Drum pads use a provisional semantic mapping; edit Advanced → Drum mapping after calibration.")
                 report("Exporting")
                 check_cancel(cancel)
-                output = export_arrangement(job / "output", source.stem, master, result, settings.arrangement, job)
+                output = export_arrangement(job / "output", source_info.get("title", source.stem), master, result,
+                                            settings.arrangement, job, source_info)
                 atomic_json(job / "status.json", {"status": "done", "arrangement": str(output)})
                 report("Done")
                 return output

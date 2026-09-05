@@ -20,8 +20,8 @@ def test_studio_release_version_is_consistent() -> None:
     launcher = Path("studio_launcher.py").read_text(encoding="utf-8")
     version_info = Path("studio_version_info.txt").read_text(encoding="utf-8")
 
-    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.1"' in launcher
-    assert "filevers=(0, 5, 0, 1)" in version_info
-    assert "prodvers=(0, 5, 0, 1)" in version_info
-    assert "FileVersion', u'0.5.0-band-accurate-beta.1'" in version_info
-    assert "ProductVersion', u'0.5.0-band-accurate-beta.1'" in version_info
+    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.2"' in launcher
+    assert "filevers=(0, 5, 0, 2)" in version_info
+    assert "prodvers=(0, 5, 0, 2)" in version_info
+    assert "FileVersion', u'0.5.0-band-accurate-beta.2'" in version_info
+    assert "ProductVersion', u'0.5.0-band-accurate-beta.2'" in version_info
