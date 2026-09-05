@@ -1,5 +1,22 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.6
+
+- Fixes Audio → Band conversion in the frozen Windows Studio EXE when a managed Python 3.11 model runtime is used. Beta.5 could launch `studio_band_worker.py` directly from PyInstaller's Python 3.10 `_MEI` extraction root, allowing Python 3.11 to import Python 3.10 extension modules such as `_socket.pyd` and fail with `Module use of python310.dll conflicts with this version of Python`.
+- External model workers are now copied into a content-addressed, source-only bundle under Studio's runtime directory before Python 3.11 starts. The bundle contains the worker and `studio_band/*.py` sources only, never the frozen EXE's `.pyd` or DLL files.
+- Existing installed separator/piano/beat/MT3/HQ runtimes are reused; users do not need to reinstall a ready runtime solely for this fix.
+- Adds unit coverage that verifies the staged worker bundle contains no `.pyd` or DLL files and that frozen external provider commands use the isolated worker.
+- Extends Windows frozen-build smoke testing to create a managed Python 3.11 environment and execute the model-worker protocol from the Python 3.10 PyInstaller EXE. This directly guards the cross-version boundary that caused the beta.5 crash.
+
+## 0.5.0-band-accurate-beta.5
+
+- Makes spotDL/Spotify title search responsive by using the metadata already present in Spotify's search response instead of hydrating every result through repeated track/artist/album requests.
+- Adds a hard timeout to the spotDL metadata worker so failed searches do not appear to run forever.
+- Keeps spotDL as the automatic/default downloader and adds direct yt-dlp + Deno fallback when spotDL metadata search, provider matching or download fails.
+- When a Spotify result is known but spotDL cannot acquire it, Studio searches YouTube using artist/title, scores candidate title/artist/duration similarity and penalizes obvious cover/karaoke/reaction/nightcore/slowed/sped/remix variants unless requested.
+- Keeps the fallback automatic: no extra retry button is required. Fallback provenance and the original spotDL failure are recorded with the acquired audio.
+- Adds a live Windows search smoke for `love story`, covering both the spotDL metadata path and direct yt-dlp fallback without downloading copyrighted song audio.
+
 ## 0.5.0-band-accurate-beta.4
 
 - Replaces the Audio → Band Apple/MassiveMusic/Bandcamp resolver UI with a single **spotDL** search/download path while keeping manual MP3/WAV/FLAC/M4A/OGG input permanently available.
