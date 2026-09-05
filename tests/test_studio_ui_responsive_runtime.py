@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -9,7 +10,14 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.skipif(os.name != "nt", reason="Windows/Tk desktop contract")
+_STUDIO_RUNTIME_AVAILABLE = (
+    importlib.util.find_spec("numpy") is not None
+    and importlib.util.find_spec("basic_pitch") is not None
+)
+pytestmark = pytest.mark.skipif(
+    os.name != "nt" or not _STUDIO_RUNTIME_AVAILABLE,
+    reason="Windows Studio/Tk desktop contract",
+)
 
 
 SCRIPT = r'''
