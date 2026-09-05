@@ -64,13 +64,17 @@ def _library_width_for(window_width: int) -> int:
 
 
 def _fit_roomy_desktop(app: Any) -> None:
-    """Start larger on large monitors while retaining the 720p compact contract."""
+    """Use large monitors properly while retaining the 720p compact contract."""
     try:
         sw = max(640, int(app.winfo_screenwidth()))
         sh = max(480, int(app.winfo_screenheight()))
         if sw >= 1600 and sh >= 900:
             width = min(1440, max(1180, sw - 160))
-            height = min(860, max(700, sh - 180))
+            # The beta.7 recording was made on a roomy desktop but Studio still
+            # looked like a small floating utility. 780px on a 900px-tall screen
+            # leaves generous taskbar/chrome headroom while giving Live MIDI and
+            # focused settings materially more room.
+            height = min(820, max(740, sh - 120))
         else:
             width = min(1240, max(560, sw - 80))
             height = min(760, max(380, sh - 100))
