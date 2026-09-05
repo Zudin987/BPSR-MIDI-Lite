@@ -7,6 +7,9 @@ import sys
 if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-worker":
     from studio_band_worker import main as worker_main
     raise SystemExit(worker_main(sys.argv[2:]))
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-external-worker-smoke":
+    from studio_external_worker_smoke import main as external_worker_smoke_main
+    raise SystemExit(external_worker_smoke_main(sys.argv[2:]))
 
 import app
 from band_arranger_identity import install_band_arranger_identity
@@ -36,20 +39,21 @@ from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
 from studio_audio_latency import install_studio_audio_latency
+from studio_band_responsive import install_responsive_band_audio
+from studio_band_ui import install_band_audio
+from studio_band_worker_isolation import install_external_worker_isolation
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
 from studio_spotdl import install_spotdl_band_audio
 from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
-from studio_band_responsive import install_responsive_band_audio
-from studio_band_ui import install_band_audio
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.5"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.6"
 
 install_core_transcription()
 install_online_search_bridge()
@@ -83,6 +87,7 @@ install_band_midi_sharing(app)
 install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
+install_external_worker_isolation()
 install_spotdl_band_audio()
 install_spotdl_ytdlp_fallback()
 install_responsive_band_audio()
