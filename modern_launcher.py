@@ -27,7 +27,6 @@ from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
-from ui_full_overhaul_2026 import install_full_ui_overhaul
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
@@ -65,7 +64,6 @@ install_band_midi_sharing(app)
 install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
-install_full_ui_overhaul(app)
 
 
 if __name__ == "__main__":
