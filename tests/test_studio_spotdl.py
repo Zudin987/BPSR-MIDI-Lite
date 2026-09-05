@@ -93,6 +93,26 @@ def test_spotdl_search_failure_returns_direct_ytdlp_results(tmp_path, monkeypatc
     assert any("fallback" in warning.casefold() for warning in report.warnings)
 
 
+def test_spotdl_provider_failure_automatically_calls_direct_acquire(tmp_path, monkeypatch):
+    resolver = SpotDLResolver(runtime=_FakeRuntime(), store=AcquisitionStore(tmp_path / "audio"))
+    track = _track_from_payload(_payload())
+    seen = {}
+
+    def primary(_self, _track, **_kwargs):
+        raise SpotDLError("spotDL could not download the selected track.", "provider match failed")
+
+    def direct(_self, selected, **kwargs):
+        seen["track"] = selected
+        seen["reason"] = kwargs.get("fallback_reason")
+        return "direct-result"
+
+    monkeypatch.setattr(fallback, "_direct_acquire", direct)
+    result = fallback._fallback_acquire(resolver, primary, track)
+    assert result == "direct-result"
+    assert seen["track"] is track
+    assert "provider match failed" in seen["reason"]
+
+
 def test_direct_fallback_prefers_metadata_and_duration_match():
     track = _track_from_payload(_payload())
     results = [
