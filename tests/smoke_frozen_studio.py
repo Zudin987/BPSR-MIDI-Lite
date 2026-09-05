@@ -5,6 +5,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+# This script is executed as `python tests/smoke_frozen_studio.py`, so Python
+# otherwise puts only the tests directory at sys.path[0]. Add the repository
+# root explicitly before importing Studio modules used to provision Python 3.11.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from studio_band.protocol import run_process
 from studio_band.runtime import RuntimeManager
 from studio_synthetic_audio import make_song
