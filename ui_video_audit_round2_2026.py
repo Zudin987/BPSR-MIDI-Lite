@@ -147,11 +147,33 @@ def _sync_details_chrome(app: Any) -> None:
         if title is not None:
             _hide(title)
         return
-    if impact is None:
+    if title is None:
         return
+
+    # The old product layer may restore different Details children depending on
+    # how the Song Check was constructed.  Packing the title only `before` the
+    # impact label was brittle when that label had no saved pack geometry. Find
+    # the first currently mapped Details child as the anchor, then fall back to a
+    # normal pack so the section heading always returns when Details is opened.
+    candidates = (
+        impact,
+        getattr(app, "_adaptive_impact_canvas", None),
+        getattr(app, "_product_detail_label", None),
+    )
     try:
-        if title is not None and not title.winfo_ismapped():
-            title.pack(anchor="w", pady=(5, 0), before=impact)
+        if not title.winfo_ismapped():
+            placed = False
+            for candidate in candidates:
+                if candidate is None or not candidate.winfo_ismapped():
+                    continue
+                try:
+                    title.pack(anchor="w", pady=(5, 0), before=candidate)
+                    placed = True
+                    break
+                except tk.TclError:
+                    pass
+            if not placed:
+                title.pack(anchor="w", pady=(5, 0))
     except tk.TclError:
         pass
 
@@ -164,6 +186,12 @@ def _patch_details_toggle() -> None:
     def toggle(app: Any) -> None:
         original(app)
         _sync_details_chrome(app)
+        # A few legacy Details widgets restore themselves during idle layout.
+        # Re-assert the final Studio chrome after that pass as well.
+        try:
+            app.after_idle(lambda: _sync_details_chrome(app))
+        except tk.TclError:
+            pass
 
     toggle._video_round2_details = True
     full_ui._toggle_song_details = toggle
