@@ -49,6 +49,7 @@ from studio_spotdl import install_spotdl_band_audio
 from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
 from ui_band_responsive_2026 import install_band_responsive_patch
 from ui_band_visibility_guard_2026 import install_band_visibility_guard
+from ui_band_window_2026 import install_detached_band_window
 from ui_calibration_extension_reflow_2026 import install_calibration_extension_reflow
 from ui_compact_toolbar_2026 import install_compact_toolbar_patch
 from ui_full_overhaul_2026 import install_full_ui_overhaul
@@ -112,6 +113,7 @@ install_video_audit_ui()
 install_video_audit_compat()
 install_video_audit_round2()
 install_video_audit_round3()
+install_detached_band_window()
 
 
 if __name__ == "__main__":
