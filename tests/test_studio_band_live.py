@@ -30,3 +30,32 @@ def test_real_audio_pipeline(tmp_path):
     (reports / "quality-notes.json").write_text(__import__("json").dumps(record["warnings"], indent=2), encoding="utf-8")
     for provider in ("demucs", "transkun", "beat_this", "mr_mt3"):
         assert any(e["provider"] == provider for e in record["providers"]["engines"]), f"Preferred model failed: {provider}; see report"
+
+
+@pytest.mark.skipif(os.environ.get("BPSR_STUDIO_HQ_LIVE") != "1", reason="requires the additional HQ model")
+def test_real_hq_separation(tmp_path):
+    import json
+    import soundfile as sf
+    from studio_band.protocol import WorkerClient
+    from studio_band.runtime import RuntimeManager
+    from studio_youtube import _ffmpeg_executable
+    from studio_synthetic_audio import make_song
+    source = tmp_path / "Original HQ fixture.wav"
+    make_song(source)
+    runtime = RuntimeManager()
+    reports = Path("hq-smoke-report")
+    reports.mkdir(exist_ok=True)
+    try:
+        runtime.install("hq", device="cpu", progress=print)
+        client = WorkerClient(tmp_path / "requests", runtime.command_for, runtime.environment(_ffmpeg_executable()))
+        result = client.call("roformer", "infer", {"audio": str(source), "output": str(tmp_path / "stems"),
+                             "models": str(runtime.models), "device": "cpu"}, progress=print, timeout=3600)
+        (reports / "provider.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        original = sf.info(source)
+        for name in ("vocals", "instrumental"):
+            info = sf.info(result[name])
+            assert info.samplerate == original.samplerate and abs(info.frames-original.frames) <= 1
+        assert result["provenance"]["model_sha256"]
+    except Exception as exc:
+        (reports / "failure.json").write_text(json.dumps({"error": str(exc), "details": getattr(exc, "details", "")}, indent=2), encoding="utf-8")
+        raise

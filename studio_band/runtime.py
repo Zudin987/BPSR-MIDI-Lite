@@ -101,9 +101,9 @@ class RuntimeManager:
     def environment(self, ffmpeg: Path | None = None) -> dict:
         env = os.environ.copy()
         # Avoid inheriting frozen app / caller Python state into other frameworks.
-        for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV"):
+        for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "PYTEST_CURRENT_TEST"):
             env.pop(key, None)
-        env.update({"PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1",
+        env.update({"PYTHONUTF8": "1", "PYTHONUNBUFFERED": "1", "PYTHONNOUSERSITE": "1",
                     "TORCH_HOME": str(self.models / "torch"),
                     "HF_HOME": str(self.models / "huggingface"),
                     "MT3_CHECKPOINT_DIR": str(self.models / "mt3"),
@@ -111,7 +111,20 @@ class RuntimeManager:
                     "UV_CACHE_DIR": str(self.runtime_root / "uv-cache"),
                     "UV_NO_PROGRESS": "1"})
         if ffmpeg:
-            env["PATH"] = str(ffmpeg.parent) + os.pathsep + env.get("PATH", "")
+            directory = ffmpeg.parent
+            if ffmpeg.is_file():
+                # imageio's executable has a versioned name. Third-party audio
+                # engines invoke literal `ffmpeg`; expose our verified bundled
+                # binary under that name, without requiring a system install.
+                directory = self.runtime_root / "tools" / "ffmpeg" / file_hash(ffmpeg)
+                alias = directory / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+                directory.mkdir(parents=True, exist_ok=True)
+                with file_lock(directory / "copy.lock"):
+                    if not alias.exists() or alias.stat().st_size != ffmpeg.stat().st_size:
+                        temporary = alias.with_suffix(".tmp")
+                        shutil.copy2(ffmpeg, temporary)
+                        os.replace(temporary, alias)
+            env["PATH"] = str(directory) + os.pathsep + env.get("PATH", "")
             env["IMAGEIO_FFMPEG_EXE"] = str(ffmpeg)
         return env
 

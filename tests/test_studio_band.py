@@ -295,6 +295,17 @@ def test_missing_runtime_gives_actionable_error(tmp_path):
         RuntimeManager(tmp_path).command_for("transkun")
 
 
+def test_runtime_exposes_bundled_ffmpeg_under_standard_name(tmp_path, monkeypatch):
+    executable = tmp_path / "imageio-ffmpeg-versioned.exe"
+    executable.write_bytes(b"original synthetic executable fixture")
+    monkeypatch.setenv("PYTEST_CURRENT_TEST", "must not alter third-party runtime behavior")
+    environment = RuntimeManager(tmp_path / "managed").environment(executable)
+    import os
+    alias = Path(environment["PATH"].split(os.pathsep)[0]) / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+    assert alias.read_bytes() == executable.read_bytes()
+    assert "PYTEST_CURRENT_TEST" not in environment
+
+
 def test_preview_mutes_parts_and_uses_gm_drums_without_game_input():
     record = {"parts": {"piano": [note().to_dict()], "drums": [note(61, source="drums", role="KICK").to_dict()]}, "drum_profile": load_drum_profile()}
     messages = preview_messages(record, {"drums"})

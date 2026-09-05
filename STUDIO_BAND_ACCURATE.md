@@ -17,8 +17,8 @@ branch (PR #35); it is a beta for evaluation, not a stable release.
 6. Export the MIDI files and `Arrangement.json` to keep them outside the temporary cache.
    **Use FullBand in player** opens the existing Song Check/player without starting playback.
 
-The export contains `Song-Piano.mid`, `Song-Guitar.mid`, `Song-Bass.mid`,
-`Song-Drums.mid`, `Song-FullBand.mid` and `Arrangement.json` (with the actual song
+The export contains `Song - Piano.mid`, `Song - Guitar.mid`, `Song - Bass.mid`,
+`Song - Drum.mid`, `Song - Full Band.mid` and `Song - Arrangement.json` (with the actual song
 name). All parts share the original audio clock, including leading silence.
 High-confidence beat intervals provide a shared MIDI tempo map. Unknown tempo
 uses a 120 BPM transport without claiming that it is the detected song tempo.
@@ -130,7 +130,8 @@ Run `python -m pytest -q` for regression tests. The Studio build workflow also
 executes Basic Pitch through the frozen EXE's file protocol on original
 synthetic audio. The separate Windows **Studio real audio smoke** workflow
 installs isolated environments and requires actual Demucs, Beat This!, Transkun
-and MR-MT3 execution. It uploads provider/model manifests and fallback warnings.
+and MR-MT3 execution. A separate job verifies actual HQ RoFormer separation and
+sample-count alignment. The jobs upload provider/model manifests and fallback warnings.
 To run that slower check locally, install Studio build requirements and uv,
 set `BPSR_STUDIO_LIVE=1`, then run
 `python -m pytest tests/test_studio_band_live.py -s -q`.
