@@ -40,6 +40,7 @@ from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
 from studio_spotdl import install_spotdl_band_audio
+from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
 from studio_band_responsive import install_responsive_band_audio
 from studio_band_ui import install_band_audio
 from ui_persistent_library import install_persistent_library
@@ -48,7 +49,7 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.4"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.5"
 
 install_core_transcription()
 install_online_search_bridge()
@@ -83,6 +84,7 @@ install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
 install_spotdl_band_audio()
+install_spotdl_ytdlp_fallback()
 install_responsive_band_audio()
 install_band_audio(app)
 
