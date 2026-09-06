@@ -8,6 +8,11 @@ from pathlib import Path
 
 
 def main(argv=None) -> int:
+    # Mark this process before importing the package. beta.9 then installs only
+    # provider/runtime hooks here, keeping desktop pipeline modules out of the
+    # clean external Python 3.11 worker bundle.
+    os.environ["BPSR_STUDIO_WORKER"] = "1"
+
     # PyInstaller's windowed bootloader supplies None for these streams.
     # Model libraries use print/tqdm even though our protocol uses JSON files.
     if sys.stdout is None:
