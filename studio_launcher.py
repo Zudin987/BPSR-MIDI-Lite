@@ -1,6 +1,26 @@
 from __future__ import annotations
 
+import sys
+
+# Dispatch before importing app/Tk/pynput. A frozen child must never create a
+# second GUI, install input hooks, or inherit the parent's worker argv as a song.
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-worker":
+    from studio_band_worker import main as worker_main
+    raise SystemExit(worker_main(sys.argv[2:]))
+if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-external-worker-smoke":
+    from studio_external_worker_smoke import main as external_worker_smoke_main
+    raise SystemExit(external_worker_smoke_main(sys.argv[2:]))
+
 import app
+from band_arranger_identity import install_band_arranger_identity
+from band_cloudflare import install_cloudflare_band_transport
+from band_lineup import install_band_lineup
+from band_musical_sharing import install_shared_band_arrangement
+from band_network_hardening import install_band_network_hardening
+from band_room_registry import install_band_room_registry
+from band_runtime_hardening import install_band_runtime_hardening
+from band_share import install_band_midi_sharing
+from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
 from local_search_integration import install_local_search_integration
@@ -19,16 +39,32 @@ from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
 from studio_audio_latency import install_studio_audio_latency
+from studio_band_responsive import install_responsive_band_audio
+from studio_band_ui import install_band_audio
+from studio_band_worker_isolation import install_external_worker_isolation
 from studio_core_transcription import install_core_transcription
 from studio_integration import install_studio_integration
 from studio_polish import install_studio_polish
+from studio_spotdl import install_spotdl_band_audio
+from studio_spotdl_fallback import install_spotdl_ytdlp_fallback
+from ui_band_responsive_2026 import install_band_responsive_patch
+from ui_band_visibility_guard_2026 import install_band_visibility_guard
+from ui_band_window_2026 import install_detached_band_window
+from ui_calibration_extension_reflow_2026 import install_calibration_extension_reflow
+from ui_compact_toolbar_2026 import install_compact_toolbar_patch
+from ui_full_overhaul_2026 import install_full_ui_overhaul
+from ui_overlay_coordinator_2026 import install_overlay_coordinator
 from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
+from ui_video_audit_2026 import install_video_audit_ui
+from ui_video_audit_compat_2026 import install_video_audit_compat
+from ui_video_audit_round2_2026 import install_video_audit_round2
+from ui_video_audit_round3_2026 import install_video_audit_round3
 
 
 # Studio remains a separate experimental build target and inherits Lite v3.4's
 # evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
-app.APP_VERSION = "Studio 0.4.2-experimental-beta"
+app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.8"
 
 install_core_transcription()
 install_online_search_bridge()
@@ -53,6 +89,31 @@ install_calibration_provenance(app)
 install_studio_audio_latency(app)
 install_product_ui_overhaul(app)
 install_persistent_library(app)
+install_band_mode(app)
+install_band_lineup(app)
+install_shared_band_arrangement(app)
+install_band_arranger_identity(app)
+install_band_runtime_hardening(app)
+install_band_midi_sharing(app)
+install_band_network_hardening(app)
+install_cloudflare_band_transport(app)
+install_band_room_registry(app)
+install_external_worker_isolation()
+install_spotdl_band_audio()
+install_spotdl_ytdlp_fallback()
+install_responsive_band_audio()
+install_band_audio(app)
+install_full_ui_overhaul(app)
+install_compact_toolbar_patch()
+install_band_responsive_patch()
+install_band_visibility_guard()
+install_overlay_coordinator()
+install_calibration_extension_reflow()
+install_video_audit_ui()
+install_video_audit_compat()
+install_video_audit_round2()
+install_video_audit_round3()
+install_detached_band_window()
 
 
 if __name__ == "__main__":

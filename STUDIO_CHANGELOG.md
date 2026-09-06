@@ -1,5 +1,84 @@
 # BPSR MIDI Studio changelog
 
+## 0.5.0-band-accurate-beta.8
+
+- Adds an optional isolated MuScriptor 0.3.0 Medium/Large full-song music judge. Its instrument/note evidence joins the specialist map before targeted MR-MT3 and reduces repair work where independent evidence already agrees. Auto requires working CUDA plus cached/local or authenticated gated model access; Windows installs are wheel-only and model weights are never bundled.
+- Keeps the responsive specialist path as the desktop default by making the known-slow targeted MR-MT3 cross-check opt-in. Progress now separates the global-model and low-confidence-repair stages, and missing optional models continue with specialist evidence instead of mislabeling the active operation.
+- Fixes clean Windows Transkun setup without requiring Visual Studio or Microsoft C++ Build Tools. The isolated Python 3.11 piano runtime constrains Transkun 2.0.1's unpinned dependency to `ncls==0.0.68` and tells uv to accept only a prebuilt `ncls` wheel. Runtime validation imports both packages and verifies their installed versions before the runtime is marked ready.
+- Makes automatic model-runtime preparation a distinct first-time phase before audio analysis. A dependency-installation failure is terminal rather than being swallowed as an optional inference fallback, so the job leaves its busy state immediately and exposes a concise retryable error.
+- Replaces the vague activity bar with structured weighted progress covering runtime setup, audio preparation, separation, timing, each instrument transcription, musical cross-check, fusion, BPSR arrangement and MIDI export. The fixed progress area shows the current stage, overall completion and elapsed time while distinguishing downloads, installation, CPU/GPU work, cache reuse, waiting and failure.
+- Reports exact byte progress only when a downloader supplies a real content length. Long inference stays at its completed-stage boundary instead of inventing precision, and a two-minute inactivity notice checks worker health without terminating legitimate AI processing.
+- Keeps the last real operation and CPU/CUDA device visible during a silent long-running model call. Worker-alive notices refresh periodically without advancing weighted progress, and the fixed status line separates time in the current stage from total conversion time.
+- Captures subprocess stdout and stderr separately for **Details**, detects non-zero exits or a dead background job, stops progress animation and restores Convert/Search/Cancel controls. Normal UI copy remains concise instead of displaying dependency warning floods.
+- Strengthens Windows CI so the real-audio smoke starts from a fresh Studio data root, installs the same external Transkun runtime used by a clean user machine, proves the `ncls==0.0.68` binary-only policy, imports both packages and completes real Transkun inference.
+- Keeps local MP3/WAV/FLAC/M4A/OGG input as a first-class path and keeps the progress panel visible at 1280×720 and 640×480.
+- Keeps cached conversions out of the **First-time setup** state, labels actual model downloads as first-time cached work, and reports a disabled musical cross-check as skipped without briefly claiming that cross-check inference started.
+
+## 0.5.0-band-accurate-beta.7
+
+- Overhauls the Studio desktop UI around a responsive 2026 layout contract instead of relying on fixed-width side panels and large minimum window geometry. Windows Per-Monitor-V2 DPI awareness is enabled on a best-effort basis before Tk creates the root window.
+- Reworks the MIDI Library into responsive 360 / 300 / 260 px modes. It stays useful on roomy desktops, collapses when the player needs space, and remains directly reopenable through the **Songs** action; compact layouts use it as an overlay instead of sacrificing the main workspace.
+- Makes Settings scrollable and moves rare/advanced Custom tuning, Calibration Lab and Band Room workflows into scrollable same-window overlays. Closing Band Room keeps Band Mode enabled and exposes a **Band room…** reopen action.
+- Fixes compact Band Room composition across its independently-added lineup and Room MIDI panels. Narrow layouts reserve separate rows for extension panels, reflow the four instrument toggles to 2×2 when needed, and stack Room MIDI permission/download controls rather than letting them collide or clip.
+- Improves progressive disclosure in the main player: Song Check details stay behind **Details**, metric cards reflow from four columns to 2×2, and Instrument / Unlocked category controls stack vertically when horizontal room is limited.
+- Simplifies Audio → Band without removing capability: the redundant one-choice source selector and repeated result action column are hidden, secondary actions use clearer labels, and the existing 640×480 scrolling/reflow protections remain in place.
+- Raises secondary text/table sizing instead of shrinking typography to make small windows fit. Main-window sizing is screen-aware and leaves desktop/taskbar headroom.
+- Adds Windows/Tk regression coverage for the real patched Studio UI, including an emergency 560 px compact Band Room overlay, scroll-to-bottom reachability, collision-free plugin panels and permanent playback-toolbar access. Audio → Band keeps its existing small-window workspace smoke and screenshot artifact.
+- Playback, Band synchronization, download/search, Audio → Band model inference, cached rearrangement and export behavior are intentionally unchanged by this presentation overhaul.
+
+## 0.5.0-band-accurate-beta.6
+
+- Fixes Audio → Band conversion in the frozen Windows Studio EXE when a managed Python 3.11 model runtime is used. Beta.5 could launch `studio_band_worker.py` directly from PyInstaller's Python 3.10 `_MEI` extraction root, allowing Python 3.11 to import Python 3.10 extension modules such as `_socket.pyd` and fail with `Module use of python310.dll conflicts with this version of Python`.
+- External model workers are now copied into a content-addressed, source-only bundle under Studio's runtime directory before Python 3.11 starts. The bundle contains the worker and `studio_band/*.py` sources only, never the frozen EXE's `.pyd` or DLL files.
+- Existing installed separator/piano/beat/MT3/HQ runtimes are reused; users do not need to reinstall a ready runtime solely for this fix.
+- Adds unit coverage that verifies the staged worker bundle contains no `.pyd` or DLL files and that frozen external provider commands use the isolated worker.
+- Extends Windows frozen-build smoke testing to create a managed Python 3.11 environment and execute the model-worker protocol from the Python 3.10 PyInstaller EXE. This directly guards the cross-version boundary that caused the beta.5 crash.
+
+## 0.5.0-band-accurate-beta.5
+
+- Makes spotDL/Spotify title search responsive by using the metadata already present in Spotify's search response instead of hydrating every result through repeated track/artist/album requests.
+- Adds a hard timeout to the spotDL metadata worker so failed searches do not appear to run forever.
+- Keeps spotDL as the automatic/default downloader and adds direct yt-dlp + Deno fallback when spotDL metadata search, provider matching or download fails.
+- When a Spotify result is known but spotDL cannot acquire it, Studio searches YouTube using artist/title, scores candidate title/artist/duration similarity and penalizes obvious cover/karaoke/reaction/nightcore/slowed/sped/remix variants unless requested.
+- Keeps the fallback automatic: no extra retry button is required. Fallback provenance and the original spotDL failure are recorded with the acquired audio.
+- Adds a live Windows search smoke for `love story`, covering both the spotDL metadata path and direct yt-dlp fallback without downloading copyrighted song audio.
+
+## 0.5.0-band-accurate-beta.4
+
+- Replaces the Audio → Band Apple/MassiveMusic/Bandcamp resolver UI with a single **spotDL** search/download path while keeping manual MP3/WAV/FLAC/M4A/OGG input permanently available.
+- Uses Spotify metadata for song identity and spotDL's YouTube / YouTube Music matching for audio; Spotify audio streams are not downloaded.
+- Installs pinned `spotdl==4.5.2` into its own managed Python 3.11 runtime on first search instead of bundling it into the Studio EXE or Lite dependencies.
+- Reuses Studio's bundled FFmpeg and attempts spotDL's recommended Deno helper setup for better current YouTube compatibility.
+- Renames the source actions to **Search spotDL**, **Download & Analyze**, **Open Spotify** and **spotDL info**; the old storefront selector is repurposed as a fixed `spotDL` source indicator.
+- Keeps explicit download/analysis rights confirmation, Spotify-URL validation, a 2 GB limit, MP3 signature checks, SHA-256 verification, atomic acquisition caching and shell-free subprocess invocation.
+- Adds unit coverage for spotDL result normalization, non-Spotify URL rejection and safe download command construction.
+
+## 0.5.0-band-accurate-beta.3
+
+- Fits the Audio → Band workspace inside the current desktop instead of opening a fixed 980×780 window that can sit behind the Windows taskbar.
+- Adds vertical scrolling so conversion, preview and export controls remain reachable at 640×480 window size, while preserving a full-width responsive layout on larger screens.
+- Adds a visible resolver-results scrollbar and moves long source status text below its actions so search controls do not collapse on narrow windows.
+- Makes Source setup, Advanced, Technical details and Drum mapping dialogs screen-aware and scrollable where needed; Source setup also avoids duplicate windows and adds an explicit Cancel action.
+- Renames the manual picker to **Choose local audio…** so its label no longer implies that supported FLAC/M4A/OGG files are excluded.
+
+## 0.5.0-band-accurate-beta.2
+
+- Adds a provider-neutral Music Resolver inside Audio → Band while keeping local MP3/WAV/FLAC/M4A/OGG selection visible and available at all times.
+- Uses Apple Music (with a developer token) or Apple's public storefront search for MY/ID-aware song discovery and metadata. Apple previews are never downloaded or sent to the AI pipeline.
+- Adds MassiveMusic catalogue search and OAuth-signed purchased-track delivery for commercially licensed partners with an entitled user.
+- Adds authenticated Bandcamp OpenSubsonic search/download for music already present in the user's own collection.
+- Requires an explicit rights confirmation before provider audio enters analysis, verifies download size/type/signature/SHA-256, caches atomically, and records only non-secret source provenance in `Arrangement.json`.
+- Deliberately excludes SoundCloud acquisition because its current API terms prohibit using API content as input to AI source separation; Spotify and streaming rip paths remain unsupported.
+
+## 0.5.0-band-accurate-beta.1
+
+- Adds the Audio → Band tab with local audio import, progress/cancellation, Piano/Guitar/Auto melody ownership, preview, category controls and four-part MIDI export.
+- Separates six stems and runs isolated instrument specialists, beat detection and MR-MT3 cross-check before confidence fusion and BPSR arrangement.
+- Saves a common musical map and self-contained arrangement manifest; changing melody ownership or categories reuses analysis without repeating AI inference.
+- Adds external, explicitly provisional drum mapping, runtime installation/repair, cache integrity checks and recorded fallbacks.
+- Adds real-model and frozen-worker Windows smoke checks while keeping AI/audio dependencies out of Lite.
+- See [the beta guide](STUDIO_BAND_ACCURATE.md) for setup, limitations and model/license notes.
+
 ## 0.4.2-experimental-beta
 
 - Inherits Lite v3.4.0's evidence-driven arranger refinements and responsive product UI.

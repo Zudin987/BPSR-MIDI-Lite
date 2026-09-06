@@ -1,0 +1,44 @@
+name: Validate Cloudflare Band backend
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare-band/**"
+      - "band_cloudflare.py"
+      - "tests/test_band_cloudflare.py"
+      - ".github/workflows/test-cloudflare-band.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "cloudflare-band/**"
+      - "band_cloudflare.py"
+      - "tests/test_band_cloudflare.py"
+      - ".github/workflows/test-cloudflare-band.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Wrangler
+        working-directory: cloudflare-band
+        run: npm install
+
+      - name: JavaScript syntax check
+        working-directory: cloudflare-band
+        run: node --check src/index.js
+
+      - name: Wrangler dry deploy
+        working-directory: cloudflare-band
+        run: npx wrangler deploy --dry-run --outdir .wrangler-dry-run
+
+      - name: Python Cloudflare client syntax
+        run: python -m py_compile band_cloudflare.py

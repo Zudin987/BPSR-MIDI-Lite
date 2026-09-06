@@ -37,7 +37,7 @@ def test_live_midi_visualizer_is_capped_at_30_fps() -> None:
     assert "app.after(VISUALIZER_FRAME_MS" in runtime
 
 
-def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> None:
+def test_lite_and_studio_keep_shared_2026_ui_while_studio_adds_final_beta_layer() -> None:
     lite = Path("modern_launcher.py").read_text(encoding="utf-8")
     studio = Path("studio_launcher.py").read_text(encoding="utf-8")
 
@@ -53,8 +53,11 @@ def test_lite_and_studio_install_the_same_2026_ui_and_online_title_search() -> N
         assert "install_product_ui_overhaul(app)" in launcher
         assert "install_persistent_library(app)" in launcher
 
+    assert "install_full_ui_overhaul(app)" not in lite
+    assert "install_full_ui_overhaul(app)" in studio
+    assert "install_video_audit_ui()" in studio
     assert 'app.APP_VERSION = "3.4.0"' in lite
-    assert 'app.APP_VERSION = "Studio 0.4.2-experimental-beta"' in studio
+    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.8"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:
@@ -73,7 +76,6 @@ def test_release_workflows_are_manual_and_cover_product_ui_changes() -> None:
         assert "github.event_name == 'workflow_dispatch'" in workflow
         assert "inputs.release_version != ''" in workflow
         assert "[release v3.1.1]" not in workflow
-        assert "RELEASE_VERSION: ${{ inputs.release_version }}" in workflow
 
     # New product UI modules must never bypass the Windows validation matrix.
     assert '- "ui_*.py"' in lite

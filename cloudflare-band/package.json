@@ -1,0 +1,13 @@
+{
+  "name": "bpsr-midi-band-cloudflare",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js && wrangler deploy --dry-run --outdir .wrangler-dry-run",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.68.0"
+  }
+}

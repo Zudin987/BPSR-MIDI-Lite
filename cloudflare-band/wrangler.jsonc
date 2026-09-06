@@ -1,0 +1,23 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bpsr-midi-band",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-04",
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BAND_ROOMS",
+        "class_name": "BandRoom"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["BandRoom"]
+    }
+  ]
+}

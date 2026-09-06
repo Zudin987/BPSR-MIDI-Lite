@@ -6,20 +6,24 @@
 
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, copy_metadata
 
 project = Path(SPECPATH)
 
-basic_pitch_datas = collect_data_files("basic_pitch")
+basic_pitch_datas = collect_data_files("basic_pitch") + copy_metadata("basic-pitch") + copy_metadata("scipy")
 imageio_datas = collect_data_files("imageio_ffmpeg")
 soundcard_datas = collect_data_files("soundcard")
+drop_datas = collect_data_files("tkinterdnd2")
+worker_sources = [(str(p), "studio_band") for p in (project / "studio_band").glob("*.py")]
+worker_sources += [(str(project / "studio_band_worker.py"), "."),
+                   (str(project / "profiles" / "bpsr_drums.json"), "profiles")]
 imageio_binaries = collect_dynamic_libs("imageio_ffmpeg")
 
 a = Analysis(
     [str(project / "studio_launcher.py")],
     pathex=[str(project)],
     binaries=imageio_binaries,
-    datas=basic_pitch_datas + imageio_datas + soundcard_datas,
+    datas=basic_pitch_datas + imageio_datas + soundcard_datas + drop_datas + worker_sources,
     hiddenimports=[
         "pynput.keyboard._win32",
         "pynput._util.win32",
@@ -34,11 +38,13 @@ a = Analysis(
         "soundcard.mediafoundation",
         "cffi",
         "_cffi_backend",
+        "tkinterdnd2",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tensorflow", "torch"],
+    excludes=["tensorflow", "torch", "torchaudio", "torchvision", "demucs",
+              "transkun", "beat_this", "mt3_infer", "audio_separator", "adtof_pytorch"],
     noarchive=False,
     optimize=0,
 )

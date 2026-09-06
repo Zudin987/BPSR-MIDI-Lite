@@ -10,6 +10,7 @@ on:
       - "modern_ui.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "online_*.py"
       - "playback_*.py"
       - "midi_engine.py"
@@ -61,6 +62,14 @@ jobs:
       - name: Build standalone EXE
         shell: pwsh
         run: pyinstaller --noconfirm --clean BPSR-MIDI-Lite.spec
+
+      - name: Verify Lite archive excludes Studio and AI runtimes
+        shell: pwsh
+        run: |
+          $analysis = Get-Content "build/BPSR-MIDI-Lite/Analysis-00.toc" -Raw
+          if ($analysis -match "(?i)(studio_band|basic_pitch|onnxruntime|imageio_ffmpeg|demucs|transkun|beat_this|mt3_infer|audio_separator|tkinterdnd2)") {
+            throw "Lite inherited a Studio-only dependency"
+          }
 
       - name: Prepare downloads
         shell: pwsh

@@ -1,5 +1,13 @@
 # Third-party notices
 
+## Studio Audio → Band
+
+See [Studio's model and license notes](STUDIO_BAND_ACCURATE.md#third-party-modellicense-notes)
+for the separately installed AI engines, checkpoints and runtime bootstrap.
+The Studio-only tkinterdnd2 wrapper is MIT-licensed and includes upstream TkDND
+license notices. The built-in spectral beat/drum fallback is project code.
+Optional AI packages and model weights are not bundled into Lite or Studio.
+
 ## ok-star-resonance
 
 Project: `Sanheiii/ok-star-resonance`

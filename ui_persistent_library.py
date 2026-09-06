@@ -7,8 +7,8 @@ import gaming_runtime_2026 as gaming_runtime
 import gaming_ui_2026 as gaming_ui
 
 
-# Keep the Library permanently useful without allowing large notebook/tree
-# requested sizes to consume most of the application window.
+# Baseline v3.4 Library contract. The final 2026 responsive layer replaces these
+# fixed values at install time, while keeping this module compatible on its own.
 _LIBRARY_WIDTH = 400
 _CENTER_MIN_WIDTH = 520
 _MIN_WINDOW_WIDTH = 990
@@ -39,7 +39,7 @@ def _force_library_open(app: Any) -> None:
 
 
 def _set_library_visible_persistent(app: Any, _visible: bool = True) -> None:
-    """Compatibility hook: Library is intentionally permanent in the v3.4 UI."""
+    """Compatibility hook for callers that expect the Library to be available."""
     _force_library_open(app)
 
 
@@ -48,11 +48,9 @@ def _toggle_library_persistent(app: Any) -> None:
 
 
 def _persistent_responsive_layout(app: Any, width: int) -> None:
-    """Keep Library visible at every supported size; only manage Settings."""
+    """Baseline layout hook; final product layers may replace this at runtime."""
     _force_library_open(app)
 
-    # Settings is an overlay drawer. On the narrowest supported window, close
-    # it instead of sacrificing either the permanent Library or main player.
     if width < _MIN_WINDOW_WIDTH and bool(getattr(app, "_gaming_settings_visible", False)):
         try:
             import ui_product_overhaul_v34 as product_ui
@@ -73,7 +71,7 @@ def _persistent_responsive_layout(app: Any, width: int) -> None:
 
 
 def _remove_library_toggle(root: Any) -> None:
-    """Remove the obsolete top-bar Library button now that the panel is fixed."""
+    """Remove the old button; the final responsive layer may add a Songs toggle."""
     try:
         children = tuple(root.winfo_children())
     except (AttributeError, tk.TclError):
@@ -133,6 +131,12 @@ def install_persistent_library(app_module: Any) -> None:
         except tk.TclError:
             pass
         _force_library_open(self)
+        # winfo_width() can still be 1 during nested build wrappers. Re-run the
+        # final Library policy after the requested window geometry is realized.
+        try:
+            self.after_idle(lambda: _force_library_open(self))
+        except tk.TclError:
+            pass
         _remove_library_toggle(self)
         _polish_library_copy(self)
 

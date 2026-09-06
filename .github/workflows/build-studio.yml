@@ -5,16 +5,21 @@ on:
     branches:
       - main
     paths:
+      - "studio_band/**"
+      - "profiles/bpsr_drums.json"
       - "studio_*.py"
       - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/smoke_studio*.py"
       - "tests/test_playback*.py"
+      - "tests/test_band*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -28,16 +33,21 @@ on:
       - "theme.py"
   pull_request:
     paths:
+      - "studio_band/**"
+      - "profiles/bpsr_drums.json"
       - "studio_*.py"
       - "studio_version_info.txt"
       - "local_search_integration.py"
       - "gaming_*.py"
       - "ui_*.py"
+      - "band_*.py"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
       - "tests/test_studio*.py"
+      - "tests/smoke_studio*.py"
       - "tests/test_playback*.py"
+      - "tests/test_band*.py"
       - "tests/test_local_search.py"
       - ".github/workflows/build-studio.yml"
       - "app.py"
@@ -116,6 +126,22 @@ jobs:
         shell: pwsh
         run: pyinstaller --noconfirm --clean BPSR-MIDI-Studio.spec
 
+      - name: Verify Studio workspace and responsive UI
+        shell: pwsh
+        run: |
+          python tests/smoke_studio_band_ui.py
+          python tests/smoke_studio_responsive_ui.py
+          python tests/smoke_studio_video_audit.py
+
+      - name: Upload Studio workspace verification
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Studio-workspace-verification
+          path: ui-smoke-report/*
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Verify single EXE contains Studio runtimes
         shell: pwsh
         run: |
@@ -129,6 +155,7 @@ jobs:
           $analysis = Get-Content "build/BPSR-MIDI-Studio/Analysis-00.toc" -Raw
           if ($analysis -notmatch 'studio_core_transcription') { throw "PyInstaller did not discover the Studio core transcription module" }
           if ($analysis -notmatch 'studio_audio_latency') { throw "PyInstaller did not discover the Studio audio-latency module" }
+          if ($analysis -notmatch 'studio_band.resolver') { throw "PyInstaller did not discover the Studio music resolver" }
           $size = (Get-Item "dist/BPSR-MIDI-Studio.exe").Length
           if ($size -lt 50000000) { throw "Studio EXE is unexpectedly small; bundled runtime may be missing" }
           Write-Host "Studio single EXE size: $size bytes"
@@ -139,9 +166,22 @@ jobs:
           New-Item -ItemType Directory -Force release-studio | Out-Null
           Copy-Item "dist/BPSR-MIDI-Studio.exe" "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
           Copy-Item STUDIO_THIRD_PARTY_NOTICES.md release-studio/STUDIO_THIRD_PARTY_NOTICES.md
+          Copy-Item STUDIO_BAND_ACCURATE.md release-studio/STUDIO_BAND_ACCURATE.md
           Copy-Item FFMPEG_BUILD_INFO.txt release-studio/FFMPEG_BUILD_INFO.txt
           $hash = (Get-FileHash release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  BPSR-MIDI-Studio-Experimental-Beta.exe" | Set-Content release-studio/SHA256SUMS-STUDIO.txt
+          $zipFiles = @(
+            "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe"
+            "release-studio/SHA256SUMS-STUDIO.txt"
+            "release-studio/STUDIO_THIRD_PARTY_NOTICES.md"
+            "release-studio/STUDIO_BAND_ACCURATE.md"
+            "release-studio/FFMPEG_BUILD_INFO.txt"
+          )
+          Compress-Archive -LiteralPath $zipFiles -DestinationPath release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip
+
+      - name: Smoke test frozen Studio worker without launching the GUI
+        shell: pwsh
+        run: python tests/smoke_frozen_studio.py dist/BPSR-MIDI-Studio.exe
 
       - name: Upload Studio artifact
         uses: actions/upload-artifact@v6
@@ -231,7 +271,7 @@ jobs:
             $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
             $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
             if ($localHash -ne $remoteHash) {
-              throw "Published asset hash mismatch for $name"
+              throw "Published Studio asset hash mismatch for $name"
             }
           }
           Write-Host "Published Studio release assets match the validated workflow outputs byte-for-byte."

@@ -1,6 +1,15 @@
 from __future__ import annotations
 
 import app
+from band_arranger_identity import install_band_arranger_identity
+from band_cloudflare import install_cloudflare_band_transport
+from band_lineup import install_band_lineup
+from band_musical_sharing import install_shared_band_arrangement
+from band_network_hardening import install_band_network_hardening
+from band_room_registry import install_band_room_registry
+from band_runtime_hardening import install_band_runtime_hardening
+from band_share import install_band_midi_sharing
+from band_ui import install_band_mode
 from gaming_runtime_2026 import install_gaming_runtime_2026
 from gaming_ui_2026 import install_gaming_ui_2026
 from local_search_integration import install_local_search_integration
@@ -24,6 +33,7 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 # v3.4 keeps the verified v3.3 timing/safety layer, adds evidence-driven
 # arrangement refinements, and ships the responsive product UI overhaul.
+# The feature/band-mode-v35 branch layers the experimental Band Mode on top.
 app.APP_VERSION = "3.4.0"
 
 install_online_search_bridge()
@@ -45,6 +55,15 @@ install_guided_calibration(app)
 install_calibration_provenance(app)
 install_product_ui_overhaul(app)
 install_persistent_library(app)
+install_band_mode(app)
+install_band_lineup(app)
+install_shared_band_arrangement(app)
+install_band_arranger_identity(app)
+install_band_runtime_hardening(app)
+install_band_midi_sharing(app)
+install_band_network_hardening(app)
+install_cloudflare_band_transport(app)
+install_band_room_registry(app)
 
 
 if __name__ == "__main__":
