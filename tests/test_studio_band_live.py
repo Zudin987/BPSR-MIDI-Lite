@@ -66,6 +66,45 @@ def test_real_audio_pipeline(tmp_path):
         "real_transkun_inference": True,
     }, indent=2), encoding="utf-8")
 
+    mt3_record = read_json(runtime.runtime_root / "mt3" / "studio-runtime.json")
+    assert mt3_record["torch_backend"] == "cpu" and mt3_record["validated"] is True
+    assert "torch==2.7.1+cpu" in mt3_record["packages"]
+    assert "torchaudio==2.7.1+cpu" in mt3_record["packages"]
+    assert "torchvision==0.22.1+cpu" in mt3_record["packages"]
+
+
+@pytest.mark.skipif(
+    os.environ.get("BPSR_STUDIO_LIVE") != "1" or os.name != "nt",
+    reason="Windows clean-runtime wheel resolution gate",
+)
+def test_windows_mt3_cuda_wheels_resolve_from_official_backend(tmp_path):
+    """Resolve the exact GPU stack without requiring a GPU on the hosted runner."""
+    from studio_band.runtime import RUNTIMES, RuntimeManager
+
+    runtime = RuntimeManager()
+    uv = runtime._uv()
+    target = tmp_path / "cuda-resolution"
+    subprocess.check_call(
+        [str(uv), "venv", "--python", "3.11", "--managed-python", str(target)],
+        env=runtime.environment(),
+    )
+    python = target / "Scripts" / "python.exe"
+    resolved = subprocess.run(
+        [str(uv), "pip", "install", "--dry-run", "--python", str(python),
+         *RUNTIMES["mt3"], "--torch-backend", "cu128", "--strict"],
+        env=runtime.environment(), text=True, capture_output=True, timeout=900, check=True,
+    )
+    plan = resolved.stdout + "\n" + resolved.stderr
+    for requirement in (
+        "torch==2.7.1+cu128",
+        "torchaudio==2.7.1+cu128",
+        "torchvision==0.22.1+cu128",
+    ):
+        assert requirement in plan
+    reports = Path("model-smoke-report")
+    reports.mkdir(exist_ok=True)
+    (reports / "mt3-windows-cuda-resolution.txt").write_text(plan, encoding="utf-8")
+
 
 @pytest.mark.skipif(os.environ.get("BPSR_STUDIO_HQ_LIVE") != "1", reason="requires the additional HQ model")
 def test_real_hq_separation(tmp_path):

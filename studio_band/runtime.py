@@ -27,8 +27,10 @@ RUNTIMES = {
     "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "piano": ["transkun==2.0.1", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "beat": ["beat-this==1.1.0", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
-    # MR-MT3's packaged T5 adapter uses the plural past_key_values/cache API.
-    "mt3": ["mt3-infer==0.2.0", "torch==2.5.1", "torchaudio==2.5.1", "torchvision==0.20.1", "transformers==4.57.1", "numpy==1.26.4"],
+    # mt3-infer 0.2.0's MR-MT3 adapter was modernized against torch 2.7.1.
+    # That release also has the first stable Windows cu128 wheel family needed
+    # by NVIDIA Blackwell/RTX 50-series GPUs.
+    "mt3": ["mt3-infer==0.2.0", "torch==2.7.1", "torchaudio==2.7.1", "torchvision==0.22.1", "transformers==4.57.1", "numpy==1.26.4"],
     "hq": ["audio-separator[cpu]==0.30.2", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
 }
 
@@ -39,6 +41,10 @@ RUNTIMES = {
 # a wheel so a future index change can never silently reintroduce compilation.
 WINDOWS_RUNTIME_CONSTRAINTS = {"piano": ("ncls==0.0.68",)}
 WINDOWS_BINARY_ONLY = {"piano": ("ncls",)}
+# uv routes only the PyTorch ecosystem through this official wheel index while
+# resolving the rest of MR-MT3 from PyPI. A single resolver transaction keeps a
+# later dependency pass from replacing the chosen CPU/CUDA build.
+RUNTIME_TORCH_BACKENDS = {"mt3": {"cpu": "cpu", "cuda": "cu128"}}
 RUNTIME_LABELS = {
     "separator": "six-stem separator",
     "piano": "Transkun",
@@ -127,6 +133,10 @@ class RuntimeManager:
             "binary_only": list(WINDOWS_BINARY_ONLY.get(name, ())) if windows else [],
         }
 
+    @staticmethod
+    def torch_backend(name: str, device: str) -> str | None:
+        return RUNTIME_TORCH_BACKENDS.get(name, {}).get(device)
+
     def _constraint_file(self, name: str, constraints: list[str]) -> Path | None:
         if not constraints:
             return None
@@ -140,12 +150,20 @@ class RuntimeManager:
         atomic_text(path, content)
         return path
 
-    def available(self, name: str) -> bool:
+    def available(self, name: str, *, device: str | None = None) -> bool:
         if name == "drums":
             return self.python(name).is_file()  # user-managed ADTOF installation only
         try:
             record = read_json(self.runtime_root / name / "studio-runtime.json")
             policy = self.install_policy(name)
+            installed_device = record.get("device_install", "")
+            expected_backend = self.torch_backend(name, installed_device)
+            backend_ready = expected_backend is None or record.get("torch_backend") == expected_backend
+            requested_ready = (
+                device is None
+                or (device == "cpu" and installed_device in {"cpu", "cuda"})
+                or installed_device == device
+            )
             validated = record.get("validated") is True or (
                 "validated" not in record and not policy["constraints"] and not policy["binary_only"]
             )
@@ -154,6 +172,8 @@ class RuntimeManager:
                 and record["requirements"] == RUNTIMES[name]
                 and record.get("constraints", []) == policy["constraints"]
                 and record.get("binary_only", []) == policy["binary_only"]
+                and backend_ready
+                and requested_ready
                 and validated
             )
         except (OSError, ValueError, KeyError):
@@ -249,10 +269,10 @@ class RuntimeManager:
             device = "cuda" if detect_hardware().cuda else "cpu"
         if name not in RUNTIMES:
             raise StageError("Runtime setup", "This optional backend must be installed separately; see the model license notes.")
-        if self.available(name) and not repair:
+        if self.available(name, device=device) and not repair:
             return
         with file_lock(self.runtime_root / (name + ".lock")):
-            if self.available(name) and not repair:
+            if self.available(name, device=device) and not repair:
                 return
             target = self.runtime_root / name
             if repair:
@@ -272,37 +292,74 @@ class RuntimeManager:
                                 stage="Runtime setup", env=environment, cancel=cancel, progress=progress, timeout=1800)
                 emit_progress(progress, "Python 3.11 environment ready", activity="install",
                               stage_fraction=0.20, indeterminate=False)
-                # Windows PyPI torch wheels support CUDA. The explicit CPU index
-                # avoids downloading multi-GB CUDA dependencies on CPU-only PCs.
                 args = [str(uv), "pip", "install", "--python", str(self.python(name))]
                 if repair:
                     args.append("--reinstall")
                 requirements = RUNTIMES[name]
-                if device == "cpu":
+                torch_backend = self.torch_backend(name, device)
+                if torch_backend is not None:
+                    backend_label = "CUDA 12.8" if torch_backend == "cu128" else "CPU"
+                    emit_progress(
+                        progress,
+                        f"Installing {label} {backend_label} compute and transcription components…",
+                        activity="install", stage_fraction=0.30, indeterminate=True,
+                    )
+                    policy_args: list[str] = []
+                    if constraint_file is not None:
+                        policy_args += ["--constraints", str(constraint_file)]
+                    for package in policy["binary_only"]:
+                        policy_args += ["--only-binary", package]
+                    run_process(
+                        args + requirements + policy_args + ["--torch-backend", torch_backend, "--strict"],
+                        stage="Runtime setup", env=environment, cancel=cancel, progress=progress,
+                        timeout=3600,
+                    )
+                else:
+                    # Existing engines keep their tested wheel families. CPU is
+                    # explicitly selected so uv cannot pull multi-GB CUDA builds.
                     torch_requirements = [x for x in requirements if x.split("==")[0] in {"torch", "torchaudio", "torchvision"}]
-                    if torch_requirements:
+                    if device == "cpu" and torch_requirements:
                         emit_progress(progress, f"Installing {label} compute components…", activity="install",
                                       stage_fraction=0.25, indeterminate=True)
                         run_process(args + torch_requirements + ["--index-url", "https://download.pytorch.org/whl/cpu"],
                                     stage="Runtime setup", env=environment, cancel=cancel, progress=progress, timeout=3600)
-                emit_progress(progress, f"Installing {label} transcription components…", activity="install",
-                              stage_fraction=0.50, indeterminate=True)
-                policy_args: list[str] = []
-                if constraint_file is not None:
-                    policy_args += ["--constraints", str(constraint_file)]
-                for package in policy["binary_only"]:
-                    policy_args += ["--only-binary", package]
-                run_process(args + requirements + policy_args + ["--strict"], stage="Runtime setup", env=environment,
-                            cancel=cancel, progress=progress, timeout=3600)
+                    emit_progress(progress, f"Installing {label} transcription components…", activity="install",
+                                  stage_fraction=0.50, indeterminate=True)
+                    policy_args = []
+                    if constraint_file is not None:
+                        policy_args += ["--constraints", str(constraint_file)]
+                    for package in policy["binary_only"]:
+                        policy_args += ["--only-binary", package]
+                    run_process(args + requirements + policy_args + ["--strict"], stage="Runtime setup", env=environment,
+                                cancel=cancel, progress=progress, timeout=3600)
                 emit_progress(progress, f"Verifying {label} imports and versions…", activity="install",
                               stage_fraction=0.90, indeterminate=True)
                 validation = RUNTIME_VALIDATION[name]
+                if torch_backend is not None:
+                    expected_cuda = "None" if torch_backend == "cpu" else repr("12.8")
+                    validation += (
+                        "\nimport json, torch\n"
+                        f"expected_cuda = {expected_cuda}\n"
+                        "actual_cuda = torch.version.cuda\n"
+                        "if expected_cuda is None:\n"
+                        "    assert actual_cuda is None, f'Expected the CPU torch wheel, found CUDA {actual_cuda}'\n"
+                        "else:\n"
+                        "    assert actual_cuda and actual_cuda.startswith(expected_cuda), "
+                        "f'Expected CUDA {expected_cuda} torch wheel, found {actual_cuda}'\n"
+                        "    assert torch.cuda.is_available(), 'CUDA wheel installed, but the NVIDIA driver/device is unavailable'\n"
+                        "    value = (torch.ones(8, device='cuda') * 2).sum().item()\n"
+                        "    torch.cuda.synchronize()\n"
+                        "    assert value == 16\n"
+                        "print(json.dumps({'torch': torch.__version__, 'torch_cuda': actual_cuda, "
+                        "'cuda_available': torch.cuda.is_available()}))"
+                    )
                 run_process([str(self.python(name)), "-c", validation], stage="Runtime setup", env=environment,
                             cancel=cancel, progress=progress, timeout=300)
                 frozen = run_process([str(uv), "pip", "freeze", "--python", str(self.python(name))],
                                      stage="Runtime setup", env=environment, cancel=cancel, timeout=60)
                 atomic_json(target / "studio-runtime.json", {"requirements": requirements, "packages": frozen,
                                                              "python": "3.11", "device_install": device,
+                                                             "torch_backend": torch_backend,
                                                              "constraints": policy["constraints"],
                                                              "binary_only": policy["binary_only"], "validated": True})
                 emit_progress(progress, f"{label.title()} runtime ready", activity="install",
@@ -312,6 +369,8 @@ class RuntimeManager:
                 details = exc.details or str(exc)
                 if name == "piano" and policy["constraints"]:
                     message = "Could not prepare Transkun runtime. Windows dependency installation failed."
+                elif name == "mt3" and device == "cuda":
+                    message = "Could not prepare the musical cross-check runtime. CUDA acceleration could not be installed or started."
                 else:
                     message = f"Could not prepare the {label} runtime. Component installation failed."
                 raise RuntimeSetupError(name, message, details, exc.retryable) from exc
@@ -319,9 +378,13 @@ class RuntimeManager:
                 raise
             except Exception as exc:
                 (target / "studio-runtime.json").unlink(missing_ok=True)
-                message = ("Could not prepare Transkun runtime. Windows dependency installation failed."
-                           if name == "piano" and policy["constraints"] else
-                           f"Could not prepare the {label} runtime. Component installation failed.")
+                message = (
+                    "Could not prepare Transkun runtime. Windows dependency installation failed."
+                    if name == "piano" and policy["constraints"] else
+                    "Could not prepare the musical cross-check runtime. CUDA acceleration could not be installed or started."
+                    if name == "mt3" and device == "cuda" else
+                    f"Could not prepare the {label} runtime. Component installation failed."
+                )
                 raise RuntimeSetupError(name, message, str(exc)) from exc
 
     def command_for(self, provider: str) -> list[str]:

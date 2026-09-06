@@ -6,10 +6,13 @@ import inspect
 import math
 import os
 import statistics
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from .music import MusicEvent
-from .progress import ProgressEvent
+from .progress import ProgressEvent, format_elapsed
 from .runtime import HQ_MODEL, PROVIDER_MODEL
 from .storage import atomic_json, file_hash
 
@@ -28,17 +31,50 @@ def _report(report, message: str, *, activity: str = "processing",
                          indeterminate=indeterminate))
 
 
-def device_for(requested: str) -> str:
+def device_for(requested: str, *, allow_cpu_fallback: bool = True) -> str:
     import torch
-    if requested != "cpu" and torch.cuda.is_available():
-        # An installed CUDA wheel may predate the GPU architecture. Test a real
-        # kernel instead of treating nvidia-smi/is_available as sufficient.
-        try:
+    if requested == "cpu":
+        return "cpu"
+    reason = "PyTorch did not find a usable NVIDIA CUDA device"
+    try:
+        if torch.cuda.is_available():
+            # An installed CUDA wheel may predate the GPU architecture. Test a
+            # real kernel instead of treating nvidia-smi as sufficient.
             (torch.ones(8, device="cuda") * 2).sum().item()
+            torch.cuda.synchronize()
             return "cuda"
-        except RuntimeError:
-            pass
-    return "cpu"
+    except Exception as exc:
+        reason = f"{type(exc).__name__}: {exc}"
+    if allow_cpu_fallback:
+        return "cpu"
+    raise RuntimeError("CUDA acceleration could not start. " + reason)
+
+
+@contextmanager
+def _working_heartbeat(report, message: str, *, activity: str,
+                       stage_fraction: float, interval: float = 20.0):
+    """Report truthful liveness while a third-party blocking call is active."""
+    _report(report, message, activity=activity, stage_fraction=stage_fraction)
+    stopped = threading.Event()
+    started = time.monotonic()
+
+    def pulse() -> None:
+        while not stopped.wait(interval):
+            elapsed = format_elapsed(time.monotonic() - started)
+            _report(
+                report,
+                f"{message.rstrip('.… ')} — still working ({elapsed} in this step)…",
+                activity=activity,
+                stage_fraction=stage_fraction,
+            )
+
+    thread = threading.Thread(target=pulse, daemon=True, name="studio-provider-progress")
+    thread.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        thread.join(timeout=min(1.0, interval + 0.1))
 
 
 def _audio(path):
@@ -283,23 +319,47 @@ def transkun(payload: dict, report) -> dict:
 def mr_mt3(payload: dict, report) -> dict:
     import soxr
     from mt3_infer import load_model
-    device = device_for(payload.get("device", "auto"))
+    requested = payload.get("device", "auto")
+    try:
+        # Auto/CUDA must never silently turn a several-minute GPU inference into
+        # an unbounded CPU wait. Advanced → CPU remains an intentional opt-in.
+        device = device_for(requested, allow_cpu_fallback=requested == "cpu")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Independent musical cross-check could not start GPU acceleration. "
+            "It was stopped instead of falling back to a very slow CPU run. " + str(exc)
+        ) from exc
     weights = list(Path(os.environ["MT3_CHECKPOINT_DIR"]).rglob("mt3.pth"))
-    _report(
-        report,
+    load_message = (
         "Loading the independent musical cross-check…" if weights else
-        "Downloading the independent musical cross-check model…",
-        activity=device if weights else "download",
-        stage_fraction=0.05,
+        "Downloading the independent musical cross-check model…"
     )
-    model = load_model("mr_mt3", device=device, auto_download=True)
+    with _working_heartbeat(
+        report, load_message, activity=device if weights else "download", stage_fraction=0.05,
+    ):
+        model = load_model("mr_mt3", device=device, auto_download=True)
     audio, sr = _audio(payload["audio"])
     audio = audio.mean(axis=1)
     if sr != 16000:
         audio = soxr.resample(audio, sr, 16000)
-    _report(report, f"Cross-checking musical evidence on {device.upper()}…",
-            activity=device, stage_fraction=0.20)
-    midi = model.transcribe(audio, sr=16000)
+    # The upstream convenience call is preprocess -> forward -> decode. Invoke
+    # those public operations separately so progress reflects the real work,
+    # while leaving each indeterminate instead of inventing a percentage.
+    with _working_heartbeat(
+        report, "Preparing audio features for the musical cross-check on CPU…",
+        activity="cpu", stage_fraction=0.20,
+    ):
+        features = model.preprocess(audio, 16000)
+    with _working_heartbeat(
+        report, f"Cross-checking musical evidence on {device.upper()}…",
+        activity=device, stage_fraction=0.45,
+    ):
+        outputs = model.forward(features)
+    with _working_heartbeat(
+        report, "Decoding the independent musical cross-check…",
+        activity="cpu", stage_fraction=0.90,
+    ):
+        midi = model.decode(outputs)
     target = Path(payload["output"]) / "mr-mt3.mid"
     target.parent.mkdir(parents=True, exist_ok=True)
     midi.save(str(target))

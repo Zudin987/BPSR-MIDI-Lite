@@ -721,6 +721,12 @@ class BandAudioTab:
         ttk.Checkbutton(content, text="Install missing recommended models automatically", variable=self.install).pack(anchor="w", pady=4)
         ttk.Checkbutton(content, text="Independent musical cross-check", variable=self.cross_check).pack(anchor="w")
         ttk.Combobox(content, textvariable=self.device, values=("auto", "cpu", "cuda"), state="readonly", width=12).pack(anchor="w", pady=6)
+        cross_check_note = ttk.Label(
+            content,
+            text="Auto uses verified CUDA for the cross-check. If GPU execution cannot start, Studio skips that optional evidence instead of silently running it for hours on CPU; choose CPU only to opt into the slower path.",
+            wraplength=650, justify="left", style="Hint.TLabel",
+        )
+        cross_check_note.pack(anchor="w", pady=(0, 6))
         for part in self.tiers:
             row = ttk.Frame(content)
             row.pack(fill="x", pady=2)
@@ -733,6 +739,7 @@ class BandAudioTab:
         engine_note.pack(anchor="w", pady=8)
         content.bind("<Configure>", lambda event: (
             intro.configure(wraplength=max(260, event.width - 28)),
+            cross_check_note.configure(wraplength=max(260, event.width - 28)),
             engine_note.configure(wraplength=max(260, event.width - 28))), add="+")
         def install():
             requested_device = self.device.get()

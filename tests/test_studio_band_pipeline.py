@@ -8,12 +8,12 @@ from studio_band.music import MusicEvent
 from studio_band.pipeline import BandPipeline, ConversionSettings
 from studio_band.progress import ProgressEvent
 from studio_band.protocol import Cancelled, RuntimeSetupError, StageError
-from studio_band.runtime import RuntimeManager
+from studio_band.runtime import Hardware, RuntimeManager
 from studio_band.storage import JobStore, read_json
 
 
 class FixtureRuntimes(RuntimeManager):
-    def available(self, name):
+    def available(self, name, **_kwargs):
         return name != "drums"
 
     def fingerprint(self, provider):
@@ -72,13 +72,15 @@ def test_complete_pipeline_outputs_all_files_and_reuses_expensive_work(tmp_path)
     source = tmp_path / "song.mp3"
     source.write_bytes(b"legal synthetic fixture")
     converter = pipeline(tmp_path)
-    output = converter.convert(source)
+    output = converter.convert(source, ConversionSettings(device="cpu"))
     record = read_json(output)
     assert set(record["files"]) == {"piano", "guitar", "bass", "drums", "full"}
     assert record["source"] == {"input_mode": "manual", "title": "song"}
     assert {p for p,_ in FixtureClient.calls} >= {"demucs", "transkun", "basic_pitch", "beat_this", "drums_dsp", "mr_mt3"}
     calls = list(FixtureClient.calls)
-    converter.convert(source, ConversionSettings(arrangement=ArrangementSettings(main_melody="guitar")))
+    converter.convert(source, ConversionSettings(
+        device="cpu", arrangement=ArrangementSettings(main_melody="guitar"),
+    ))
     assert FixtureClient.calls == calls
     reopened = converter.rearrange(output, ArrangementSettings(main_melody="guitar"))
     assert FixtureClient.calls == calls
@@ -89,7 +91,7 @@ def test_progress_is_weighted_monotonic_and_names_real_pipeline_stages(tmp_path)
     source = tmp_path / "song.mp3"
     source.write_bytes(b"legal synthetic fixture")
     updates = []
-    pipeline(tmp_path).convert(source, progress=updates.append)
+    pipeline(tmp_path).convert(source, ConversionSettings(device="cpu"), progress=updates.append)
 
     structured = [update for update in updates if isinstance(update, ProgressEvent)]
     overall = [update.overall for update in structured if update.overall is not None]
@@ -117,6 +119,27 @@ def test_disabled_cross_check_never_claims_cross_check_is_running(tmp_path):
     assert not any(provider == "mr_mt3" for provider, _source in FixtureClient.calls)
 
 
+def test_auto_cross_check_without_cuda_skips_before_runtime_or_worker(tmp_path, monkeypatch):
+    source = tmp_path / "song.wav"
+    source.write_bytes(b"synthetic")
+    converter = pipeline(tmp_path)
+    monkeypatch.setattr("studio_band.pipeline.detect_hardware", lambda: Hardware())
+    updates = []
+
+    output = converter.convert(source, ConversionSettings(device="auto"), progress=updates.append)
+    record = read_json(output)
+
+    assert not any(provider == "mr_mt3" for provider, _source in FixtureClient.calls)
+    assert any("Auto/CUDA mode did not detect an NVIDIA GPU" in warning for warning in record["warnings"])
+    cross_check = [
+        update for update in updates
+        if isinstance(update, ProgressEvent) and update.stage_id == "cross_check"
+    ]
+    assert len(cross_check) == 1
+    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 93
+    assert cross_check[0].message == "Independent cross-check needs CUDA — continuing without it"
+
+
 def test_provider_metadata_names_output_without_exposing_cached_filename(tmp_path):
     source = tmp_path / ("a" * 64 + ".flac")
     source.write_bytes(b"legal synthetic fixture")
@@ -136,13 +159,38 @@ def test_missing_specialists_use_recorded_fallbacks(tmp_path):
     source.write_bytes(b"synthetic")
     converter = pipeline(tmp_path)
     FixtureClient.fail = {"transkun", "beat_this", "mr_mt3"}
-    output = converter.convert(source, ConversionSettings(install_models=False))
+    output = converter.convert(source, ConversionSettings(device="cpu", install_models=False))
     record = read_json(output)
     fallback = record["providers"]["fallbacks"]
     assert any(f["provider"] == "transkun" and f["replacement"] == "basic_pitch" for f in fallback)
     assert any(f["provider"] == "beat_this" and f["replacement"] == "beat_dsp" for f in fallback)
     assert any(f["provider"] == "mr_mt3" and f["replacement"] is None for f in fallback)
     assert len(record["parts"]["piano"]) > 0
+
+
+def test_gpu_cross_check_failure_skips_without_hidden_cpu_retry(tmp_path, monkeypatch):
+    source = tmp_path / "song.wav"
+    source.write_bytes(b"synthetic")
+    converter = pipeline(tmp_path)
+    monkeypatch.setattr(
+        "studio_band.pipeline.detect_hardware",
+        lambda: Hardware(cuda=True, vram_gb=12, ram_gb=32, gpu="Synthetic NVIDIA GPU"),
+    )
+    FixtureClient.fail = {"mr_mt3"}
+    updates = []
+
+    output = converter.convert(source, ConversionSettings(device="auto"), progress=updates.append)
+    record = read_json(output)
+
+    assert sum(provider == "mr_mt3" for provider, _source in FixtureClient.calls) == 1
+    assert any("Independent musical cross-check unavailable" in warning for warning in record["warnings"])
+    cross_check = [
+        update for update in updates
+        if isinstance(update, ProgressEvent) and update.stage_id == "cross_check"
+    ]
+    assert cross_check[-1].activity == "skipped"
+    assert cross_check[-1].message == "Independent cross-check unavailable — continuing without it"
+    assert cross_check[-1].overall == 93
 
 
 def test_separator_failure_is_actionable_and_does_not_fake_stems(tmp_path):
@@ -157,8 +205,8 @@ def test_separator_failure_is_actionable_and_does_not_fake_stems(tmp_path):
 
 def test_runtime_install_failure_is_terminal_before_analysis_and_keeps_details(tmp_path):
     class FailedSetupRuntimes(FixtureRuntimes):
-        def available(self, name):
-            return name != "piano" and super().available(name)
+        def available(self, name, **kwargs):
+            return name != "piano" and super().available(name, **kwargs)
 
         def install(self, name, **_kwargs):
             raise RuntimeSetupError(

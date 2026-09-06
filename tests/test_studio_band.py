@@ -380,6 +380,84 @@ def test_cpu_selection_when_cuda_is_absent(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False)))
     assert device_for("auto") == "cpu"
     assert device_for("cuda") == "cpu"
+    with pytest.raises(RuntimeError, match="CUDA acceleration could not start"):
+        device_for("auto", allow_cpu_fallback=False)
+
+
+def test_incompatible_cuda_kernel_can_never_silently_become_mt3_cpu(monkeypatch):
+    from studio_band.providers import device_for
+
+    def incompatible(*_args, **_kwargs):
+        raise RuntimeError("no kernel image is available for execution on the device")
+
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: True, synchronize=lambda: None),
+        ones=incompatible,
+    )
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    assert device_for("auto") == "cpu"
+    with pytest.raises(RuntimeError, match="no kernel image"):
+        device_for("auto", allow_cpu_fallback=False)
+
+
+def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, monkeypatch):
+    import numpy as np
+    import studio_band.providers as providers
+
+    class FakeTensor:
+        def __mul__(self, _value):
+            return self
+
+        def sum(self):
+            return self
+
+        def item(self):
+            return 16
+
+    fake_torch = SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: True, synchronize=lambda: None),
+        ones=lambda *_args, **_kwargs: FakeTensor(),
+    )
+    calls = []
+
+    class FakeMidi:
+        def save(self, path):
+            Path(path).write_bytes(b"synthetic midi")
+
+    class FakeModel:
+        def preprocess(self, audio, sample_rate):
+            calls.append(("preprocess", len(audio), sample_rate))
+            return {"features": True}
+
+        def forward(self, features):
+            calls.append(("forward", features))
+            return {"tokens": True}
+
+        def decode(self, outputs):
+            calls.append(("decode", outputs))
+            return FakeMidi()
+
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "soxr", SimpleNamespace(resample=lambda audio, *_args: audio))
+    monkeypatch.setitem(sys.modules, "mt3_infer", SimpleNamespace(load_model=lambda *_args, **_kwargs: FakeModel()))
+    monkeypatch.setattr(providers, "_audio", lambda _path: (np.zeros((320, 2), dtype="float32"), 16000))
+    monkeypatch.setattr(providers, "_events_from_midi", lambda *_args: [])
+    monkeypatch.setenv("MT3_CHECKPOINT_DIR", str(tmp_path / "models"))
+    updates = []
+
+    result = providers.mr_mt3(
+        {"audio": str(tmp_path / "song.wav"), "output": str(tmp_path / "output"), "device": "auto"},
+        updates.append,
+    )
+
+    assert [call[0] for call in calls] == ["preprocess", "forward", "decode"]
+    assert result["device"] == "cuda"
+    messages = [update.message for update in updates]
+    assert any("Preparing audio features" in message for message in messages)
+    assert any("Cross-checking musical evidence on CUDA" in message for message in messages)
+    assert any("Decoding the independent musical cross-check" in message for message in messages)
+    fractions = [update.stage_fraction for update in updates]
+    assert fractions == [0.05, 0.20, 0.45, 0.90]
 
 
 def test_auto_quality_checks_models_vram_and_ram():
@@ -406,7 +484,7 @@ def test_windows_transkun_install_uses_constraint_binary_only_and_validation(tmp
     import studio_band.runtime as runtime_module
 
     manager = RuntimeManager(tmp_path)
-    monkeypatch.setattr(manager, "available", lambda _name: False)
+    monkeypatch.setattr(manager, "available", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(manager, "_uv", lambda *_args, **_kwargs: Path("uv"))
     monkeypatch.setattr(
         manager,
@@ -440,6 +518,68 @@ def test_windows_transkun_install_uses_constraint_binary_only_and_validation(tmp
     record = read_json(manager.runtime_root / "piano" / "studio-runtime.json")
     assert record["constraints"] == ["ncls==0.0.68"]
     assert record["binary_only"] == ["ncls"] and record["validated"] is True
+
+
+def test_mt3_cuda_runtime_is_one_cu128_transaction_with_real_kernel_validation(tmp_path, monkeypatch):
+    import studio_band.runtime as runtime_module
+
+    manager = RuntimeManager(tmp_path)
+    monkeypatch.setattr(manager, "available", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(manager, "_uv", lambda *_args, **_kwargs: Path("uv"))
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        command = [str(value) for value in command]
+        commands.append(command)
+        if "venv" in command:
+            python = manager.python("mt3")
+            python.parent.mkdir(parents=True, exist_ok=True)
+            python.write_bytes(b"synthetic python")
+        if "freeze" in command:
+            return "mt3-infer==0.2.0\ntorch==2.7.1+cu128\ntorchaudio==2.7.1+cu128\ntorchvision==0.22.1+cu128\n"
+        return ""
+
+    monkeypatch.setattr(runtime_module, "run_process", fake_run)
+    manager.install("mt3", device="cuda")
+
+    installs = [command for command in commands if "pip" in command and "install" in command]
+    assert len(installs) == 1
+    install = installs[0]
+    assert install[install.index("--torch-backend") + 1] == "cu128"
+    assert {"torch==2.7.1", "torchaudio==2.7.1", "torchvision==0.22.1"} <= set(install)
+    validation = next(command[-1] for command in commands if len(command) >= 3 and command[-2] == "-c")
+    assert "torch.version.cuda" in validation
+    assert "torch.cuda.is_available()" in validation
+    assert "torch.cuda.synchronize()" in validation
+    record = read_json(manager.runtime_root / "mt3" / "studio-runtime.json")
+    assert record["device_install"] == "cuda"
+    assert record["torch_backend"] == "cu128" and record["validated"] is True
+
+
+def test_mt3_runtime_cache_requires_requested_compute_backend(tmp_path):
+    import studio_band.runtime as runtime_module
+
+    manager = RuntimeManager(tmp_path)
+    python = manager.python("mt3")
+    python.parent.mkdir(parents=True, exist_ok=True)
+    python.write_bytes(b"synthetic python")
+    manifest = python.parent.parent / "studio-runtime.json"
+    base = {
+        "requirements": runtime_module.RUNTIMES["mt3"],
+        "constraints": [],
+        "binary_only": [],
+        "validated": True,
+    }
+    atomic_json(manifest, {**base, "device_install": "cpu", "torch_backend": "cpu"})
+    assert manager.available("mt3", device="cpu")
+    assert not manager.available("mt3", device="cuda")
+
+    atomic_json(manifest, {**base, "device_install": "cuda", "torch_backend": "cu128"})
+    assert manager.available("mt3", device="cuda")
+    assert manager.available("mt3", device="cpu")  # CUDA wheels can execute on CPU.
+
+    atomic_json(manifest, {**base, "device_install": "cuda"})
+    assert not manager.available("mt3"), "legacy unverified CUDA installs must be migrated"
 
 
 def test_runtime_exposes_bundled_ffmpeg_under_standard_name(tmp_path, monkeypatch):

@@ -68,9 +68,10 @@ class BandPipeline:
 
     def _stage(self, client, job, provider, audio, payload, cancel, report, warnings, settings, hardware):
         runtime = PROVIDER_RUNTIME.get(provider)
+        requested_device = "cuda" if settings.device != "cpu" and hardware.cuda else "cpu"
         # Check model availability/install independently for every specialist.
-        if runtime and not self.runtimes.available(runtime) and settings.install_models and runtime != "drums":
-            self.runtimes.install(runtime, device="cuda" if settings.device != "cpu" and hardware.cuda else "cpu",
+        if runtime and not self.runtimes.available(runtime, device=requested_device) and settings.install_models and runtime != "drums":
+            self.runtimes.install(runtime, device=requested_device,
                                   cancel=cancel, progress=report)
         key = cache_key(file_hash(audio), self.runtimes.fingerprint(provider), payload, settings.device)
         folder = job / ("stems" if provider in {"demucs", "roformer"} else "transcription")
@@ -93,7 +94,11 @@ class BandPipeline:
         except StageError:
             # CPU retry is useful for CUDA OOM/unsupported architectures. If the
             # stage still fails, its specialist fallback is handled by the caller.
-            if settings.device == "cpu" or not hardware.cuda or provider not in PROVIDER_RUNTIME:
+            # MR-MT3 is optional and exceptionally slow on a full song without
+            # acceleration, so Auto/CUDA skips it instead of silently blocking
+            # for an unbounded CPU retry. Explicit CPU remains available.
+            if (settings.device == "cpu" or not hardware.cuda or provider not in PROVIDER_RUNTIME
+                    or provider == "mr_mt3"):
                 raise
             report("Retrying this stage on CPU…")
             arguments["device"] = "cpu"
@@ -115,13 +120,13 @@ class BandPipeline:
         return result
 
     @staticmethod
-    def _runtime_plan(settings: ConversionSettings, separator: str) -> list[str]:
+    def _runtime_plan(settings: ConversionSettings, separator: str, hardware) -> list[str]:
         # Prepare preferred engines before touching the audio. This makes first
         # use a distinct, truthful phase and ensures dependency failures cannot
         # be mistaken for slow inference. Transkun is first so its small runtime
         # is validated before multi-GB separator/cross-check installs.
         plan = ["piano", "separator", "beat"]
-        if settings.cross_check:
+        if settings.cross_check and (settings.device == "cpu" or hardware.cuda):
             plan.append("mt3")
         if separator == "roformer":
             plan.append("hq")
@@ -129,15 +134,15 @@ class BandPipeline:
 
     def _prepare_runtimes(self, settings: ConversionSettings, hardware, separator: str,
                           cancel, flow: PipelineProgress) -> None:
-        required = self._runtime_plan(settings, separator)
-        missing = [name for name in required if not self.runtimes.available(name)]
+        required = self._runtime_plan(settings, separator, hardware)
+        device = "cuda" if settings.device != "cpu" and hardware.cuda else "cpu"
+        missing = [name for name in required if not self.runtimes.available(name, device=device)]
         if not settings.install_models:
             flow.setup_ready("Runtime check complete; automatic installation is off")
             return
         if not missing:
             flow.setup_ready("Runtime and transcription components ready")
             return
-        device = "cuda" if settings.device != "cpu" and hardware.cuda else "cpu"
         total = len(missing)
         for index, name in enumerate(missing):
             check_cancel(cancel)
@@ -216,12 +221,16 @@ class BandPipeline:
                     except (StageError, OSError, ValueError, RuntimeError) as exc:
                         if isinstance(exc, Cancelled):
                             raise
-                        warnings.append(f"{provider} unavailable: {exc}." + (f" Used {fallback}." if fallback else " Cross-check unavailable."))
+                        if provider == "mr_mt3" and fallback is None:
+                            reason = getattr(exc, "message", str(exc))
+                            warnings.append(f"Independent musical cross-check unavailable: {reason}")
+                        else:
+                            warnings.append(f"{provider} unavailable: {exc}." + (f" Used {fallback}." if fallback else ""))
                         provenance.setdefault("fallbacks", []).append({"provider": provider, "replacement": fallback,
                                                                         "error": str(exc), "details": getattr(exc, "details", "")})
                         if fallback:
                             return run(fallback, audio, stage_id, **payload)
-                        return {"events": []}
+                        return {"events": [], "_stage_skipped": True}
 
                 flow.stage("separate", activity=provider_activity(separator))
                 vocal_hq = None
@@ -289,9 +298,25 @@ class BandPipeline:
                 flow.complete("drums")
 
                 if settings.cross_check:
-                    flow.stage("cross_check", activity=provider_activity("mr_mt3"))
-                    add(attempt("mr_mt3", prepared, "cross_check"), target=reference)
-                    flow.complete("cross_check")
+                    if settings.device != "cpu" and not hardware.cuda:
+                        reason = (
+                            "Independent musical cross-check skipped: Auto/CUDA mode did not detect an NVIDIA GPU. "
+                            "Choose CPU in Advanced only if you accept a potentially very long run."
+                        )
+                        warnings.append(reason)
+                        provenance.setdefault("fallbacks", []).append({
+                            "provider": "mr_mt3", "replacement": None,
+                            "error": reason, "details": "nvidia-smi did not report an available CUDA device",
+                        })
+                        flow.skip("cross_check", "Independent cross-check needs CUDA — continuing without it")
+                    else:
+                        flow.stage("cross_check", activity=provider_activity("mr_mt3"))
+                        cross_check = attempt("mr_mt3", prepared, "cross_check")
+                        add(cross_check, target=reference)
+                        if cross_check.get("_stage_skipped"):
+                            flow.skip("cross_check", "Independent cross-check unavailable — continuing without it")
+                        else:
+                            flow.complete("cross_check")
                 else:
                     warnings.append("Musical cross-check was disabled in Advanced.")
                     flow.skip("cross_check", "Musical cross-check disabled")
