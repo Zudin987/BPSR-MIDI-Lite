@@ -33,3 +33,22 @@ def make_song(path: Path, duration=6.0, rate=44100):
         stream.setsampwidth(2)
         stream.setframerate(rate)
         stream.writeframes(output.tobytes())
+
+
+def reference_events(duration=6.0):
+    """Known notes synthesized by make_song, for repeatable quality tracking."""
+    melody = (72, 74, 76, 79, 76, 74, 72, 67)
+    events = []
+    beat = 0
+    while (start := .5 + beat * .5) < duration:
+        end = min(duration, start + .42)
+        for source, role, pitches in (
+            ("bass", "BASS", (48,)),
+            ("piano", "HARMONY", (60, 64, 67)),
+            ("vocals", "MAIN_MELODY", (melody[beat % len(melody)],)),
+        ):
+            for pitch in pitches:
+                events.append({"source": source, "role": role, "start": start, "end": end,
+                               "pitch": pitch})
+        beat += 1
+    return events

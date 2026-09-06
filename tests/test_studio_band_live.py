@@ -1,6 +1,7 @@
 """Opt-in model smoke gates for Windows CI; ordinary Lite tests need no AI."""
 import os
 import json
+import math
 import subprocess
 from pathlib import Path
 
@@ -12,7 +13,8 @@ def test_real_audio_pipeline(tmp_path):
     from studio_band.pipeline import BandPipeline, ConversionSettings
     from studio_band.runtime import RuntimeManager
     from studio_band.storage import read_json
-    from studio_synthetic_audio import make_song
+    from studio_synthetic_audio import make_song, reference_events
+    from studio_band.benchmark import transcription_benchmark
     source = tmp_path / "Original synthetic band.wav"
     make_song(source)
     reports = Path("model-smoke-report")
@@ -33,8 +35,14 @@ def test_real_audio_pipeline(tmp_path):
     assert record["source_audio_sha256"]
     (reports / "actual-providers.json").write_text(json.dumps(record["providers"], indent=2), encoding="utf-8")
     (reports / "quality-notes.json").write_text(json.dumps(record["warnings"], indent=2), encoding="utf-8")
-    for provider in ("demucs", "transkun", "beat_this", "mr_mt3"):
+    benchmark = transcription_benchmark(reference_events(), record["master_song"]["events"])
+    assert benchmark["sources"] and all(math.isfinite(value) for value in benchmark["macro"].values())
+    (reports / "mir-eval-benchmark.json").write_text(json.dumps(benchmark, indent=2), encoding="utf-8")
+    for provider in ("demucs", "torchcrepe", "transkun", "beat_this", "mr_mt3"):
         assert any(e["provider"] == provider for e in record["providers"]["engines"]), f"Preferred model failed: {provider}; see report"
+    for metric in record["providers"]["stem_metrics"].values():
+        assert metric["spectral_purity"] is not None
+        assert 0 <= metric["spectral_confidence"] <= 1
 
     # This is the exact clean external-runtime path used by the frozen Studio.
     # --only-binary ncls makes a compiler impossible even though hosted runners
@@ -71,6 +79,12 @@ def test_real_audio_pipeline(tmp_path):
     assert "torch==2.11.0+cpu" in mt3_record["packages"]
     assert "torchaudio==2.11.0+cpu" in mt3_record["packages"]
     assert "torchvision==0.26.0+cpu" in mt3_record["packages"]
+    separator_record = read_json(runtime.runtime_root / "separator" / "studio-runtime.json")
+    assert separator_record["torch_backend"] == "cpu" and separator_record["validated"] is True
+    assert "torchcrepe==0.0.24" in separator_record["packages"]
+    assert "torch==2.11.0+cpu" in separator_record["packages"]
+    assert record["providers"]["cross_check"]["mode"] == "targeted_low_confidence"
+    assert record["providers"]["cross_check"]["coverage_ratio"] <= 1.0
 
 
 @pytest.mark.skipif(
@@ -101,9 +115,18 @@ def test_windows_mt3_cuda_wheels_resolve_from_official_backend(tmp_path):
         "torchvision==0.26.0+cu128",
     ):
         assert requirement in plan
+    separator = subprocess.run(
+        [str(uv), "pip", "install", "--dry-run", "--python", str(python),
+         *RUNTIMES["separator"], "--torch-backend", "cu128", "--strict"],
+        env=runtime.environment(), text=True, capture_output=True, timeout=900, check=True,
+    )
+    separator_plan = separator.stdout + "\n" + separator.stderr
+    for requirement in ("torch==2.11.0+cu128", "torchaudio==2.11.0+cu128", "torchcrepe==0.0.24"):
+        assert requirement in separator_plan
     reports = Path("model-smoke-report")
     reports.mkdir(exist_ok=True)
     (reports / "mt3-windows-cuda-resolution.txt").write_text(plan, encoding="utf-8")
+    (reports / "separator-windows-cuda-resolution.txt").write_text(separator_plan, encoding="utf-8")
 
 
 @pytest.mark.skipif(os.environ.get("BPSR_STUDIO_HQ_LIVE") != "1", reason="requires the additional HQ model")

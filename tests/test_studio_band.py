@@ -16,7 +16,8 @@ import pytest
 from studio_band.arrange import (ArrangementSettings, arrange, clean_drums, fit_contour,
                                  limit_sustained, load_drum_profile, melody_assignment, simplify_chords)
 from studio_band.export import copy_export, export_arrangement, reopen, safe_name, write_midi
-from studio_band.fusion import bass_contour, fuse, melody_contour, soft_align
+from studio_band.fusion import (bass_contour, fuse, melody_contour, promote_targeted_repairs,
+                                soft_align, uncertain_regions)
 from studio_band.music import BeatMap, MasterSong, MusicEvent
 from studio_band.pipeline import BandPipeline, ConversionSettings
 from studio_band.preview import preview_messages
@@ -73,6 +74,37 @@ def test_same_engine_duplicates_do_not_vote_and_missing_reference_is_not_veto():
     unsupported, _ = fuse([primary], [], BeatMap())
     assert result[0].confidence <= unsupported[0].confidence
     assert result[0].confidence > .8
+
+
+def test_uncertain_cross_check_is_bounded_and_can_repair_a_missing_event():
+    primary = [note(start=float(start), end=float(start)+.4, confidence=.42,
+                    event_id=f"p{start}") for start in range(0, 80, 4)]
+    metrics = {"piano": {"spectral_confidence": .40, "leakage": .55}}
+    regions = uncertain_regions(primary, 80, metrics)
+    assert regions and sum(region["end"]-region["start"] for region in regions) <= 28
+    evidence = note(pitch=67, start=regions[0]["start"]+.5, end=regions[0]["start"]+1,
+                    source="guitar", confidence=.70, engine="mr_mt3", event_id="mt3")
+    evidence.evidence = {"coverage_start": regions[0]["start"], "coverage_end": regions[0]["end"]}
+    repaired = promote_targeted_repairs(primary, [evidence], {"guitar": {"spectral_confidence": .75}})
+    assert len(repaired) == 1 and repaired[0].engine == "mr_mt3_repair"
+    assert "targeted_repair" in repaired[0].tags
+
+
+def test_cross_stem_duplicate_prefers_measured_spectral_owner():
+    piano = note(confidence=.52, source="piano", event_id="piano-leak")
+    guitar = note(confidence=.82, source="guitar", event_id="guitar-owner")
+    metrics = {
+        "piano": {"spectral_confidence": .30, "leakage": .70},
+        "guitar": {"spectral_confidence": .90, "leakage": .10},
+    }
+    kept, removed = fuse([piano, guitar], [], BeatMap(), metrics)
+    guitar_result = next(event for event in kept if event.event_id == "guitar-owner")
+    piano_record = next((event for event in kept if event.event_id == "piano-leak"), None)
+    if piano_record is None:
+        piano_record = MusicEvent.from_dict(next(item["event"] for item in removed
+                                               if item["event"]["event_id"] == "piano-leak"))
+    assert guitar_result.confidence > piano_record.confidence
+    assert piano_record.evidence["cross_stem_leakage"]["stronger_source"] == "guitar"
 
 
 def test_timing_fusion_preserves_swing_and_grace_notes():

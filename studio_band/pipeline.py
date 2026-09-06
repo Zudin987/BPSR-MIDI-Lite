@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .arrange import ArrangementSettings, arrange, load_drum_profile
 from .export import export_arrangement, reopen, source_record
-from .fusion import build_master
+from .fusion import build_master, promote_targeted_repairs, uncertain_regions
 from .music import BeatMap, MusicEvent
 from .progress import PipelineProgress, ProgressEvent
 from .protocol import Cancelled, RuntimeSetupError, StageError, WorkerClient, check_cancel, run_process
@@ -243,7 +243,9 @@ class BandPipeline:
                     else:
                         warnings.append("HQ separation unavailable; used standard six-stem separation.")
                 try:
-                    separated = run("demucs", separator_audio, "separate")
+                    use_ensemble = (settings.stem_quality != "standard" and settings.device != "cpu" and
+                                    hardware.cuda)
+                    separated = run("demucs", separator_audio, "separate", ensemble=use_ensemble)
                 except RuntimeSetupError:
                     raise
                 except (StageError, OSError, ValueError) as exc:
@@ -253,8 +255,15 @@ class BandPipeline:
                 if vocal_hq:
                     stems["vocals"] = vocal_hq
                 self._check_stem_timeline(stems, duration)
-                provenance["separator"] = {"requested": settings.stem_quality, "actual": "roformer+demucs" if vocal_hq else "demucs",
-                                             "model": "htdemucs_6s", "timeline": "original, untrimmed"}
+                separator_model = separated.get("provenance", {}).get("model", "htdemucs_6s")
+                provenance["separator"] = {
+                    "requested": settings.stem_quality,
+                    "actual": "roformer+demucs" if vocal_hq else "demucs",
+                    "model": separator_model,
+                    "ensemble": bool(separated.get("ensemble")),
+                    "timeline": "original, untrimmed",
+                    "ownership": "mixture-consistent spectral masks",
+                }
                 provenance["stem_metrics"] = separated.get("metrics", {})
                 flow.complete("separate")
 
@@ -277,6 +286,7 @@ class BandPipeline:
 
                 flow.stage("vocals", activity="cpu")
                 add(run("basic_pitch", stems["vocals"], "vocals", source="vocals"))
+                add(attempt("torchcrepe", stems["vocals"], "vocals", source="vocals"), target=reference)
                 flow.complete("vocals")
                 flow.stage("piano", activity=provider_activity("transkun"))
                 add(attempt("transkun", stems["piano"], "piano", "basic_pitch", source="piano"))
@@ -286,6 +296,7 @@ class BandPipeline:
                 flow.complete("guitar")
                 flow.stage("bass", activity="cpu")
                 add(run("basic_pitch", stems["bass"], "bass", source="bass"))
+                add(attempt("torchcrepe", stems["bass"], "bass", source="bass"), target=reference)
                 flow.complete("bass")
                 flow.stage("other", activity="cpu")
                 add(run("basic_pitch", stems["other"], "other", source="other"))
@@ -295,6 +306,8 @@ class BandPipeline:
                 drum_result = (attempt("adtof", stems["drums"], "drums", "drums_dsp")
                                if drum_backend == "adtof" else run("drums_dsp", stems["drums"], "drums"))
                 drum_backend = drum_result.get("provenance", {}).get("provider", drum_backend)
+                add(drum_result)
+                provenance["drum_backend"] = drum_backend
                 flow.complete("drums")
 
                 if settings.cross_check:
@@ -310,26 +323,33 @@ class BandPipeline:
                         })
                         flow.skip("cross_check", "Independent cross-check needs CUDA — continuing without it")
                     else:
-                        flow.stage("cross_check", activity=provider_activity("mr_mt3"))
-                        cross_check = attempt("mr_mt3", prepared, "cross_check")
-                        add(cross_check, target=reference)
-                        if cross_check.get("_stage_skipped"):
-                            flow.skip("cross_check", "Independent cross-check unavailable — continuing without it")
+                        regions = uncertain_regions(primary, duration, provenance.get("stem_metrics", {}))
+                        provenance["cross_check"] = {
+                            "mode": "targeted_low_confidence",
+                            "regions": regions,
+                            "seconds": sum(region["end"]-region["start"] for region in regions),
+                            "coverage_ratio": (sum(region["end"]-region["start"] for region in regions) /
+                                               duration if duration else 0.0),
+                        }
+                        if not regions:
+                            flow.skip("cross_check", "No low-confidence sections need the independent cross-check")
                         else:
-                            flow.complete("cross_check")
+                            flow.stage("cross_check", activity=provider_activity("mr_mt3"),
+                                       message=f"Cross-checking {len(regions)} low-confidence section(s)")
+                            cross_check = attempt("mr_mt3", prepared, "cross_check", segments=regions)
+                            add(cross_check, target=reference)
+                            if cross_check.get("_stage_skipped"):
+                                flow.skip("cross_check", "Independent cross-check unavailable — continuing without it")
+                            else:
+                                repairs = promote_targeted_repairs(
+                                    primary, reference, provenance.get("stem_metrics", {}),
+                                )
+                                primary.extend(repairs)
+                                provenance["cross_check"]["repairs_added"] = len(repairs)
+                                flow.complete("cross_check", "Low-confidence sections cross-checked")
                 else:
                     warnings.append("Musical cross-check was disabled in Advanced.")
                     flow.skip("cross_check", "Musical cross-check disabled")
-                reference_drums = [e for e in reference if e.source == "drums"]
-                if drum_backend == "drums_dsp" and reference_drums:
-                    # Dedicated spectral attacks validate MT3's richer semantic
-                    # kit. Never feed pitched Basic Pitch detections to Drums.
-                    primary.extend(reference_drums)
-                    add(drum_result, target=reference)
-                    provenance["drum_backend"] = "MR-MT3 with dedicated spectral validation"
-                else:
-                    add(drum_result)
-                    provenance["drum_backend"] = drum_backend
                 flow.stage("fusion", activity="cpu")
                 master = build_master(digest, duration, beats, primary, reference, provenance, warnings)
                 atomic_json(job / "analysis" / "master.json", master.to_dict())

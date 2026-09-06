@@ -723,7 +723,7 @@ class BandAudioTab:
         ttk.Combobox(content, textvariable=self.device, values=("auto", "cpu", "cuda"), state="readonly", width=12).pack(anchor="w", pady=6)
         cross_check_note = ttk.Label(
             content,
-            text="Auto uses verified CUDA for the cross-check. If GPU execution cannot start, Studio skips that optional evidence instead of silently running it for hours on CPU; choose CPU only to opt into the slower path.",
+            text="The cross-check now inspects only low-confidence sections. Auto uses verified CUDA; if GPU execution cannot start, Studio skips it instead of silently running for hours on CPU. Choose CPU only to opt into the slower path.",
             wraplength=650, justify="left", style="Hint.TLabel",
         )
         cross_check_note.pack(anchor="w", pady=(0, 6))
@@ -735,7 +735,7 @@ class BandAudioTab:
             ttk.Combobox(row, textvariable=self.tiers[part], values=values, state="readonly", width=10).pack(side="left")
         for row in self.pipeline.runtimes.statuses():
             ttk.Label(content, text=f"{row['runtime']}: {row['status']}").pack(anchor="w")
-        engine_note = ttk.Label(content, text="Standard: Demucs 6 stems. HQ: BS-RoFormer vocals, then Demucs instruments. Piano: Transkun V2. Beat: Beat This! Cross-check: MR-MT3.\nADTOF is a user-installed option; its port has no declared license. HQ weights and optional engines are downloaded separately, not included in this executable.", wraplength=650, justify="left")
+        engine_note = ttk.Label(content, text="Auto + CUDA: htdemucs_6s/ft ensemble and leakage cleanup. Standard: Demucs 6 stems. HQ: BS-RoFormer vocals, then Demucs instruments. Vocal/Bass validation: torchcrepe. Piano: Transkun V2. Cross-check: targeted MR-MT3.\nADTOF is a user-installed option; its port has no declared license. HQ weights and optional engines are downloaded separately, not included in this executable.", wraplength=650, justify="left")
         engine_note.pack(anchor="w", pady=8)
         content.bind("<Configure>", lambda event: (
             intro.configure(wraplength=max(260, event.width - 28)),

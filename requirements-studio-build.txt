@@ -2,3 +2,4 @@
 pyinstaller>=6.11,<7
 pillow>=11,<13
 pytest>=8,<10
+mir_eval==0.8.2

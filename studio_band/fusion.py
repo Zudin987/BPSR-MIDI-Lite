@@ -30,6 +30,99 @@ def agreements(event, index):
             min(event.end, other.end) > max(event.start, other.start) - .025]
 
 
+def uncertain_regions(primary: list[MusicEvent], duration: float, stem_metrics: dict | None = None,
+                      *, window: float = 8.0, max_fraction: float = .35,
+                      max_seconds: float = 90.0) -> list[dict]:
+    """Select a bounded set of low-confidence windows for expensive repair."""
+    stem_metrics = stem_metrics or {}
+    candidates = []
+    for start in [index * window for index in range(max(1, int((duration + window - 1e-9) // window)))]:
+        end = min(duration, start + window)
+        events = [event for event in primary if event.start < end and event.end > start]
+        event_confidence = (sum(event.confidence for event in events) / len(events)) if events else .45
+        sources = {event.source for event in events} or set(stem_metrics)
+        spectral = []
+        leakage = []
+        for source in sources:
+            metric = stem_metrics.get(source, {})
+            spectral.append(float(metric.get("spectral_confidence", metric.get("confidence_prior", .50))))
+            leakage.append(float(metric.get("leakage", .50)))
+        spectral_confidence = sum(spectral) / len(spectral) if spectral else .50
+        leakage_score = sum(leakage) / len(leakage) if leakage else .50
+        low_share = (sum(event.confidence < .58 for event in events) / len(events)) if events else 1.0
+        score = (.42 * (1-event_confidence) + .28 * (1-spectral_confidence) +
+                 .18 * leakage_score + .12 * low_share)
+        if score >= .28:
+            reasons = []
+            if not events or event_confidence < .62:
+                reasons.append("weak_or_missing_events")
+            if spectral_confidence < .62:
+                reasons.append("weak_spectral_ownership")
+            if leakage_score > .38:
+                reasons.append("cross_stem_leakage")
+            candidates.append({"start": start, "end": end, "score": round(score, 4),
+                               "reasons": reasons})
+    # At least one window may be inspected, but a normal song is capped to 35%
+    # (and 90 seconds) so enabling cross-check cannot imply a full-song MT3 run.
+    budget = min(max_seconds, max(window, duration * max_fraction))
+    selected, used = [], 0.0
+    for candidate in sorted(candidates, key=lambda value: (-value["score"], value["start"])):
+        length = candidate["end"] - candidate["start"]
+        if selected and used + length > budget + 1e-9:
+            continue
+        selected.append(candidate)
+        used += length
+    return sorted(selected, key=lambda value: value["start"])
+
+
+def promote_targeted_repairs(primary: list[MusicEvent], reference: list[MusicEvent],
+                             stem_metrics: dict | None = None, *, limit: int = 96) -> list[MusicEvent]:
+    """Conservatively add MT3-only events inside explicitly inspected windows."""
+    primary_index = _index(primary)
+    promoted = []
+    stem_metrics = stem_metrics or {}
+    candidates = [event for event in reference if event.engine == "mr_mt3" and
+                  "coverage_start" in event.evidence]
+    for event in sorted(candidates, key=lambda value: value.confidence, reverse=True):
+        if len(promoted) >= limit or agreements(event, primary_index):
+            continue
+        metric = stem_metrics.get(event.source, {})
+        spectral = float(metric.get("spectral_confidence", metric.get("confidence_prior", .50)))
+        confidence = event.confidence * (.78 + .22 * max(0.0, min(1.0, spectral)))
+        if confidence < .50:
+            continue
+        promoted.append(replace(
+            event,
+            engine="mr_mt3_repair",
+            confidence=min(.78, confidence),
+            event_id="repair:" + event.event_id,
+            tags=event.tags | {"targeted_repair"},
+            evidence={**event.evidence, "repair_source": "mr_mt3", "spectral_support": spectral,
+                      "confidence_kind": "targeted MT3 prior weighted by measured stem ownership"},
+        ))
+    return promoted
+
+
+def _cross_stem_index(events: list[MusicEvent]):
+    buckets = defaultdict(list)
+    for event in events:
+        if event.pitch is not None:
+            buckets[event.pitch].append(event)
+    return {pitch: (sorted(values, key=lambda event: event.start),
+                    sorted(event.start for event in values))
+            for pitch, values in buckets.items()}
+
+
+def _cross_stem_competitors(event: MusicEvent, index) -> list[MusicEvent]:
+    if event.pitch is None:
+        return []
+    values, starts = index.get(event.pitch, ([], []))
+    left = bisect_left(starts, event.start - .075)
+    right = bisect_left(starts, event.start + .075)
+    return [other for other in values[left:right] if other is not event and other.source != event.source and
+            min(event.end, other.end) > max(event.start, other.start) - .02]
+
+
 def soft_align(event: MusicEvent, support: list[MusicEvent], beats: BeatMap) -> MusicEvent:
     shift = 0.0
     if support:
@@ -57,7 +150,14 @@ def soft_align(event: MusicEvent, support: list[MusicEvent], beats: BeatMap) -> 
 def fuse(primary: list[MusicEvent], reference: list[MusicEvent], beat_map: BeatMap,
          stem_metrics: dict | None = None) -> tuple[list[MusicEvent], list[dict]]:
     index = _index(reference)
-    available = {e.source for e in reference}
+    global_reference = {event.source for event in reference if "coverage_start" not in event.evidence}
+    targeted_coverage = defaultdict(list)
+    for event in reference:
+        if "coverage_start" in event.evidence:
+            targeted_coverage[event.source].append(
+                (float(event.evidence["coverage_start"]), float(event.evidence["coverage_end"]))
+            )
+    cross_stem = _cross_stem_index(primary)
     kept, removed = [], []
     stem_metrics = stem_metrics or {}
     for event in primary:
@@ -68,7 +168,9 @@ def fuse(primary: list[MusicEvent], reference: list[MusicEvent], beat_map: BeatM
             # Saturating corroboration: duplicates from one model do not vote.
             by_engine = {e.engine: e for e in sorted(support, key=lambda e: e.confidence)}
             score += (1-score) * min(.55, .25 + .12*sum(e.confidence for e in by_engine.values()))
-        elif event.source in available:
+        elif (event.source in global_reference or
+              any(start <= (event.start+event.end)/2 <= end
+                  for start, end in targeted_coverage.get(event.source, []))):
             # Absence is only weak counter-evidence; MT3 itself misses notes.
             score -= .055 * (1-event.confidence)
         duration = event.end-event.start
@@ -80,11 +182,30 @@ def fuse(primary: list[MusicEvent], reference: list[MusicEvent], beat_map: BeatM
             score -= min(.4, distance*.018)
             evidence["register_distance"] = distance
         metric = stem_metrics.get(event.source, {})
-        # Separation has no measured purity posterior. Use only a modest prior,
-        # and expose this explicitly so it cannot be mistaken for a model score.
-        prior = float(metric.get("confidence_prior", .7))
-        score *= .85 + .15 * max(0, min(1, prior))
-        evidence["separation_prior"] = prior
+        spectral = float(metric.get("spectral_confidence", metric.get("confidence_prior", .65)))
+        score *= .80 + .20 * max(0, min(1, spectral))
+        evidence["spectral_confidence"] = spectral
+        evidence["spectral_purity"] = metric.get("spectral_purity")
+        evidence["stem_leakage"] = metric.get("leakage")
+        competitors = _cross_stem_competitors(event, cross_stem)
+        if competitors:
+            own = event.confidence * max(.05, spectral)
+            strongest = max(
+                competitors,
+                key=lambda other: other.confidence * max(.05, float(stem_metrics.get(other.source, {}).get(
+                    "spectral_confidence", stem_metrics.get(other.source, {}).get("confidence_prior", .65)))),
+            )
+            other_spectral = float(stem_metrics.get(strongest.source, {}).get(
+                "spectral_confidence", stem_metrics.get(strongest.source, {}).get("confidence_prior", .65)))
+            competing = strongest.confidence * max(.05, other_spectral)
+            if competing > own * 1.20:
+                ownership = own / max(1e-9, own + competing)
+                score *= .72 + .28 * ownership
+                evidence["cross_stem_leakage"] = {
+                    "stronger_source": strongest.source,
+                    "stronger_event_id": strongest.event_id,
+                    "relative_ownership": ownership,
+                }
         if metric.get("rms", 1) < 1e-5:
             score *= .4
         score = max(0.0, min(.99, score))

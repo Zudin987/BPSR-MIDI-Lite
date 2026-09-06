@@ -22,9 +22,12 @@ UV_SHA256 = "5049375aa2a5162f132b2c1cb992e25d42d47d934cab8c174dbe6f60973dcc12"
 HQ_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"
 
 # Do not add these to either application's requirements. Each row is a separate
-# venv; Demucs's older torch and Studio's numpy<2 never constrain other engines.
+# venv; model stacks and Studio's numpy<2 never constrain other engines.
 RUNTIMES = {
-    "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
+    # The matched 2.11 family supports current NVIDIA GPUs. torchcrepe is kept
+    # beside Demucs so vocal/bass validation reuses the same loaded audio stack
+    # without entering the main Studio process.
+    "separator": ["demucs==4.0.1", "torchcrepe==0.0.24", "torch==2.11.0", "torchaudio==2.11.0", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "piano": ["transkun==2.0.1", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "beat": ["beat-this==1.1.0", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
     # mt3-infer 0.2.0 supports torch >=2.4. Pin the matched 2.11 wheel family:
@@ -44,16 +47,27 @@ WINDOWS_BINARY_ONLY = {"piano": ("ncls",)}
 # uv routes only the PyTorch ecosystem through this official wheel index while
 # resolving the rest of MR-MT3 from PyPI. A single resolver transaction keeps a
 # later dependency pass from replacing the chosen CPU/CUDA build.
-RUNTIME_TORCH_BACKENDS = {"mt3": {"cpu": "cpu", "cuda": "cu128"}}
+RUNTIME_TORCH_BACKENDS = {
+    "separator": {"cpu": "cpu", "cuda": "cu128"},
+    "mt3": {"cpu": "cpu", "cuda": "cu128"},
+}
 RUNTIME_LABELS = {
-    "separator": "six-stem separator",
+    "separator": "separation and pitch-evidence",
     "piano": "Transkun",
     "beat": "beat detector",
     "mt3": "musical cross-check",
     "hq": "HQ separator",
 }
 RUNTIME_VALIDATION = {
-    "separator": "import demucs, torch, torchaudio",
+    "separator": (
+        "import importlib.metadata as metadata\n"
+        "import demucs, torch, torchaudio, torchcrepe\n"
+        "expected = {'demucs': '4.0.1', 'torchcrepe': '0.0.24', "
+        "'torch': '2.11.0', 'torchaudio': '2.11.0'}\n"
+        "for package, version in expected.items():\n"
+        "    actual = metadata.version(package).partition('+')[0]\n"
+        "    assert actual == version, f'Expected {package} {version}, found {actual}'"
+    ),
     "piano": (
         "import importlib.metadata as metadata\n"
         "import ncls, transkun\n"
@@ -73,9 +87,9 @@ RUNTIME_VALIDATION = {
     ),
     "hq": "import audio_separator, torch, torchaudio",
 }
-PROVIDER_RUNTIME = {"demucs": "separator", "roformer": "hq", "transkun": "piano",
+PROVIDER_RUNTIME = {"demucs": "separator", "torchcrepe": "separator", "roformer": "hq", "transkun": "piano",
                     "beat_this": "beat", "mr_mt3": "mt3", "adtof": "drums"}
-PROVIDER_MODEL = {"demucs": "htdemucs_6s", "roformer": HQ_MODEL, "transkun": "2.0",
+PROVIDER_MODEL = {"demucs": "htdemucs_6s+htdemucs_ft", "torchcrepe": "full", "roformer": HQ_MODEL, "transkun": "2.0",
                   "beat_this": "final0", "mr_mt3": "mr_mt3", "basic_pitch": "ICASSP_2022",
                   "drums_dsp": "spectral-onsets-1", "beat_dsp": "onset-autocorrelation-1"}
 

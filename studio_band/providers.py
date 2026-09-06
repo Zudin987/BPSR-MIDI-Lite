@@ -141,55 +141,269 @@ def basic_pitch(payload: dict, report) -> dict:
     return {"events": events, "device": "cpu", "model_files": [str(ICASSP_2022_MODEL_PATH)]}
 
 
-def demucs(payload: dict, report) -> dict:
+def torchcrepe_pitch(payload: dict, report) -> dict:
+    """Monophonic pitch evidence for vocal/bass specialist validation."""
     import numpy as np
+    import torch
+    import torchaudio.functional as audio_functional
+    import torchcrepe
+
+    source = payload["source"]
+    if source not in {"vocals", "bass"}:
+        raise ValueError("torchcrepe validation is only defined for vocals and bass")
+    device = device_for(payload.get("device", "auto"))
+    audio, sample_rate = _audio(payload["audio"])
+    waveform = torch.from_numpy(audio.mean(axis=1).copy())
+    if sample_rate != 16000:
+        waveform = audio_functional.resample(waveform, sample_rate, 16000)
+        sample_rate = 16000
+    peak = waveform.abs().max()
+    if float(peak) > 1:
+        waveform = waveform / peak
+    hop_length = 160
+    low, high = ((65.41, 1396.91) if source == "vocals" else (30.87, 246.94))
+    variant = "full" if device == "cuda" else "tiny"
+    with _working_heartbeat(
+        report,
+        f"Validating {source} pitch evidence with torchcrepe on {device.upper()}…",
+        activity=device,
+        stage_fraction=0.48,
+    ):
+        with torch.inference_mode():
+            pitch, periodicity = torchcrepe.predict(
+                waveform[None].to(device), sample_rate, hop_length, low, high,
+                variant, batch_size=2048, device=device, return_periodicity=True,
+            )
+    hz = pitch[0].detach().cpu().numpy().astype("float64")
+    periodicity = periodicity[0].detach().cpu().numpy().astype("float64")
+    samples = waveform.detach().cpu().numpy().astype("float64")
+
+    # Periodicity is independent evidence. Combine it with an actual local
+    # energy measurement so silence and residual bleed do not become notes.
+    frame_radius = sample_rate // 50
+    midi = np.full(len(hz), np.nan)
+    reliable = np.zeros(len(hz), dtype=bool)
+    for index, frequency in enumerate(hz):
+        center = index * hop_length
+        frame = samples[max(0, center-frame_radius):min(len(samples), center+frame_radius)]
+        rms = math.sqrt(float(np.mean(frame**2))) if len(frame) else 0.0
+        if (math.isfinite(frequency) and low <= frequency <= high and
+                periodicity[index] >= 0.48 and rms >= 10 ** (-58 / 20)):
+            midi[index] = 69 + 12 * math.log2(frequency / 440)
+            reliable[index] = True
+    # A five-frame median removes vibrato-induced semitone flicker without
+    # moving onsets or pretending the contour is polyphonic.
+    smoothed = midi.copy()
+    for index in np.flatnonzero(reliable):
+        local = midi[max(0, index-2):index+3]
+        local = local[np.isfinite(local)]
+        if len(local):
+            smoothed[index] = float(np.median(local))
+
+    events = []
+    active_pitch = None
+    active_start = 0
+
+    def finish(end_index: int) -> None:
+        nonlocal active_pitch, active_start
+        if active_pitch is None:
+            return
+        start = active_start * hop_length / sample_rate
+        end = max(start + hop_length / sample_rate, end_index * hop_length / sample_rate)
+        frames = periodicity[active_start:end_index]
+        confidence = float(np.mean(frames)) if len(frames) else 0.0
+        if end-start >= (0.07 if source == "vocals" else 0.09) and confidence >= 0.48:
+            events.append(MusicEvent(
+                source,
+                "MAIN_MELODY" if source == "vocals" else "BASS",
+                start, end, int(active_pitch), max(1, min(127, round(35 + confidence * 80))),
+                min(0.99, confidence), "torchcrepe", {"pitch_validation"},
+                evidence={"confidence_kind": "torchcrepe periodicity plus local stem energy",
+                          "mean_periodicity": confidence, "model_variant": variant},
+            ).to_dict())
+        active_pitch = None
+
+    for index in range(len(smoothed)):
+        detected = int(round(smoothed[index])) if reliable[index] else None
+        if active_pitch is None and detected is not None:
+            active_pitch, active_start = detected, index
+        elif active_pitch is not None and detected != active_pitch:
+            finish(index)
+            if detected is not None:
+                active_pitch, active_start = detected, index
+    finish(len(smoothed))
+    assets = list((Path(torchcrepe.__file__).parent / "assets").glob("*.pth"))
+    return {"events": events, "device": device, "model": variant,
+            "model_files": [str(path) for path in assets]}
+
+
+def _resolve_spectral_ownership(waveform, six, fine, sample_rate: int, report):
+    """Allocate mixture bins once across stems and return measured evidence."""
+    import torch
+
+    names = ("vocals", "piano", "guitar", "bass", "drums", "other")
+    output = torch.zeros((len(names), *waveform.shape), dtype=torch.float32)
+    accumulators = {
+        name: {"owned": 0.0, "purity": 0.0, "agreement": 0.0, "agreement_weight": 0.0}
+        for name in names
+    }
+    n_fft, hop = 1024, 256
+    window = torch.hann_window(n_fft)
+    chunk_frames = sample_rate * 10
+    _report(report, "Resolving cross-stem leakage and measuring spectral ownership on CPU…",
+            activity="cpu", stage_fraction=0.86)
+    for start in range(0, waveform.shape[-1], chunk_frames):
+        end = min(waveform.shape[-1], start + chunk_frames)
+        analysis_start = max(0, start - 2*n_fft)
+        analysis_end = min(waveform.shape[-1], end + 2*n_fft)
+        length = analysis_end-analysis_start
+        mixture_spec = torch.stft(waveform[:, analysis_start:analysis_end], n_fft,
+                                  hop_length=hop, window=window, pad_mode="constant",
+                                  return_complex=True)
+        six_audio = torch.stack([six[name][:, analysis_start:analysis_end] for name in names])
+        six_shape = six_audio.shape[:2]
+        packed_six = torch.stft(six_audio.reshape(-1, length), n_fft, hop_length=hop,
+                                window=window, pad_mode="constant", return_complex=True)
+        six_stack = packed_six.reshape(*six_shape, *packed_six.shape[-2:])
+        six_specs = {name: six_stack[index] for index, name in enumerate(names)}
+        fine_specs = {}
+        if fine:
+            fine_names = tuple(fine)
+            fine_audio = torch.stack([fine[name][:, analysis_start:analysis_end] for name in fine_names])
+            fine_shape = fine_audio.shape[:2]
+            packed_fine = torch.stft(fine_audio.reshape(-1, length), n_fft, hop_length=hop,
+                                     window=window, pad_mode="constant", return_complex=True)
+            fine_stack = packed_fine.reshape(*fine_shape, *packed_fine.shape[-2:])
+            fine_specs = {name: fine_stack[index] for index, name in enumerate(fine_names)}
+        magnitudes = {}
+        for name in names:
+            base = six_specs[name].abs()
+            if name in fine_specs and name != "other":
+                base = (base + fine_specs[name].abs()) * 0.5
+            magnitudes[name] = base
+        if "other" in fine_specs:
+            group = ("piano", "guitar", "other")
+            group_sum = sum((six_specs[name].abs() for name in group)) + 1e-8
+            group_target = fine_specs["other"].abs()
+            for name in group:
+                adjusted = six_specs[name].abs() * group_target / group_sum
+                magnitudes[name] = 0.65 * magnitudes[name] + 0.35 * adjusted
+        stack = torch.stack([magnitudes[name] for name in names])
+        weights = stack.square()
+        masks = weights / (weights.sum(dim=0, keepdim=True) + 1e-10)
+        owned_specs = mixture_spec.unsqueeze(0) * masks
+        resolved = torch.istft(owned_specs.reshape(-1, *owned_specs.shape[-2:]), n_fft,
+                               hop_length=hop, window=window, length=length)
+        resolved = resolved.reshape(len(names), waveform.shape[0], length)
+        crop_start = start-analysis_start
+        output[:, :, start:end] = resolved[:, :, crop_start:crop_start+(end-start)]
+        mixture_power = mixture_spec.abs().square()
+        for stem_index, name in enumerate(names):
+            assigned = mixture_power * masks[stem_index]
+            owned = float(assigned.sum())
+            accumulators[name]["owned"] += owned
+            accumulators[name]["purity"] += float((assigned * masks[stem_index]).sum())
+            comparison = fine_specs.get(name)
+            if name in {"piano", "guitar", "other"} and "other" in fine_specs:
+                comparison = fine_specs["other"]
+                first = sum((six_specs[item].abs() for item in ("piano", "guitar", "other")))
+            else:
+                first = six_specs[name].abs()
+            if comparison is not None:
+                second = comparison.abs()
+                agreement = 2 * torch.minimum(first, second) / (first + second + 1e-8)
+                agreement_weight = mixture_power
+                accumulators[name]["agreement"] += float((agreement * agreement_weight).sum())
+                accumulators[name]["agreement_weight"] += float(agreement_weight.sum())
+    metrics = {}
+    for stem_index, name in enumerate(names):
+        values = accumulators[name]
+        purity = max(0.0, min(1.0, values["purity"] / max(1e-12, values["owned"])))
+        agreement = (max(0.0, min(1.0, values["agreement"] / values["agreement_weight"]))
+                     if values["agreement_weight"] else None)
+        spectral_confidence = max(0.0, min(1.0, 0.20 + 0.55 * purity + 0.25 *
+                                           (agreement if agreement is not None else purity)))
+        samples = output[stem_index]
+        metrics[name] = {
+            "rms": float(samples.to(torch.float64).square().mean().sqrt()),
+            "spectral_purity": purity,
+            "leakage": 1-purity,
+            "ensemble_agreement": agreement,
+            "spectral_confidence": spectral_confidence,
+            "confidence_prior": spectral_confidence,
+            "confidence_kind": "measured mixture-bin ownership; heuristic, not probability",
+        }
+    return output, metrics
+
+
+def demucs(payload: dict, report) -> dict:
     import soundfile as sf
     import torch
     from demucs.apply import apply_model
     from demucs.pretrained import get_model
     device = device_for(payload.get("device", "auto"))
+    ensemble_requested = bool(payload.get("ensemble", True))
+    ensemble = ensemble_requested and device == "cuda"
     torch.manual_seed(0)
     checkpoint_root = Path(os.environ["TORCH_HOME"]) / "hub" / "checkpoints"
-    cached_weights = list(checkpoint_root.glob("5c90dfd2*"))
-    _report(
+    cached_weights = list(checkpoint_root.glob("*.th"))
+    model_label = "htdemucs_6s + htdemucs_ft separation ensemble" if ensemble else "htdemucs_6s separator"
+    with _working_heartbeat(
         report,
-        "Loading the six-instrument separator…" if cached_weights else
-        "Downloading the six-instrument separator model…",
-        activity=device if cached_weights else "download",
-        stage_fraction=0.05,
-    )
-    model = get_model("htdemucs_6s")
-    model.eval()
+        (f"Loading the {model_label}…" if cached_weights else f"Downloading the {model_label} models…"),
+        activity=device if cached_weights else "download", stage_fraction=0.05,
+    ):
+        model = get_model("htdemucs_6s")
+        model.eval()
+        fine_model = get_model("htdemucs_ft") if ensemble else None
+        if fine_model is not None:
+            fine_model.eval()
     audio, sr = _audio(payload["audio"])
     if sr != model.samplerate or audio.shape[1] != model.audio_channels:
         raise ValueError("Separator expects the prepared stereo 44.1 kHz audio")
     waveform = torch.from_numpy(audio.T.copy())
     ref = waveform.mean(0)
     mean, scale = ref.mean(), ref.std()
+    fine = {}
     if float(scale) < 1e-8:
-        separated = torch.zeros((len(model.sources), *waveform.shape))
+        six = {name: torch.zeros_like(waveform) for name in model.sources}
     else:
         normalized = (waveform - mean) / scale
-        _report(report, f"Separating vocals, piano, guitar, bass and drums on {device.upper()}…",
-                activity=device, stage_fraction=0.20)
-        with torch.inference_mode():
-            separated = apply_model(model, normalized[None], device=device, shifts=1, split=True,
-                                    overlap=0.25, progress=False, num_workers=0)[0]
-        separated = separated.cpu() * scale + mean
+        with _working_heartbeat(
+            report, f"Separating six instrument stems with htdemucs_6s on {device.upper()}…",
+            activity=device, stage_fraction=0.18,
+        ):
+            with torch.inference_mode():
+                separated = apply_model(model, normalized[None], device=device, shifts=1, split=True,
+                                        overlap=0.25, progress=False, num_workers=0)[0]
+        six = {name: tensor.cpu() * scale for name, tensor in zip(model.sources, separated)}
+        if fine_model is not None:
+            with _working_heartbeat(
+                report, f"Running fine-tuned four-stem separation evidence on {device.upper()}…",
+                activity=device, stage_fraction=0.52,
+            ):
+                with torch.inference_mode():
+                    fine_separated = apply_model(fine_model, normalized[None], device=device, shifts=1,
+                                                 split=True, overlap=0.25, progress=False, num_workers=0)[0]
+            fine = {name: tensor.cpu() * scale for name, tensor in zip(fine_model.sources, fine_separated)}
+    resolved, metrics = _resolve_spectral_ownership(waveform, six, fine, sr, report)
     target = Path(payload["output"])
     target.mkdir(parents=True, exist_ok=True)
-    stems, metrics = {}, {}
-    for name, tensor in zip(model.sources, separated):
+    stems = {}
+    for name, tensor in zip(("vocals", "piano", "guitar", "bass", "drums", "other"), resolved):
         path = target / (name + ".wav")
         samples = tensor.numpy().T
         sf.write(str(path), samples, sr, subtype="FLOAT")
         stems[name] = str(path)
-        metrics[name] = {"rms": float(np.sqrt(np.mean(samples.astype("float64")**2))),
-                         "purity": None, "confidence_prior": 0.72}
     if set(stems) != {"vocals", "piano", "guitar", "bass", "drums", "other"}:
         raise ValueError("Demucs did not return the expected six stems")
-    weights = list((Path(os.environ["TORCH_HOME"]) / "hub" / "checkpoints").glob("5c90dfd2*"))
-    return {"stems": stems, "metrics": metrics, "device": device, "model_files": [str(x) for x in weights]}
+    weights = list(checkpoint_root.glob("*.th"))
+    warnings = []
+    if ensemble_requested and not ensemble:
+        warnings.append("The dual Demucs ensemble needs working CUDA; htdemucs_6s plus spectral ownership was used on CPU.")
+    return {"stems": stems, "metrics": metrics, "device": device,
+            "model": "htdemucs_6s+htdemucs_ft" if ensemble else "htdemucs_6s",
+            "ensemble": ensemble, "warnings": warnings, "model_files": [str(x) for x in weights]}
 
 
 def roformer(payload: dict, report) -> dict:
@@ -342,30 +556,74 @@ def mr_mt3(payload: dict, report) -> dict:
     audio = audio.mean(axis=1)
     if sr != 16000:
         audio = soxr.resample(audio, sr, 16000)
-    # The upstream convenience call is preprocess -> forward -> decode. Invoke
-    # those public operations separately so progress reflects the real work,
-    # while leaving each indeterminate instead of inventing a percentage.
-    with _working_heartbeat(
-        report, "Preparing audio features for the musical cross-check on CPU…",
-        activity="cpu", stage_fraction=0.20,
-    ):
-        features = model.preprocess(audio, 16000)
-    with _working_heartbeat(
-        report, f"Cross-checking musical evidence on {device.upper()}…",
-        activity=device, stage_fraction=0.45,
-    ):
-        outputs = model.forward(features)
-    with _working_heartbeat(
-        report, "Decoding the independent musical cross-check…",
-        activity="cpu", stage_fraction=0.90,
-    ):
-        midi = model.decode(outputs)
-    target = Path(payload["output"]) / "mr-mt3.mid"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    midi.save(str(target))
+    duration = len(audio) / 16000
+    requested_segments = payload.get("segments")
+    segments = requested_segments or [{"start": 0.0, "end": duration, "score": 1.0}]
+    validated = []
+    for segment in segments:
+        start = max(0.0, float(segment["start"]))
+        end = min(duration, float(segment["end"]))
+        if end-start >= (0.25 if requested_segments else 0.001):
+            validated.append({"start": start, "end": end, "score": float(segment.get("score", 0.0))})
+    if not validated:
+        return {"events": [], "device": device, "coverage": [], "targeted": bool(requested_segments),
+                "model_files": [str(x) for x in weights]}
+
+    # Run only the uncertain windows selected by the orchestrator. Model load is
+    # shared, and each section boundary gives honest forward progress even though
+    # the third-party forward call itself cannot report a byte/percent value.
+    target_root = Path(payload["output"])
+    target_root.mkdir(parents=True, exist_ok=True)
+    events = []
+    count = len(validated)
+    for index, segment in enumerate(validated):
+        start, end = segment["start"], segment["end"]
+        samples = audio[round(start*16000):round(end*16000)]
+        if count == 1 and not requested_segments:
+            fractions = (0.20, 0.45, 0.90)
+        else:
+            span = 0.78 / count
+            base = 0.18 + index * span
+            fractions = (base, base + span * 0.28, base + span * 0.82)
+        label = f"uncertain section {index+1}/{count} ({start:.1f}–{end:.1f}s)"
+        preparation_message = (f"Preparing {label} for the musical cross-check on CPU…"
+                               if requested_segments else
+                               "Preparing audio features for the musical cross-check on CPU…")
+        inference_message = (f"Cross-checking {label} on {device.upper()}…"
+                             if requested_segments else
+                             f"Cross-checking musical evidence on {device.upper()}…")
+        decode_message = (f"Decoding {label}…" if requested_segments else
+                          "Decoding the independent musical cross-check…")
+        with _working_heartbeat(
+            report, preparation_message,
+            activity="cpu", stage_fraction=fractions[0],
+        ):
+            features = model.preprocess(samples, 16000)
+        with _working_heartbeat(
+            report, inference_message,
+            activity=device, stage_fraction=fractions[1],
+        ):
+            outputs = model.forward(features)
+        with _working_heartbeat(
+            report, decode_message,
+            activity="cpu", stage_fraction=fractions[2],
+        ):
+            midi = model.decode(outputs)
+        target = target_root / f"mr-mt3-{index+1:02d}.mid"
+        midi.save(str(target))
+        for event in _events_from_midi(target, "mr_mt3"):
+            event["start"] += start
+            event["end"] += start
+            event["tags"] = sorted(set(event.get("tags", [])) | {"targeted_cross_check"})
+            event["evidence"] = {
+                **event.get("evidence", {}),
+                "coverage_start": start, "coverage_end": end,
+                "uncertainty_score": segment["score"],
+            }
+            events.append(event)
     weights = list(Path(os.environ["MT3_CHECKPOINT_DIR"]).rglob("mt3.pth"))
-    return {"events": _events_from_midi(target, "mr_mt3"), "device": device,
-            "model_files": [str(x) for x in weights]}
+    return {"events": events, "device": device, "coverage": validated,
+            "targeted": bool(requested_segments), "model_files": [str(x) for x in weights]}
 
 
 def adtof(payload: dict, report) -> dict:
@@ -445,10 +703,12 @@ def beat_dsp(payload: dict, report) -> dict:
             "device": "cpu", "warnings": ["Beat fallback has no reliable downbeats; automatic grid snapping is disabled."]}
 
 
-PROVIDERS = {"basic_pitch": basic_pitch, "demucs": demucs, "roformer": roformer,
+PROVIDERS = {"basic_pitch": basic_pitch, "torchcrepe": torchcrepe_pitch,
+             "demucs": demucs, "roformer": roformer,
              "beat_this": beat_this, "transkun": transkun, "mr_mt3": mr_mt3,
              "adtof": adtof, "drums_dsp": drums_dsp, "beat_dsp": beat_dsp}
-DISTRIBUTIONS = {"basic_pitch": "basic-pitch", "demucs": "demucs", "roformer": "audio-separator",
+DISTRIBUTIONS = {"basic_pitch": "basic-pitch", "torchcrepe": "torchcrepe",
+                 "demucs": "demucs", "roformer": "audio-separator",
                  "beat_this": "beat-this", "transkun": "transkun", "mr_mt3": "mt3-infer", "adtof": "adtof-pytorch"}
 
 
@@ -459,8 +719,12 @@ def run_provider(provider: str, payload: dict, report) -> dict:
         version = importlib.metadata.version(DISTRIBUTIONS[provider])
     files = result.pop("model_files", [])
     checksums = {p: file_hash(Path(p)) for p in files if Path(p).is_file()}
-    result["provenance"] = {"provider": provider, "version": version, "model": PROVIDER_MODEL.get(provider, provider),
+    result["provenance"] = {"provider": provider, "version": version,
+                            "model": result.get("model", PROVIDER_MODEL.get(provider, provider)),
                             "device": result.get("device", "cpu"), "model_sha256": checksums}
+    for key in ("ensemble", "targeted", "coverage"):
+        if key in result:
+            result["provenance"][key] = result[key]
     if payload.get("models") and checksums:
         atomic_json(Path(payload["models"]) / "inventory" / (provider + ".json"), checksums)
     return result

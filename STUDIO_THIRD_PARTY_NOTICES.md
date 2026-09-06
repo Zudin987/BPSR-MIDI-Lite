@@ -18,6 +18,17 @@ Purpose: runs the Basic Pitch ONNX neural-network model.
 
 License: MIT (see the ONNX Runtime package/project license distributed by its maintainers).
 
+## torchcrepe
+
+Project: `maxrmorrison/torchcrepe`
+
+Purpose: independent pitch and periodicity evidence for vocal and bass stems.
+
+License: MIT.
+
+Studio installs pinned `torchcrepe==0.0.24` into the isolated separator runtime
+on first use. Its model assets are not bundled into the Lite application.
+
 ## imageio-ffmpeg / FFmpeg
 
 Project: `imageio/imageio-ffmpeg`
@@ -78,6 +89,10 @@ Studio Audio → Band uses the MIT-licensed tkinterdnd2 wrapper with its include
 TkDND notices. Optional AI engines run in separately installed environments;
 see [the model and checkpoint license notes](STUDIO_BAND_ACCURATE.md#third-party-modellicense-notes).
 The built-in spectral drum/beat fallback is project code.
+
+The development-only real-audio quality gate uses `mir_eval` 0.8.2 (ISC
+license) to write a repeatable synthetic-note benchmark. It is not imported by
+the Studio application or included in the Lite build.
 
 Transkun 2.0.1 depends on the MIT-licensed NCLS package. On Windows, Studio's
 isolated Python 3.11 runtime constrains this dependency to `ncls==0.0.68` and

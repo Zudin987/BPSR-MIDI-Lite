@@ -52,20 +52,21 @@ Subprocess exit, missing worker response and dead background-job conditions rest
 | Stage | Preferred implementation | Recovery |
 | --- | --- | --- |
 | Audio preparation | Bundled FFmpeg; stereo 44.1 kHz floating-point WAV | Clear error for unreadable audio |
-| Standard separation | Demucs `htdemucs_6s` | CPU retry after a CUDA failure; repair runtime if unavailable |
+| Standard separation | Demucs `htdemucs_6s` plus mixture-consistent spectral ownership | CPU retry after a CUDA failure; repair runtime if unavailable |
+| Auto CUDA separation | `htdemucs_6s` + fine-tuned `htdemucs_ft` evidence ensemble, then cross-stem leakage resolution | `htdemucs_6s` plus spectral ownership on CPU |
 | HQ separation | BS-RoFormer vocals/instrumental, then Demucs instrumental stems | Standard six-stem separation |
 | Beat/downbeat | Beat This! `final0` | Low-confidence spectral tempo estimate; no invented downbeats |
-| Vocal melody | Basic Pitch ONNX plus monophonic cleanup | Report transcription failure |
+| Vocal melody | Basic Pitch ONNX plus torchcrepe periodicity/pitch validation and monophonic cleanup | Basic Pitch evidence remains available |
 | Piano | Transkun V2 | Basic Pitch with a piano register |
-| Guitar / bass / other | Separately tuned Basic Pitch ONNX | Report transcription failure |
-| Musical cross-check | MR-MT3 | Continue without cross-check and record the failure |
+| Guitar / bass / other | Separately tuned Basic Pitch ONNX; bass also receives torchcrepe validation | Report transcription failure |
+| Musical cross-check | MR-MT3 only on ranked uncertain 8-second sections, capped to about 35% / 90 seconds | Continue without cross-check and record the failure |
 | Drums | Optional user-installed ADTOF PyTorch | MR-MT3 kit events validated against dedicated spectral onsets; spectral kick/snare/hat detection when MR-MT3 is unavailable |
 
 Auto uses HQ only when its runtime/model directory already exists and the machine reports at least 6 GB NVIDIA VRAM and 16 GB RAM. Explicit HQ can install the additional backend. Each worker tests an actual CUDA kernel and otherwise uses CPU. CPU conversion can be much slower than the song duration. Current input limits are 2 GB and 30 minutes. Six aligned stems are required; an unseparated mix is never represented as six isolated instruments.
 
-The common musical map records source, role, pitch or drum semantics, onset, duration, velocity, confidence and provenance. Cross-check evidence adjusts confidence; it does not append every detected note. Missing cross-check notes are weak negative evidence, not a veto. Repeated riffs, melody continuity, harmonics, register, shared beat proximity and sustained polyphony inform cleanup and arrangement. Small timing corrections are bounded; grace notes, swing and intentional offsets are retained rather than hard-quantized.
+The common musical map records source, role, pitch or drum semantics, onset, duration, velocity, confidence and provenance. MR-MT3 evidence adjusts confidence inside the sections it actually inspected; absence outside those windows is never treated as negative evidence. High-enough unmatched events can repair a bounded number of omissions inside those windows. Repeated riffs, melody continuity, harmonics, register, shared beat proximity and sustained polyphony inform cleanup and arrangement. Small timing corrections are bounded; grace notes, swing and intentional offsets are retained rather than hard-quantized.
 
-Confidence values are **heuristic evidence scores**, not calibrated probabilities. Basic Pitch activation amplitude, MIDI-only engine priors and source-quality priors are identified in the manifest. Demucs stem RMS is measured; source purity is left unknown. Synthetic CI verifies execution, alignment and export, not transcription accuracy on arbitrary commercial songs.
+Confidence values are **heuristic evidence scores**, not calibrated probabilities. Basic Pitch activation amplitude, torchcrepe periodicity, MIDI-only engine priors, dual-model agreement and measured time-frequency ownership are identified in the manifest. The separator allocates mixture energy once across the six stems, records spectral purity/leakage per stem, and reduces duplicate same-pitch events when another stem has materially stronger ownership. Synthetic CI publishes a repeatable `mir_eval` precision/recall/F1/overlap baseline; it does not claim accuracy on arbitrary commercial songs.
 
 ## BPSR arrangement and drums
 
@@ -75,7 +76,7 @@ Drums are semantic events, never pitched Basic Pitch notes. The external [`profi
 
 ## Runtime, cache and packaging
 
-The Studio GUI imports no Torch, Demucs, Transkun, Beat This!, MT3 or RoFormer. Heavy engines run sequentially in separate managed Python 3.11 environments; Demucs's older Torch cannot conflict with the other engines or Basic Pitch. The pinned uv bootstrap archive is checked against its SHA-256 before use.
+The Studio GUI imports no Torch, Demucs, torchcrepe, Transkun, Beat This!, MT3 or RoFormer. Heavy engines run sequentially in separate managed Python 3.11 environments. Demucs and torchcrepe share a matched PyTorch 2.11 environment, while other model stacks and Basic Pitch remain isolated. The pinned uv bootstrap archive is checked against its SHA-256 before use.
 
 On Windows, Transkun 2.0.1's unpinned `ncls` dependency is resolved through a generated uv constraint containing `ncls==0.0.68`, the release that provides a CPython 3.11 x64 Windows wheel. Studio also passes `--only-binary ncls`; if that compatible wheel ever becomes unavailable, setup fails clearly instead of trying to compile C code or asking the user to install MSVC. `transkun`, `ncls` and their exact versions are verified before the piano runtime receives a ready manifest.
 
@@ -95,6 +96,7 @@ Idle jobs expire after 14 days or when the 20 GB job cache budget is exceeded; a
 | yt-dlp | Existing Studio YouTube helper; direct fallback uses the SHA-256-verified helper and Deno support |
 | Basic Pitch | [Spotify, Apache-2.0](https://github.com/spotify/basic-pitch); existing Studio ONNX engine |
 | Demucs | [Meta, MIT code](https://github.com/facebookresearch/demucs); separate package and model download |
+| torchcrepe | [Max Morrison et al., MIT](https://github.com/maxrmorrison/torchcrepe); vocal/bass pitch-periodicity validation in the separator runtime |
 | Transkun V2 | [Yujia Yan, MIT](https://github.com/Yujia-Yan/Transkun); separate runtime, pretrained files supplied by its package |
 | Beat This! | [CPJKU, MIT](https://github.com/CPJKU/beat_this); separate checkpoint download |
 | MR-MT3 | [Official implementation, MIT](https://github.com/gudgud96/MR-MT3); [mt3-infer wrapper](https://github.com/openmirlab/mt3-infer) selects `mr_mt3` explicitly |
@@ -109,7 +111,7 @@ See `STUDIO_THIRD_PARTY_NOTICES.md` for runtime/tool notices including spotDL, y
 
 ## Development checks
 
-Run `python -m pytest -q` for regression tests. The Studio build workflow executes the real Tk workspace smoke at 640×480, validates failure/cancellation/re-arrangement, builds the single EXE, verifies the frozen Basic Pitch worker, then creates managed Python 3.11 and verifies the external source-only model worker can load the provider registry without importing the frozen Python 3.10 payload. The separate Windows **Studio real audio smoke** starts from a unique empty runtime root, enforces and records the compiler-free Transkun/NCLS policy, imports the installed packages and requires actual Demucs, Beat This!, Transkun and MR-MT3 execution; a separate job verifies HQ RoFormer separation and sample-count alignment.
+Run `python -m pytest -q` for regression tests. The Studio build workflow executes the real Tk workspace smoke at 640×480, validates failure/cancellation/re-arrangement, builds the single EXE, verifies the frozen Basic Pitch worker, then creates managed Python 3.11 and verifies the external source-only model worker can load the provider registry without importing the frozen Python 3.10 payload. The separate Windows **Studio real audio smoke** starts from a unique empty runtime root, enforces and records the compiler-free Transkun/NCLS policy, imports the installed packages and requires actual Demucs, torchcrepe, Beat This!, Transkun and targeted MR-MT3 execution. It records measured stem evidence and a `mir_eval` benchmark JSON; a separate job verifies HQ RoFormer separation and sample-count alignment.
 
 Downloader unit coverage validates result normalization, fallback scoring/selection, URL validation and shell-free command construction. Live downloader CI verifies public search results only and deliberately does not download copyrighted music.
 
