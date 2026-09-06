@@ -540,7 +540,7 @@ def test_mt3_cuda_runtime_is_one_cu128_transaction_with_real_kernel_validation(t
             python.parent.mkdir(parents=True, exist_ok=True)
             python.write_bytes(b"synthetic python")
         if "freeze" in command:
-            return "mt3-infer==0.2.0\ntorch==2.7.1+cu128\ntorchaudio==2.7.1+cu128\ntorchvision==0.22.1+cu128\n"
+            return "mt3-infer==0.2.0\ntorch==2.11.0+cu128\ntorchaudio==2.11.0+cu128\ntorchvision==0.26.0+cu128\n"
         return ""
 
     monkeypatch.setattr(runtime_module, "run_process", fake_run)
@@ -550,8 +550,10 @@ def test_mt3_cuda_runtime_is_one_cu128_transaction_with_real_kernel_validation(t
     assert len(installs) == 1
     install = installs[0]
     assert install[install.index("--torch-backend") + 1] == "cu128"
-    assert {"torch==2.7.1", "torchaudio==2.7.1", "torchvision==0.22.1"} <= set(install)
+    assert {"torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0"} <= set(install)
     validation = next(command[-1] for command in commands if len(command) >= 3 and command[-2] == "-c")
+    assert "import mt3_infer, torch, torchaudio, torchvision, transformers" in validation
+    assert "'torch': '2.11.0'" in validation and "'torchvision': '0.26.0'" in validation
     assert "torch.version.cuda" in validation
     assert "torch.cuda.is_available()" in validation
     assert "torch.cuda.synchronize()" in validation

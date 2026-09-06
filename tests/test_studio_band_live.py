@@ -68,9 +68,9 @@ def test_real_audio_pipeline(tmp_path):
 
     mt3_record = read_json(runtime.runtime_root / "mt3" / "studio-runtime.json")
     assert mt3_record["torch_backend"] == "cpu" and mt3_record["validated"] is True
-    assert "torch==2.7.1+cpu" in mt3_record["packages"]
-    assert "torchaudio==2.7.1+cpu" in mt3_record["packages"]
-    assert "torchvision==0.22.1+cpu" in mt3_record["packages"]
+    assert "torch==2.11.0+cpu" in mt3_record["packages"]
+    assert "torchaudio==2.11.0+cpu" in mt3_record["packages"]
+    assert "torchvision==0.26.0+cpu" in mt3_record["packages"]
 
 
 @pytest.mark.skipif(
@@ -96,9 +96,9 @@ def test_windows_mt3_cuda_wheels_resolve_from_official_backend(tmp_path):
     )
     plan = resolved.stdout + "\n" + resolved.stderr
     for requirement in (
-        "torch==2.7.1+cu128",
-        "torchaudio==2.7.1+cu128",
-        "torchvision==0.22.1+cu128",
+        "torch==2.11.0+cu128",
+        "torchaudio==2.11.0+cu128",
+        "torchvision==0.26.0+cu128",
     ):
         assert requirement in plan
     reports = Path("model-smoke-report")

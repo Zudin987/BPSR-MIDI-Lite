@@ -27,10 +27,10 @@ RUNTIMES = {
     "separator": ["demucs==4.0.1", "torch==2.0.1", "torchaudio==2.0.2", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "piano": ["transkun==2.0.1", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1", "setuptools<81"],
     "beat": ["beat-this==1.1.0", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
-    # mt3-infer 0.2.0's MR-MT3 adapter was modernized against torch 2.7.1.
-    # That release also has the first stable Windows cu128 wheel family needed
-    # by NVIDIA Blackwell/RTX 50-series GPUs.
-    "mt3": ["mt3-infer==0.2.0", "torch==2.7.1", "torchaudio==2.7.1", "torchvision==0.22.1", "transformers==4.57.1", "numpy==1.26.4"],
+    # mt3-infer 0.2.0 supports torch >=2.4. Pin the matched 2.11 wheel family:
+    # unlike the early 2.7.1 cu128 Windows build, it can execute on current
+    # Blackwell/RTX 50-series GPUs as well as earlier supported NVIDIA devices.
+    "mt3": ["mt3-infer==0.2.0", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "transformers==4.57.1", "numpy==1.26.4"],
     "hq": ["audio-separator[cpu]==0.30.2", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
 }
 
@@ -62,7 +62,15 @@ RUNTIME_VALIDATION = {
         "if __import__('os').name == 'nt': assert metadata.version('ncls') == '0.0.68'"
     ),
     "beat": "import beat_this, torch, torchaudio",
-    "mt3": "import mt3_infer, torch, torchaudio, transformers",
+    "mt3": (
+        "import importlib.metadata as metadata\n"
+        "import mt3_infer, torch, torchaudio, torchvision, transformers\n"
+        "expected = {'mt3-infer': '0.2.0', 'torch': '2.11.0', "
+        "'torchaudio': '2.11.0', 'torchvision': '0.26.0', 'transformers': '4.57.1'}\n"
+        "for package, version in expected.items():\n"
+        "    actual = metadata.version(package).partition('+')[0]\n"
+        "    assert actual == version, f'Expected {package} {version}, found {actual}'"
+    ),
     "hq": "import audio_separator, torch, torchaudio",
 }
 PROVIDER_RUNTIME = {"demucs": "separator", "roformer": "hq", "transkun": "piano",
