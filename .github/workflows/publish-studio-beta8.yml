@@ -1,0 +1,83 @@
+name: Publish Studio beta.8
+
+on:
+  push:
+    branches:
+      - release/studio-beta8-418c777
+    paths:
+      - .github/workflows/publish-studio-beta8.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Download exact validated Studio artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: BPSR-MIDI-Studio-Experimental-Beta-Windows
+          path: release-studio
+          github-token: ${{ github.token }}
+          run-id: 34028844573
+
+      - name: Verify source run and package hashes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $run = gh api repos/${{ github.repository }}/actions/runs/34028844573 | ConvertFrom-Json
+          if ($run.head_sha -ne "418c77756d59edefa74b7a00269d2e07e8ee9225") { throw "Artifact run is not from the approved exact head" }
+          if ($run.conclusion -ne "success") { throw "Artifact run did not complete successfully" }
+
+          $zipHash = (Get-FileHash "release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip" -Algorithm SHA256).Hash.ToLower()
+          if ($zipHash -ne "45f01f675c0f7ecfd7e6abd94ba70da21b760a35c1502e03f7d9988187b20651") { throw "beta.8 ZIP hash mismatch" }
+
+          $exeHash = (Get-FileHash "release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe" -Algorithm SHA256).Hash.ToLower()
+          if ($exeHash -ne "456b37087fa580eaeabe5d182407f133cd648f7dd42de7b00b119837c001b75d") { throw "Studio EXE hash mismatch" }
+          if ((Get-Content "release-studio/SHA256SUMS-STUDIO.txt" -Raw) -notmatch [regex]::Escape($exeHash)) { throw "Studio checksum manifest mismatch" }
+
+      - name: Attach beta.8 to the current Lite release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view v3.4.0 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "Release v3.4.0 does not exist" }
+          gh release upload v3.4.0 `
+            release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip `
+            release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
+            release-studio/SHA256SUMS-STUDIO.txt `
+            release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
+            release-studio/STUDIO_BAND_ACCURATE.md `
+            release-studio/FFMPEG_BUILD_INFO.txt `
+            --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Studio beta.8 release upload failed" }
+
+      - name: Verify published assets byte for byte
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $verifyDir = Join-Path $env:RUNNER_TEMP "studio-beta8-release-verify"
+          New-Item -ItemType Directory -Force $verifyDir | Out-Null
+          $names = @(
+            "BPSR-MIDI-Studio-beta.8-Windows.zip",
+            "BPSR-MIDI-Studio-Experimental-Beta.exe",
+            "SHA256SUMS-STUDIO.txt",
+            "STUDIO_THIRD_PARTY_NOTICES.md",
+            "STUDIO_BAND_ACCURATE.md",
+            "FFMPEG_BUILD_INFO.txt"
+          )
+          foreach ($name in $names) {
+            gh release download v3.4.0 --dir $verifyDir --pattern $name
+            if ($LASTEXITCODE -ne 0) { throw "Could not download published asset $name" }
+            $localHash = (Get-FileHash (Join-Path "release-studio" $name) -Algorithm SHA256).Hash.ToLower()
+            $remoteHash = (Get-FileHash (Join-Path $verifyDir $name) -Algorithm SHA256).Hash.ToLower()
+            if ($localHash -ne $remoteHash) { throw "Published asset hash mismatch for $name" }
+          }
+          Write-Host "Studio beta.8 release assets match exact-head CI outputs byte for byte."
