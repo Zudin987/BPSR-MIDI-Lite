@@ -57,7 +57,7 @@ def test_lite_and_studio_keep_shared_2026_ui_while_studio_adds_final_beta_layer(
     assert "install_full_ui_overhaul(app)" in studio
     assert "install_video_audit_ui()" in studio
     assert 'app.APP_VERSION = "3.4.0"' in lite
-    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.8"' in studio
+    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.9"' in studio
 
 
 def test_online_search_ui_is_search_first_with_verify_fallback() -> None:

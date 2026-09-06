@@ -144,7 +144,7 @@ def test_recording_driven_round2_runtime_contract() -> None:
             check=False,
         )
         assert result.returncode == 0, (
-            f"beta.8 recording-driven UI subprocess failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"beta.9 recording-driven UI subprocess failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
 
@@ -154,4 +154,4 @@ def test_round2_is_installed_after_the_first_video_audit() -> None:
     compat = launcher.index("install_video_audit_compat()")
     round2 = launcher.index("install_video_audit_round2()")
     assert first < compat < round2
-    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.8"' in launcher
+    assert 'app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.9"' in launcher
