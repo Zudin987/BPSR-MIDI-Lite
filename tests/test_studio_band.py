@@ -401,7 +401,6 @@ def test_incompatible_cuda_kernel_can_never_silently_become_mt3_cpu(monkeypatch)
 
 
 def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, monkeypatch):
-    import numpy as np
     import studio_band.providers as providers
 
     class FakeTensor:
@@ -424,6 +423,11 @@ def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, m
         def save(self, path):
             Path(path).write_bytes(b"synthetic midi")
 
+    class FakeStereoAudio:
+        def mean(self, axis):
+            assert axis == 1
+            return [0.0] * 320
+
     class FakeModel:
         def preprocess(self, audio, sample_rate):
             calls.append(("preprocess", len(audio), sample_rate))
@@ -440,7 +444,7 @@ def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, m
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
     monkeypatch.setitem(sys.modules, "soxr", SimpleNamespace(resample=lambda audio, *_args: audio))
     monkeypatch.setitem(sys.modules, "mt3_infer", SimpleNamespace(load_model=lambda *_args, **_kwargs: FakeModel()))
-    monkeypatch.setattr(providers, "_audio", lambda _path: (np.zeros((320, 2), dtype="float32"), 16000))
+    monkeypatch.setattr(providers, "_audio", lambda _path: (FakeStereoAudio(), 16000))
     monkeypatch.setattr(providers, "_events_from_midi", lambda *_args: [])
     monkeypatch.setenv("MT3_CHECKPOINT_DIR", str(tmp_path / "models"))
     updates = []
