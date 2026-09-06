@@ -177,7 +177,7 @@ jobs:
             "release-studio/STUDIO_BAND_ACCURATE.md"
             "release-studio/FFMPEG_BUILD_INFO.txt"
           )
-          Compress-Archive -LiteralPath $zipFiles -DestinationPath release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip
+          Compress-Archive -LiteralPath $zipFiles -DestinationPath release-studio/BPSR-MIDI-Studio-beta.9-Windows.zip
 
       - name: Smoke test frozen Studio worker without launching the GUI
         shell: pwsh
@@ -245,10 +245,13 @@ jobs:
             Start-Sleep -Seconds 15
           }
 
+          gh release delete-asset $tag BPSR-MIDI-Studio-beta.8-Windows.zip -y 2>$null | Out-Null
           gh release upload $tag `
+            release-studio/BPSR-MIDI-Studio-beta.9-Windows.zip `
             release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
             release-studio/SHA256SUMS-STUDIO.txt `
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
+            release-studio/STUDIO_BAND_ACCURATE.md `
             release-studio/FFMPEG_BUILD_INFO.txt `
             --clobber
           if ($LASTEXITCODE -ne 0) { throw "Studio release asset upload failed" }
@@ -258,13 +261,15 @@ jobs:
           New-Item -ItemType Directory -Force $verifyDir | Out-Null
           gh release download $tag `
             --dir $verifyDir `
+            --pattern "BPSR-MIDI-Studio-beta.9-Windows.zip" `
             --pattern "BPSR-MIDI-Studio-Experimental-Beta.exe" `
             --pattern "SHA256SUMS-STUDIO.txt" `
             --pattern "STUDIO_THIRD_PARTY_NOTICES.md" `
+            --pattern "STUDIO_BAND_ACCURATE.md" `
             --pattern "FFMPEG_BUILD_INFO.txt"
           if ($LASTEXITCODE -ne 0) { throw "Could not download published Studio assets for verification" }
 
-          foreach ($name in @("BPSR-MIDI-Studio-Experimental-Beta.exe", "SHA256SUMS-STUDIO.txt", "STUDIO_THIRD_PARTY_NOTICES.md", "FFMPEG_BUILD_INFO.txt")) {
+          foreach ($name in @("BPSR-MIDI-Studio-beta.9-Windows.zip", "BPSR-MIDI-Studio-Experimental-Beta.exe", "SHA256SUMS-STUDIO.txt", "STUDIO_THIRD_PARTY_NOTICES.md", "STUDIO_BAND_ACCURATE.md", "FFMPEG_BUILD_INFO.txt")) {
             $local = Join-Path "release-studio" $name
             $remote = Join-Path $verifyDir $name
             if (-not (Test-Path $remote)) { throw "Published release is missing Studio asset $name" }
