@@ -12,7 +12,7 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 
-from .progress import ProgressEvent, as_progress_event, emit_progress
+from .progress import ProgressEvent, as_progress_event, emit_progress, format_elapsed
 from .storage import atomic_json, read_json
 
 PROTOCOL_VERSION = 1
@@ -124,7 +124,8 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
     stderr_reader = threading.Thread(target=drain, args=(process.stderr, stderr_lines), daemon=True)
     stdout_reader.start()
     stderr_reader.start()
-    deadline, last_progress, stall_reported_at = time.monotonic() + timeout, None, None
+    deadline, last_progress, last_progress_event = time.monotonic() + timeout, None, None
+    stall_reported_at = None
     try:
         while process.poll() is None:
             check_cancel(cancel)
@@ -139,6 +140,7 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
                     if event.message and signature != last_progress:
                         progress(event)
                         last_progress = signature
+                        last_progress_event = event
                         note_activity()
                 except (OSError, ValueError):
                     pass
@@ -147,14 +149,27 @@ def run_process(command: list[str], *, stage: str, cancel=None, progress=None,
             if stall_reported_at is not None and activity_at > stall_reported_at:
                 stall_reported_at = None
             idle = time.monotonic() - activity_at
-            if progress is not None and stall_warning_after > 0 and idle >= stall_warning_after and stall_reported_at is None:
+            repeat_stall_warning = (
+                stall_reported_at is None
+                or time.monotonic() - stall_reported_at >= stall_warning_after
+            )
+            if progress is not None and stall_warning_after > 0 and idle >= stall_warning_after and repeat_stall_warning:
                 setup = "setup" in stage.casefold() or "install" in stage.casefold()
+                previous = last_progress_event
+                operation = (
+                    previous.message.rstrip(".\u2026 ") if previous is not None and previous.message
+                    else ("Preparing runtime" if setup else "Running component")
+                )
                 emit_progress(
                     progress,
-                    "No setup activity for 2 minutes — checking worker…" if setup else
-                    "No worker activity for 2 minutes — the process is still running…",
+                    f"{operation} — no new progress report for {format_elapsed(idle)}; "
+                    f"the {'setup ' if setup else ''}worker process is still running…",
                     activity="waiting",
+                    stage_fraction=previous.stage_fraction if previous is not None else None,
                     indeterminate=True,
+                    bytes_done=previous.bytes_done if previous is not None else None,
+                    bytes_total=previous.bytes_total if previous is not None else None,
+                    last_reported_activity=previous.activity if previous is not None else "",
                 )
                 stall_reported_at = time.monotonic()
             if cancel is None:

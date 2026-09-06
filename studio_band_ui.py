@@ -123,7 +123,7 @@ class BandAudioTab:
         self.events, self.cancel, self.preview = queue.Queue(), threading.Event(), PreviewPlayer()
         self.busy, self.manifest, self.record, self.details = False, None, None, ""
         self.active_task, self.acquired_path, self.source_metadata = "", None, None
-        self.job_thread, self.job_started_at, self.last_activity_at = None, 0.0, 0.0
+        self.job_thread, self.job_started_at, self.stage_started_at, self.last_activity_at = None, 0.0, 0.0, 0.0
         self.current_progress, self._last_elapsed_second = None, -1
         self.progress_history: list[str] = []
         self.source_setup_window = None
@@ -487,11 +487,15 @@ class BandAudioTab:
         if not force and second == self._last_elapsed_second:
             return
         self._last_elapsed_second = second
-        self.status.set(progress_line(self.current_progress, elapsed))
+        stage_elapsed = max(0.0, time.monotonic() - self.stage_started_at) if self.stage_started_at else None
+        self.status.set(progress_line(self.current_progress, elapsed, stage_elapsed=stage_elapsed))
         self.progress_context_var.set(progress_context(self.current_progress))
 
     def _accept_progress(self, value):
         event = as_progress_event(value)
+        previous_stage = getattr(self.current_progress, "stage_id", "")
+        if event.stage_id and event.stage_id != previous_stage:
+            self.stage_started_at = time.monotonic()
         self.current_progress = event
         self.last_activity_at = time.monotonic()
         elapsed = max(0.0, self.last_activity_at - self.job_started_at) if self.job_started_at else 0.0
@@ -536,7 +540,7 @@ class BandAudioTab:
         current_button_text = str(self.convert_button.cget("text"))
         if current_button_text != "Retry conversion":
             self._convert_idle_text = current_button_text
-        self.job_started_at = self.last_activity_at = time.monotonic()
+        self.job_started_at = self.stage_started_at = self.last_activity_at = time.monotonic()
         self._last_elapsed_second = -1
         self.progress_history = []
         self.preview.stop()

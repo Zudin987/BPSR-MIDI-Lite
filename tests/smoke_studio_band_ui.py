@@ -31,6 +31,7 @@ def main():
         from studio_band.arrange import ArrangementSettings, arrange, load_drum_profile
         from studio_band.export import export_arrangement
         from studio_band.music import BeatMap, MasterSong, MusicEvent
+        from studio_band.progress import ProgressEvent
         from studio_band.protocol import RuntimeSetupError, StageError, run_process
         app = studio_launcher.app.App()
         errors = []
@@ -132,6 +133,27 @@ def main():
             audio.workspace_canvas.yview_moveto(0)
             pump()
 
+            # A model that cannot expose incremental inference callbacks keeps
+            # its real operation/device visible and separates stage time from
+            # total job time instead of looking frozen at a bare percentage.
+            audio._accept_progress(ProgressEvent(
+                "Cross-checking musical evidence on CUDA…",
+                stage_id="cross_check", phase="Analyzing song", activity="gpu",
+                overall=88.2, stage_fraction=.2,
+            ))
+            now = time.monotonic()
+            audio.job_started_at = now - (17 * 60 + 32)
+            audio.stage_started_at = now - (8 * 60)
+            audio._accept_progress(ProgressEvent(
+                "Cross-checking musical evidence on CUDA — no new progress report for 08:00; "
+                "the worker process is still running…",
+                stage_id="cross_check", phase="Analyzing song", activity="waiting",
+                overall=88.2, stage_fraction=.2, last_reported_activity="gpu",
+            ))
+            assert "on CUDA" in audio.status.get(), "Silent inference lost the last real device"
+            assert "stage 08:00" in audio.status.get() and "total 17:32" in audio.status.get()
+            assert "Worker process alive" in audio.progress_context_var.get()
+
             # The real ncls/MSVC class of setup failure must end the job and
             # keep the concise reason in the normal UI while preserving the
             # installer output under Details.
@@ -204,6 +226,7 @@ def main():
                 "small_window_toolbar_reflow": True,
                 "horizontal_table_scroll": True,
                 "persistent_progress": True,
+                "silent_inference_heartbeat": True,
                 "failed_setup_restores_controls": True,
                 "resolver_scrollbar": True,
                 "cancel_current_job": True,

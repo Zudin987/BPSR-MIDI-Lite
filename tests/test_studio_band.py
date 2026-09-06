@@ -329,8 +329,32 @@ def test_live_subprocess_emits_nonfatal_stall_warning():
         timeout=2,
         stall_warning_after=.05,
     )
-    assert any("No setup activity" in update for update in updates)
+    assert any("no new progress report" in update for update in updates)
+    assert any("setup worker process is still running" in update for update in updates)
     assert any(isinstance(update, ProgressEvent) and update.activity == "waiting" for update in updates)
+
+
+def test_stall_warning_preserves_last_real_operation_and_device(tmp_path):
+    progress_path = tmp_path / "progress.json"
+    script = (
+        "import json,sys,time; "
+        "json.dump({'message':'Cross-checking musical evidence on CUDA…','activity':'cuda',"
+        "'stage_fraction':0.2},open(sys.argv[1],'w')); time.sleep(.25)"
+    )
+    updates = []
+    run_process(
+        [sys.executable, "-c", script, str(progress_path)],
+        stage="infer",
+        progress=updates.append,
+        progress_path=progress_path,
+        timeout=2,
+        stall_warning_after=.05,
+    )
+    warning = next(update for update in updates if update.activity == "waiting")
+    assert warning.startswith("Cross-checking musical evidence on CUDA — no new progress report")
+    assert "worker process is still running" in warning
+    assert warning.stage_fraction == .2
+    assert warning.last_reported_activity == "cuda"
 
 
 def test_file_worker_progress_preserves_structured_metadata(tmp_path):

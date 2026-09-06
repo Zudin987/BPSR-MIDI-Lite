@@ -36,6 +36,40 @@ def test_indeterminate_stage_holds_weighted_boundary_until_real_completion():
     assert updates[-1].overall == 40 and updates[-1].indeterminate is False
 
 
+def test_silent_inference_heartbeat_keeps_real_stage_device_and_percentage():
+    updates = []
+    flow = PipelineProgress(updates.append)
+    flow.stage("cross_check", activity="gpu")
+    flow.detail("cross_check", ProgressEvent(
+        "Cross-checking musical evidence on CUDA…",
+        activity="cuda",
+        stage_fraction=.2,
+    ))
+    flow.detail("cross_check", ProgressEvent(
+        "Cross-checking musical evidence on CUDA — no new progress report for 08:00; "
+        "the worker process is still running…",
+        activity="waiting",
+        stage_fraction=.2,
+        last_reported_activity="cuda",
+    ))
+    event = updates[-1]
+    assert event.overall == 88.2
+    assert event.activity == "waiting"
+    assert event.last_reported_activity == "gpu"
+    assert "on CUDA" in event.message
+    context = progress_context(event)
+    assert "Worker process alive" in context
+    assert "last reported activity was GPU processing" in context
+
+
+def test_progress_line_distinguishes_current_stage_from_total_elapsed():
+    event = ProgressEvent("Cross-checking musical evidence on CUDA", overall=88.2)
+    line = progress_line(event, 17 * 60 + 32, stage_elapsed=8 * 60)
+    assert "88%" in line
+    assert "stage 08:00" in line
+    assert "total 17:32" in line
+
+
 def test_cached_runtime_check_does_not_claim_first_time_setup():
     updates = []
     PipelineProgress(updates.append).setup_ready("Runtime and transcription components ready")

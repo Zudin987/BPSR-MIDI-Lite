@@ -48,6 +48,7 @@ class ProgressEvent(str):
         indeterminate: bool = True,
         bytes_done: int | None = None,
         bytes_total: int | None = None,
+        last_reported_activity: str = "",
     ) -> "ProgressEvent":
         clean = str(message).strip()
         value = str.__new__(cls, clean)
@@ -62,6 +63,7 @@ class ProgressEvent(str):
         value.indeterminate = bool(indeterminate)
         value.bytes_done = None if bytes_done is None else max(0, int(bytes_done))
         value.bytes_total = None if bytes_total is None else max(0, int(bytes_total))
+        value.last_reported_activity = str(last_reported_activity)
         return value
 
     def to_dict(self) -> dict[str, Any]:
@@ -75,6 +77,7 @@ class ProgressEvent(str):
             "indeterminate": self.indeterminate,
             "bytes_done": self.bytes_done,
             "bytes_total": self.bytes_total,
+            "last_reported_activity": self.last_reported_activity,
         }
 
     def changed(self, **values: Any) -> "ProgressEvent":
@@ -99,6 +102,7 @@ def as_progress_event(value: Any) -> ProgressEvent:
                 "indeterminate",
                 "bytes_done",
                 "bytes_total",
+                "last_reported_activity",
             )
             if key in value
         }
@@ -114,7 +118,7 @@ def emit_progress(callback: Callable[[str], None] | None, message: str, **metada
 
 def _activity_for(event: ProgressEvent, fallback: str = "processing") -> str:
     if event.activity:
-        return event.activity
+        return "gpu" if event.activity.casefold() == "cuda" else event.activity
     text = event.message.casefold()
     if "no setup activity" in text or "no worker activity" in text or "waiting" in text:
         return "waiting"
@@ -167,6 +171,10 @@ class PipelineProgress:
                 indeterminate=event.indeterminate,
                 bytes_done=event.bytes_done,
                 bytes_total=event.bytes_total,
+                last_reported_activity=(
+                    "gpu" if event.last_reported_activity.casefold() == "cuda"
+                    else event.last_reported_activity
+                ),
             )
         )
 
@@ -230,6 +238,10 @@ class PipelineProgress:
                 indeterminate=event.indeterminate,
                 bytes_done=event.bytes_done,
                 bytes_total=event.bytes_total,
+                last_reported_activity=(
+                    "gpu" if event.last_reported_activity.casefold() == "cuda"
+                    else event.last_reported_activity
+                ),
             )
         )
 
@@ -280,7 +292,12 @@ def format_bytes(value: int) -> str:
     return f"{amount:.1f} TB"
 
 
-def progress_line(event: ProgressEvent, elapsed: float) -> str:
+def progress_line(
+    event: ProgressEvent,
+    elapsed: float,
+    *,
+    stage_elapsed: float | None = None,
+) -> str:
     parts = [event.message.rstrip(".\u2026 ") or "Working"]
     if event.bytes_done is not None:
         transferred = format_bytes(event.bytes_done)
@@ -290,7 +307,11 @@ def progress_line(event: ProgressEvent, elapsed: float) -> str:
         parts.append(transferred)
     if event.overall is not None:
         parts.append(f"{event.overall:.0f}%")
-    parts.append(format_elapsed(elapsed))
+    if stage_elapsed is None:
+        parts.append(format_elapsed(elapsed))
+    else:
+        parts.append(f"stage {format_elapsed(stage_elapsed)}")
+        parts.append(f"total {format_elapsed(elapsed)}")
     return " \u00b7 ".join(parts)
 
 
@@ -300,7 +321,7 @@ def progress_context(event: ProgressEvent) -> str:
         "install": "Installing components",
         "cpu": "CPU processing",
         "gpu": "GPU processing",
-        "waiting": "Waiting; checking worker health",
+        "waiting": "Worker process alive; waiting for the component's next progress report",
         "cache": "Using cached components",
         "disk": "Writing files",
         "check": "Checking local components",
@@ -308,6 +329,15 @@ def progress_context(event: ProgressEvent) -> str:
         "complete": "Stage complete",
         "processing": "Processing",
     }.get(event.activity, event.activity.replace("_", " ").title() if event.activity else "Processing")
+    if event.activity == "waiting" and event.last_reported_activity:
+        prior = {
+            "gpu": "GPU processing",
+            "cpu": "CPU processing",
+            "download": "downloading",
+            "install": "installing components",
+            "disk": "writing files",
+        }.get(event.last_reported_activity, event.last_reported_activity.replace("_", " "))
+        activity += f"; last reported activity was {prior}"
     if event.phase == "First-time setup":
         return f"First-time setup \u2014 {activity}. Downloaded components are cached for future songs."
     if event.phase:
