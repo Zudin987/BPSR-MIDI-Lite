@@ -83,6 +83,16 @@ When Studio first installs the isolated spotDL runtime it also attempts spotDL's
 
 See the Deno project for its current MIT license and notices.
 
+## MuScriptor
+
+Project: `muscriptor/muscriptor`
+
+Purpose: optional full-song instrument and note evidence before targeted repair and confidence fusion.
+
+Code license: MIT. Published model weights are gated and licensed CC BY-NC 4.0.
+
+Studio installs pinned `muscriptor==0.3.0` only into its isolated NumPy 2 runtime. The weights are not bundled. Auto uses the model only when CUDA and previously accepted/cached, local, or authenticated Hugging Face access are available; Medium/Large are explicit Advanced choices.
+
 ## Other dependencies
 
 Studio Audio → Band uses the MIT-licensed tkinterdnd2 wrapper with its included

@@ -32,9 +32,13 @@ def agreements(event, index):
 
 def uncertain_regions(primary: list[MusicEvent], duration: float, stem_metrics: dict | None = None,
                       *, window: float = 8.0, max_fraction: float = .35,
-                      max_seconds: float = 90.0) -> list[dict]:
+                      max_seconds: float = 90.0,
+                      reference: list[MusicEvent] | None = None) -> list[dict]:
     """Select a bounded set of low-confidence windows for expensive repair."""
     stem_metrics = stem_metrics or {}
+    reference_index = _index([
+        event for event in (reference or []) if event.engine == "muscriptor"
+    ])
     candidates = []
     for start in [index * window for index in range(max(1, int((duration + window - 1e-9) // window)))]:
         end = min(duration, start + window)
@@ -50,8 +54,16 @@ def uncertain_regions(primary: list[MusicEvent], duration: float, stem_metrics: 
         spectral_confidence = sum(spectral) / len(spectral) if spectral else .50
         leakage_score = sum(leakage) / len(leakage) if leakage else .50
         low_share = (sum(event.confidence < .58 for event in events) / len(events)) if events else 1.0
+        global_support = (
+            sum(bool(agreements(event, reference_index)) for event in events) / len(events)
+            if events else 0.0
+        )
         score = (.42 * (1-event_confidence) + .28 * (1-spectral_confidence) +
                  .18 * leakage_score + .12 * low_share)
+        # A full-song model is evidence, not ground truth. Agreement reduces
+        # the expensive repair priority without allowing MuScriptor alone to
+        # erase a specialist event or hide a genuinely weak stem.
+        score *= 1.0 - 0.24 * global_support
         if score >= .28:
             reasons = []
             if not events or event_confidence < .62:
@@ -61,7 +73,7 @@ def uncertain_regions(primary: list[MusicEvent], duration: float, stem_metrics: 
             if leakage_score > .38:
                 reasons.append("cross_stem_leakage")
             candidates.append({"start": start, "end": end, "score": round(score, 4),
-                               "reasons": reasons})
+                               "reasons": reasons, "global_support": round(global_support, 4)})
     # At least one window may be inspected, but a normal song is capped to 35%
     # (and 90 seconds) so enabling cross-check cannot imply a full-song MT3 run.
     budget = min(max_seconds, max(window, duration * max_fraction))

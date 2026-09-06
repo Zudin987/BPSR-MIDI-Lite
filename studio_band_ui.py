@@ -138,7 +138,11 @@ class BandAudioTab:
         self.melody = tk.StringVar(app, value="Auto")
         self.quality = tk.StringVar(app, value="Auto")
         self.device = tk.StringVar(app, value="auto")
-        self.cross_check = tk.BooleanVar(app, value=True)
+        # Targeted MR-MT3 remains available, but is opt-in: on some Windows
+        # systems its third-party forward pass can take many minutes without
+        # granular progress. The faster specialist pipeline stays the default.
+        self.cross_check = tk.BooleanVar(app, value=False)
+        self.global_model = tk.StringVar(app, value="auto")
         self.install = tk.BooleanVar(app, value=True)
         self.status = tk.StringVar(app, value="Choose or drop a song to create four playable band parts.")
         self.progress_context_var = tk.StringVar(app, value="Ready")
@@ -570,8 +574,14 @@ class BandAudioTab:
     def convert(self):
         source = Path(self.path.get().strip().strip('"'))
         metadata = self.source_metadata if self.acquired_path and source == self.acquired_path else None
-        settings = ConversionSettings(self.quality.get().lower(), self.device.get(), self.install.get(),
-                                      self.cross_check.get(), self.arrangement_settings())
+        settings = ConversionSettings(
+            stem_quality=self.quality.get().lower(),
+            device=self.device.get(),
+            install_models=self.install.get(),
+            cross_check=self.cross_check.get(),
+            arrangement=self.arrangement_settings(),
+            global_model=self.global_model.get(),
+        )
         self.start(lambda: self.pipeline.convert(source, settings, cancel=self.cancel, source_metadata=metadata,
                                                  progress=lambda text: self.events.put(("progress", text))),
                    "done", "conversion")
@@ -721,9 +731,19 @@ class BandAudioTab:
         ttk.Checkbutton(content, text="Install missing recommended models automatically", variable=self.install).pack(anchor="w", pady=4)
         ttk.Checkbutton(content, text="Independent musical cross-check", variable=self.cross_check).pack(anchor="w")
         ttk.Combobox(content, textvariable=self.device, values=("auto", "cpu", "cuda"), state="readonly", width=12).pack(anchor="w", pady=6)
+        global_row = ttk.Frame(content)
+        global_row.pack(anchor="w", fill="x", pady=(0, 6))
+        ttk.Label(global_row, text="Global music judge", width=20).pack(side="left")
+        ttk.Combobox(
+            global_row,
+            textvariable=self.global_model,
+            values=("auto", "off", "medium", "large"),
+            state="readonly",
+            width=12,
+        ).pack(side="left")
         cross_check_note = ttk.Label(
             content,
-            text="The cross-check now inspects only low-confidence sections. Auto uses verified CUDA; if GPU execution cannot start, Studio skips it instead of silently running for hours on CPU. Choose CPU only to opt into the slower path.",
+            text="MuScriptor Auto runs Medium only with CUDA plus cached/local weights or authenticated Hugging Face access; Medium/Large explicitly opt into its gated model download. Independent MR-MT3 then inspects only remaining low-confidence sections and is off by default to keep conversions responsive.",
             wraplength=650, justify="left", style="Hint.TLabel",
         )
         cross_check_note.pack(anchor="w", pady=(0, 6))
@@ -735,7 +755,7 @@ class BandAudioTab:
             ttk.Combobox(row, textvariable=self.tiers[part], values=values, state="readonly", width=10).pack(side="left")
         for row in self.pipeline.runtimes.statuses():
             ttk.Label(content, text=f"{row['runtime']}: {row['status']}").pack(anchor="w")
-        engine_note = ttk.Label(content, text="Auto + CUDA: htdemucs_6s/ft ensemble and leakage cleanup. Standard: Demucs 6 stems. HQ: BS-RoFormer vocals, then Demucs instruments. Vocal/Bass validation: torchcrepe. Piano: Transkun V2. Cross-check: targeted MR-MT3.\nADTOF is a user-installed option; its port has no declared license. HQ weights and optional engines are downloaded separately, not included in this executable.", wraplength=650, justify="left")
+        engine_note = ttk.Label(content, text="Auto + CUDA: BS-RoFormer vocal/instrumental split when ready, then htdemucs_6s/ft ensemble and leakage cleanup. Vocal/Bass validation: torchcrepe. Piano: Transkun V2. Global evidence: optional MuScriptor Medium/Large. Repair: targeted MR-MT3.\nADTOF is a user-installed option. Aria-AMT and DrumSep remain optional integration points until they have deterministic Windows packages/checkpoints. Gated and optional weights are downloaded separately, not included in this executable.", wraplength=650, justify="left")
         engine_note.pack(anchor="w", pady=8)
         content.bind("<Configure>", lambda event: (
             intro.configure(wraplength=max(260, event.width - 28)),

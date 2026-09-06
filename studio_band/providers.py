@@ -533,6 +533,97 @@ def transkun(payload: dict, report) -> dict:
             "model_files": [str(weight), str(config)]}
 
 
+def _muscriptor_source(instrument: str) -> str:
+    """Map MuScriptor's MT3_FULL_PLUS instrument groups onto BPSR parts."""
+    name = instrument.casefold().replace(" ", "_")
+    if name in {"voice", "vocals", "singing_voice"}:
+        return "vocals"
+    if "piano" in name or name == "organ":
+        return "piano"
+    if "guitar" in name:
+        return "guitar"
+    if "bass" in name:
+        return "bass"
+    if name == "drums":
+        return "drums"
+    return "other"
+
+
+def muscriptor(payload: dict, report) -> dict:
+    """Run one global transcription pass as independent fusion evidence."""
+    from muscriptor.events import NoteEndEvent, ProgressEvent as MuScriptorProgress
+    from muscriptor.transcription_model import TranscriptionModel
+
+    variant = str(payload.get("model", "medium")).casefold()
+    if variant not in {"medium", "large"}:
+        raise ValueError("MuScriptor model must be Medium or Large")
+    device = device_for(payload.get("device", "auto"), allow_cpu_fallback=False)
+    override = os.environ.get("BPSR_MUSCRIPTOR_WEIGHTS", "").strip()
+    source = override or variant
+    hf_home = Path(os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface")))
+    cache = hf_home / "hub" / f"models--MuScriptor--muscriptor-{variant}"
+    cached = bool(override and Path(override).is_file()) or any(cache.glob("snapshots/*/model.safetensors"))
+    action = "Loading cached" if cached else "Downloading gated"
+    with _working_heartbeat(
+        report,
+        f"{action} MuScriptor {variant.title()} global model…",
+        activity=device if cached else "download",
+        stage_fraction=0.05,
+    ):
+        model = TranscriptionModel.load_model(weights_path=source, device=device)
+
+    _report(
+        report,
+        f"Starting MuScriptor {variant.title()} full-song evidence pass on {device.upper()}…",
+        activity=device,
+        stage_fraction=0.15,
+    )
+    events = []
+    for item in model.transcribe(payload["audio"], batch_size=1, prelude_forcing=True):
+        if isinstance(item, MuScriptorProgress):
+            fraction = item.completed / max(1, item.total)
+            _report(
+                report,
+                f"MuScriptor global evidence on {device.upper()} · chunk {item.completed}/{item.total}",
+                activity=device,
+                stage_fraction=0.15 + 0.82 * fraction,
+                indeterminate=False,
+            )
+            continue
+        if not isinstance(item, NoteEndEvent):
+            continue
+        start_event = item.start_event
+        start, end = float(start_event.start_time), float(item.end_time)
+        pitch = int(start_event.pitch)
+        if end <= start or not 0 <= pitch <= 127:
+            continue
+        source_name = _muscriptor_source(str(start_event.instrument))
+        drum_pitch = pitch if source_name == "drums" else None
+        role = (
+            GM_DRUMS.get(pitch, "PERCUSSION") if source_name == "drums" else
+            "MELODY" if source_name == "vocals" else
+            "BASS" if source_name == "bass" else "HARMONY"
+        )
+        event = MusicEvent(
+            source_name,
+            role,
+            start,
+            end,
+            None if source_name == "drums" else pitch,
+            80,
+            0.64,
+            "muscriptor",
+            {"global_music_model", "instrument_evidence"},
+            evidence={
+                "instrument": str(start_event.instrument),
+                "gm_pitch": drum_pitch,
+                "confidence_kind": "MuScriptor global-model prior; no calibrated posterior",
+            },
+        )
+        events.append(event.to_dict())
+    return {"events": events, "device": device, "model": variant}
+
+
 def _prepare_mr_mt3_checkpoint(report) -> Path:
     """Download through huggingface_hub with retries and verify upstream hash."""
     from huggingface_hub import hf_hub_download
@@ -744,11 +835,12 @@ def beat_dsp(payload: dict, report) -> dict:
 
 PROVIDERS = {"basic_pitch": basic_pitch, "torchcrepe": torchcrepe_pitch,
              "demucs": demucs, "roformer": roformer,
-             "beat_this": beat_this, "transkun": transkun, "mr_mt3": mr_mt3,
+             "beat_this": beat_this, "transkun": transkun, "muscriptor": muscriptor, "mr_mt3": mr_mt3,
              "adtof": adtof, "drums_dsp": drums_dsp, "beat_dsp": beat_dsp}
 DISTRIBUTIONS = {"basic_pitch": "basic-pitch", "torchcrepe": "torchcrepe",
                  "demucs": "demucs", "roformer": "audio-separator",
-                 "beat_this": "beat-this", "transkun": "transkun", "mr_mt3": "mt3-infer", "adtof": "adtof-pytorch"}
+                 "beat_this": "beat-this", "transkun": "transkun", "muscriptor": "muscriptor",
+                 "mr_mt3": "mt3-infer", "adtof": "adtof-pytorch"}
 
 
 def run_provider(provider: str, payload: dict, report) -> dict:

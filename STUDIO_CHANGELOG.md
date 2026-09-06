@@ -2,6 +2,8 @@
 
 ## 0.5.0-band-accurate-beta.8
 
+- Adds an optional isolated MuScriptor 0.3.0 Medium/Large full-song music judge. Its instrument/note evidence joins the specialist map before targeted MR-MT3 and reduces repair work where independent evidence already agrees. Auto requires working CUDA plus cached/local or authenticated gated model access; Windows installs are wheel-only and model weights are never bundled.
+- Keeps the responsive specialist path as the desktop default by making the known-slow targeted MR-MT3 cross-check opt-in. Progress now separates the global-model and low-confidence-repair stages, and missing optional models continue with specialist evidence instead of mislabeling the active operation.
 - Fixes clean Windows Transkun setup without requiring Visual Studio or Microsoft C++ Build Tools. The isolated Python 3.11 piano runtime constrains Transkun 2.0.1's unpinned dependency to `ncls==0.0.68` and tells uv to accept only a prebuilt `ncls` wheel. Runtime validation imports both packages and verifies their installed versions before the runtime is marked ready.
 - Makes automatic model-runtime preparation a distinct first-time phase before audio analysis. A dependency-installation failure is terminal rather than being swallowed as an optional inference fallback, so the job leaves its busy state immediately and exposes a concise retryable error.
 - Replaces the vague activity bar with structured weighted progress covering runtime setup, audio preparation, separation, timing, each instrument transcription, musical cross-check, fusion, BPSR arrangement and MIDI export. The fixed progress area shows the current stage, overall completion and elapsed time while distinguishing downloads, installation, CPU/GPU work, cache reuse, waiting and failure.

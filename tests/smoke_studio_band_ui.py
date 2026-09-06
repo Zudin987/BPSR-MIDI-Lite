@@ -139,7 +139,7 @@ def main():
             audio._accept_progress(ProgressEvent(
                 "Cross-checking musical evidence on CUDA…",
                 stage_id="cross_check", phase="Analyzing song", activity="gpu",
-                overall=88.2, stage_fraction=.2,
+                overall=90.8, stage_fraction=.2,
             ))
             now = time.monotonic()
             audio.job_started_at = now - (17 * 60 + 32)
@@ -148,7 +148,7 @@ def main():
                 "Cross-checking musical evidence on CUDA — no new progress report for 08:00; "
                 "the worker process is still running…",
                 stage_id="cross_check", phase="Analyzing song", activity="waiting",
-                overall=88.2, stage_fraction=.2, last_reported_activity="gpu",
+                overall=90.8, stage_fraction=.2, last_reported_activity="gpu",
             ))
             assert "on CUDA" in audio.status.get(), "Silent inference lost the last real device"
             assert "stage 08:00" in audio.status.get() and "total 17:32" in audio.status.get()

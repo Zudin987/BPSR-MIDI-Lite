@@ -35,6 +35,10 @@ RUNTIMES = {
     # Blackwell/RTX 50-series GPUs as well as earlier supported NVIDIA devices.
     "mt3": ["mt3-infer==0.2.0", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "transformers==4.57.1", "huggingface-hub==0.36.2", "numpy==1.26.4"],
     "hq": ["audio-separator[cpu]==0.30.2", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "numpy==1.26.4", "soundfile==0.13.1"],
+    # MuScriptor requires NumPy 2, so it must not share any of the established
+    # specialist environments. Its gated weights are never bundled or fetched
+    # merely by installing this compiler-free wheel runtime.
+    "global": ["muscriptor==0.3.0", "torch==2.11.0", "torchaudio==2.11.0", "numpy==2.3.3", "soundfile==0.14.0", "huggingface-hub==0.36.2"],
 }
 
 # Transkun 2.0.1 declares ``ncls`` without a version. ncls 0.0.70 has no
@@ -43,7 +47,7 @@ RUNTIMES = {
 # Keep this as a resolver constraint (rather than editing Transkun) and require
 # a wheel so a future index change can never silently reintroduce compilation.
 WINDOWS_RUNTIME_CONSTRAINTS = {"piano": ("ncls==0.0.68",)}
-WINDOWS_BINARY_ONLY = {"piano": ("ncls",)}
+WINDOWS_BINARY_ONLY = {"piano": ("ncls",), "global": (":all:",)}
 # uv routes only the PyTorch ecosystem through this official wheel index while
 # resolving the rest of MR-MT3 from PyPI. A single resolver transaction keeps a
 # later dependency pass from replacing the chosen CPU/CUDA build.
@@ -51,6 +55,7 @@ RUNTIME_TORCH_BACKENDS = {
     "separator": {"cpu": "cpu", "cuda": "cu128"},
     "mt3": {"cpu": "cpu", "cuda": "cu128"},
     "hq": {"cpu": "cpu", "cuda": "cu128"},
+    "global": {"cpu": "cpu", "cuda": "cu128"},
 }
 RUNTIME_LABELS = {
     "separator": "separation and pitch-evidence",
@@ -58,6 +63,7 @@ RUNTIME_LABELS = {
     "beat": "beat detector",
     "mt3": "musical cross-check",
     "hq": "HQ separator",
+    "global": "MuScriptor global music model",
 }
 RUNTIME_VALIDATION = {
     "separator": (
@@ -96,11 +102,22 @@ RUNTIME_VALIDATION = {
         "    actual = metadata.version(package).partition('+')[0]\n"
         "    assert actual == version, f'Expected {package} {version}, found {actual}'"
     ),
+    "global": (
+        "import importlib.metadata as metadata\n"
+        "import muscriptor, torch, torchaudio\n"
+        "from muscriptor.transcription_model import TranscriptionModel\n"
+        "expected = {'muscriptor': '0.3.0', 'torch': '2.11.0', "
+        "'torchaudio': '2.11.0', 'numpy': '2.3.3', 'soundfile': '0.14.0', "
+        "'huggingface-hub': '0.36.2'}\n"
+        "for package, version in expected.items():\n"
+        "    actual = metadata.version(package).partition('+')[0]\n"
+        "    assert actual == version, f'Expected {package} {version}, found {actual}'"
+    ),
 }
 PROVIDER_RUNTIME = {"demucs": "separator", "torchcrepe": "separator", "roformer": "hq", "transkun": "piano",
-                    "beat_this": "beat", "mr_mt3": "mt3", "adtof": "drums"}
+                    "beat_this": "beat", "muscriptor": "global", "mr_mt3": "mt3", "adtof": "drums"}
 PROVIDER_MODEL = {"demucs": "htdemucs_6s+htdemucs_ft", "torchcrepe": "full", "roformer": HQ_MODEL, "transkun": "2.0",
-                  "beat_this": "final0", "mr_mt3": "mr_mt3", "basic_pitch": "ICASSP_2022",
+                  "beat_this": "final0", "muscriptor": "medium", "mr_mt3": "mr_mt3", "basic_pitch": "ICASSP_2022",
                   "drums_dsp": "spectral-onsets-1", "beat_dsp": "onset-autocorrelation-1"}
 
 
@@ -229,6 +246,14 @@ class RuntimeManager:
                     "UV_PYTHON_INSTALL_DIR": str(self.runtime_root / "python"),
                     "UV_CACHE_DIR": str(self.runtime_root / "uv-cache"),
                     "UV_NO_PROGRESS": "1"})
+        # Respect an ordinary Hugging Face CLI login even though model files
+        # themselves live in Studio's cache. No token content is copied.
+        default_hf_token = Path.home() / ".cache" / "huggingface" / "token"
+        if "HF_TOKEN" not in env and "HF_TOKEN_PATH" not in env and default_hf_token.is_file():
+            env["HF_TOKEN_PATH"] = str(default_hf_token)
+        local_muscriptor = env.get("BPSR_MUSCRIPTOR_WEIGHTS", "").strip()
+        if local_muscriptor:
+            env["BPSR_MUSCRIPTOR_WEIGHTS"] = str(Path(local_muscriptor).expanduser().resolve())
         if ffmpeg:
             directory = ffmpeg.parent
             if ffmpeg.is_file():
@@ -246,6 +271,24 @@ class RuntimeManager:
             env["PATH"] = str(directory) + os.pathsep + env.get("PATH", "")
             env["IMAGEIO_FFMPEG_EXE"] = str(ffmpeg)
         return env
+
+    def muscriptor_model_access(self, variant: str = "medium") -> bool:
+        """Whether Auto may use gated MuScriptor weights without prompting."""
+        override = os.environ.get("BPSR_MUSCRIPTOR_WEIGHTS", "").strip()
+        if override and Path(override).expanduser().is_file():
+            return True
+        cache = self.models / "huggingface" / "hub" / f"models--MuScriptor--muscriptor-{variant}"
+        if any(cache.glob("snapshots/*/model.safetensors")):
+            return True
+        if os.environ.get("HF_TOKEN", "").strip():
+            return True
+        configured = os.environ.get("HF_TOKEN_PATH", "").strip()
+        token_paths = [Path(configured)] if configured else []
+        token_paths.extend((
+            Path(os.environ.get("HF_HOME", str(Path.home() / ".cache" / "huggingface"))) / "token",
+            Path.home() / ".cache" / "huggingface" / "token",
+        ))
+        return any(path.is_file() for path in token_paths)
 
     def _uv(self, cancel=None, progress=None) -> Path:
         # Source checkouts can use a preinstalled uv. Frozen Windows needs no

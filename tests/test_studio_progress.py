@@ -53,7 +53,7 @@ def test_silent_inference_heartbeat_keeps_real_stage_device_and_percentage():
         last_reported_activity="cuda",
     ))
     event = updates[-1]
-    assert event.overall == 88.2
+    assert event.overall == 90.8
     assert event.activity == "waiting"
     assert event.last_reported_activity == "gpu"
     assert "on CUDA" in event.message
@@ -63,9 +63,9 @@ def test_silent_inference_heartbeat_keeps_real_stage_device_and_percentage():
 
 
 def test_progress_line_distinguishes_current_stage_from_total_elapsed():
-    event = ProgressEvent("Cross-checking musical evidence on CUDA", overall=88.2)
+    event = ProgressEvent("Cross-checking musical evidence on CUDA", overall=90.8)
     line = progress_line(event, 17 * 60 + 32, stage_elapsed=8 * 60)
-    assert "88%" in line
+    assert "91%" in line
     assert "stage 08:00" in line
     assert "total 17:32" in line
 
@@ -94,7 +94,7 @@ def test_skipped_stage_advances_without_claiming_it_ran():
     flow = PipelineProgress(updates.append)
     flow.skip("cross_check", "Musical cross-check disabled")
     event = updates[-1]
-    assert event.overall == 93
+    assert event.overall == 94
     assert event.activity == "skipped"
     assert "Cross-checking musical evidence" not in event
 

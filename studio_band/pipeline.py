@@ -25,6 +25,7 @@ class ConversionSettings:
     install_models: bool = True
     cross_check: bool = True
     arrangement: ArrangementSettings = field(default_factory=ArrangementSettings)
+    global_model: str = "auto"
 
 
 class BandPipeline:
@@ -94,11 +95,11 @@ class BandPipeline:
         except StageError:
             # CPU retry is useful for CUDA OOM/unsupported architectures. If the
             # stage still fails, its specialist fallback is handled by the caller.
-            # MR-MT3 is optional and exceptionally slow on a full song without
-            # acceleration, so Auto/CUDA skips it instead of silently blocking
-            # for an unbounded CPU retry. Explicit CPU remains available.
+            # Global/repair models are optional and exceptionally slow without
+            # acceleration, so Auto/CUDA never turns either into a hidden CPU
+            # retry. Explicit CPU remains available only for MR-MT3.
             if (settings.device == "cpu" or not hardware.cuda or provider not in PROVIDER_RUNTIME
-                    or provider == "mr_mt3"):
+                    or provider in {"muscriptor", "mr_mt3"}):
                 raise
             report("Retrying this stage on CPU…")
             arguments["device"] = "cpu"
@@ -120,12 +121,15 @@ class BandPipeline:
         return result
 
     @staticmethod
-    def _runtime_plan(settings: ConversionSettings, separator: str, hardware) -> list[str]:
+    def _runtime_plan(settings: ConversionSettings, separator: str, hardware,
+                      global_variant: str | None = None) -> list[str]:
         # Prepare preferred engines before touching the audio. This makes first
         # use a distinct, truthful phase and ensures dependency failures cannot
         # be mistaken for slow inference. Transkun is first so its small runtime
         # is validated before multi-GB separator/cross-check installs.
         plan = ["piano", "separator", "beat"]
+        if global_variant:
+            plan.append("global")
         if settings.cross_check and (settings.device == "cpu" or hardware.cuda):
             plan.append("mt3")
         if separator == "roformer":
@@ -133,8 +137,8 @@ class BandPipeline:
         return plan
 
     def _prepare_runtimes(self, settings: ConversionSettings, hardware, separator: str,
-                          cancel, flow: PipelineProgress) -> None:
-        required = self._runtime_plan(settings, separator, hardware)
+                          global_variant: str | None, cancel, flow: PipelineProgress) -> None:
+        required = self._runtime_plan(settings, separator, hardware, global_variant)
         device = "cuda" if settings.device != "cpu" and hardware.cuda else "cpu"
         missing = [name for name in required if not self.runtimes.available(name, device=device)]
         if not settings.install_models:
@@ -159,12 +163,24 @@ class BandPipeline:
             )
         flow.setup_ready("First-time transcription setup complete", first_time=True)
 
+    def _global_model_variant(self, settings: ConversionSettings, hardware) -> str | None:
+        if settings.global_model == "off" or settings.device == "cpu" or not hardware.cuda:
+            return None
+        if settings.global_model in {"medium", "large"}:
+            return settings.global_model
+        # Auto never springs a gated download/login failure on a normal user.
+        # It activates Medium when accepted credentials or cached/local weights
+        # make the operation ready to proceed.
+        return "medium" if self.runtimes.muscriptor_model_access("medium") else None
+
     def convert(self, source: Path, settings: ConversionSettings | None = None, *, cancel=None, progress=None,
                 source_metadata: dict | None = None) -> Path:
         settings = settings or ConversionSettings()
         settings.arrangement.validate()
         if settings.device not in {"auto", "cpu", "cuda"}:
             raise ValueError("Device must be Auto, CPU or CUDA")
+        if settings.global_model not in {"auto", "off", "medium", "large"}:
+            raise ValueError("Global model must be Auto, Off, Medium or Large")
         if source.suffix.lower() not in EXTENSIONS or not source.is_file():
             raise StageError("Preparing audio", "Choose an MP3, WAV, FLAC, M4A or OGG audio file.")
         if source.stat().st_size > 2 * 1024**3:
@@ -179,10 +195,11 @@ class BandPipeline:
         provenance["hardware"] = asdict(hardware)
         separator = choose_separator(settings.stem_quality, hardware,
                                      self.runtimes.available("hq") and (self.runtimes.models / "roformer").exists())
+        global_variant = self._global_model_variant(settings, hardware)
         with file_lock(self.store.root / (job.name + ".lock")):
             atomic_json(job / "status.json", {"status": "running", "source_sha256": digest})
             try:
-                self._prepare_runtimes(settings, hardware, separator, cancel, flow)
+                self._prepare_runtimes(settings, hardware, separator, global_variant, cancel, flow)
                 original = self.store.copy_source(job, source, digest)
                 flow.stage("prepare_audio", activity="cpu")
                 prepared, duration = self._prepare(
@@ -224,6 +241,9 @@ class BandPipeline:
                         if provider == "mr_mt3" and fallback is None:
                             reason = getattr(exc, "message", str(exc))
                             warnings.append(f"Independent musical cross-check unavailable: {reason}")
+                        elif provider == "muscriptor" and fallback is None:
+                            reason = getattr(exc, "message", str(exc))
+                            warnings.append(f"MuScriptor global model unavailable: {reason}")
                         else:
                             warnings.append(f"{provider} unavailable: {exc}." + (f" Used {fallback}." if fallback else ""))
                         provenance.setdefault("fallbacks", []).append({"provider": provider, "replacement": fallback,
@@ -310,6 +330,41 @@ class BandPipeline:
                 provenance["drum_backend"] = drum_backend
                 flow.complete("drums")
 
+                provenance["global_model"] = {
+                    "requested": settings.global_model,
+                    "actual": global_variant,
+                    "role": "full-song instrument and note evidence",
+                }
+                if global_variant:
+                    flow.stage(
+                        "global_model",
+                        activity=provider_activity("muscriptor"),
+                        message=f"Running MuScriptor {global_variant.title()} global music model",
+                    )
+                    global_result = attempt(
+                        "muscriptor", prepared, "global_model", model=global_variant,
+                    )
+                    add(global_result, target=reference)
+                    if global_result.get("_stage_skipped"):
+                        provenance["global_model"]["actual"] = None
+                        flow.skip("global_model", "MuScriptor global model unavailable — using specialist evidence")
+                    else:
+                        provenance["global_model"]["events"] = len(global_result.get("events", []))
+                        flow.complete("global_model", "MuScriptor global evidence ready")
+                elif settings.global_model != "off" and (
+                    settings.device == "cpu" or not hardware.cuda
+                ):
+                    reason = "MuScriptor requires working CUDA in Studio; continuing with specialist evidence."
+                    if settings.global_model in {"medium", "large"}:
+                        warnings.append(reason)
+                    provenance["global_model"]["reason"] = reason
+                    flow.skip("global_model", "MuScriptor needs CUDA — using specialist evidence")
+                elif settings.global_model == "auto":
+                    provenance["global_model"]["reason"] = "No cached/local weights or authenticated model access"
+                    flow.skip("global_model", "Global model not configured — using specialist evidence")
+                else:
+                    flow.skip("global_model", "Global music model disabled")
+
                 if settings.cross_check:
                     if settings.device != "cpu" and not hardware.cuda:
                         reason = (
@@ -323,7 +378,9 @@ class BandPipeline:
                         })
                         flow.skip("cross_check", "Independent cross-check needs CUDA — continuing without it")
                     else:
-                        regions = uncertain_regions(primary, duration, provenance.get("stem_metrics", {}))
+                        regions = uncertain_regions(
+                            primary, duration, provenance.get("stem_metrics", {}), reference=reference,
+                        )
                         provenance["cross_check"] = {
                             "mode": "targeted_low_confidence",
                             "regions": regions,

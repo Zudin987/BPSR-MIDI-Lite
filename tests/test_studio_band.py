@@ -500,6 +500,58 @@ def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, m
     assert fractions == [0.05, 0.20, 0.45, 0.90]
 
 
+def test_muscriptor_maps_global_instrument_evidence_and_reports_real_chunks(tmp_path, monkeypatch):
+    import studio_band.providers as providers
+
+    class ModelProgress:
+        def __init__(self, completed, total):
+            self.completed, self.total = completed, total
+
+    class Start:
+        def __init__(self, pitch, start_time, instrument, index):
+            self.pitch, self.start_time = pitch, start_time
+            self.instrument, self.index = instrument, index
+
+    class End:
+        def __init__(self, start_event, end_time):
+            self.start_event, self.end_time = start_event, end_time
+
+    class FakeModel:
+        @classmethod
+        def load_model(cls, **kwargs):
+            assert kwargs == {"weights_path": "medium", "device": "cuda"}
+            return cls()
+
+        def transcribe(self, _audio, **kwargs):
+            assert kwargs == {"batch_size": 1, "prelude_forcing": True}
+            yield ModelProgress(0, 2)
+            yield End(Start(64, .2, "clean_electric_guitar", 1), .7)
+            yield End(Start(36, .8, "drums", 2), .86)
+            yield ModelProgress(2, 2)
+
+    monkeypatch.setattr(providers, "device_for", lambda *_args, **_kwargs: "cuda")
+    monkeypatch.setitem(sys.modules, "muscriptor", SimpleNamespace())
+    monkeypatch.setitem(sys.modules, "muscriptor.events", SimpleNamespace(
+        NoteEndEvent=End, ProgressEvent=ModelProgress,
+    ))
+    monkeypatch.setitem(sys.modules, "muscriptor.transcription_model", SimpleNamespace(
+        TranscriptionModel=FakeModel,
+    ))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
+    updates = []
+
+    result = providers.muscriptor(
+        {"audio": str(tmp_path / "song.wav"), "device": "auto", "model": "medium"},
+        updates.append,
+    )
+
+    assert [event["source"] for event in result["events"]] == ["guitar", "drums"]
+    assert result["events"][1]["role"] == "KICK" and result["events"][1]["pitch"] is None
+    assert all("global_music_model" in event["tags"] for event in result["events"])
+    assert updates[-1].stage_fraction == pytest.approx(.97)
+    assert "chunk 2/2" in updates[-1].message
+
+
 def test_auto_quality_checks_models_vram_and_ram():
     assert choose_separator("auto", Hardware(True, 8, 32), True) == "roformer"
     assert choose_separator("auto", Hardware(True, 4, 32), True) == "demucs"
@@ -517,6 +569,9 @@ def test_windows_transkun_policy_pins_binary_cp311_compatible_ncls():
     assert policy == {"constraints": ["ncls==0.0.68"], "binary_only": ["ncls"]}
     assert RuntimeManager.install_policy("piano", platform_name="posix") == {
         "constraints": [], "binary_only": [],
+    }
+    assert RuntimeManager.install_policy("global", platform_name="nt") == {
+        "constraints": [], "binary_only": [":all:"],
     }
 
 

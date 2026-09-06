@@ -59,12 +59,13 @@ Subprocess exit, missing worker response and dead background-job conditions rest
 | Vocal melody | Basic Pitch ONNX plus torchcrepe periodicity/pitch validation and monophonic cleanup | Basic Pitch evidence remains available |
 | Piano | Transkun V2 | Basic Pitch with a piano register |
 | Guitar / bass / other | Separately tuned Basic Pitch ONNX; bass also receives torchcrepe validation | Report transcription failure |
+| Global music model | Optional MuScriptor Medium/Large full-song instrument and note evidence | Auto runs only with CUDA and cached/local or authenticated gated weights; specialists remain authoritative if unavailable |
 | Musical cross-check | MR-MT3 only on ranked uncertain 8-second sections, capped to about 35% / 90 seconds | Continue without cross-check and record the failure |
 | Drums | Optional user-installed ADTOF PyTorch | MR-MT3 kit events validated against dedicated spectral onsets; spectral kick/snare/hat detection when MR-MT3 is unavailable |
 
 Auto uses HQ only when its runtime/model directory already exists and the machine reports at least 6 GB NVIDIA VRAM and 16 GB RAM. Explicit HQ can install the additional backend. Each worker tests an actual CUDA kernel and otherwise uses CPU. CPU conversion can be much slower than the song duration. Current input limits are 2 GB and 30 minutes. Six aligned stems are required; an unseparated mix is never represented as six isolated instruments.
 
-The common musical map records source, role, pitch or drum semantics, onset, duration, velocity, confidence and provenance. MR-MT3 evidence adjusts confidence inside the sections it actually inspected; absence outside those windows is never treated as negative evidence. High-enough unmatched events can repair a bounded number of omissions inside those windows. Repeated riffs, melody continuity, harmonics, register, shared beat proximity and sustained polyphony inform cleanup and arrangement. Small timing corrections are bounded; grace notes, swing and intentional offsets are retained rather than hard-quantized.
+The common musical map records source, role, pitch or drum semantics, onset, duration, velocity, confidence and provenance. MuScriptor supplies an independent full-song instrument/note view; agreement raises specialist confidence and reduces the low-confidence budget sent to MR-MT3, but it cannot erase a specialist event by itself. MR-MT3 evidence adjusts confidence inside the sections it actually inspected; absence outside those windows is never treated as negative evidence. High-enough unmatched events can repair a bounded number of omissions inside those windows. Repeated riffs, melody continuity, harmonics, register, shared beat proximity and sustained polyphony inform cleanup and arrangement. Small timing corrections are bounded; grace notes, swing and intentional offsets are retained rather than hard-quantized.
 
 Confidence values are **heuristic evidence scores**, not calibrated probabilities. Basic Pitch activation amplitude, torchcrepe periodicity, MIDI-only engine priors, dual-model agreement and measured time-frequency ownership are identified in the manifest. The separator allocates mixture energy once across the six stems, records spectral purity/leakage per stem, and reduces duplicate same-pitch events when another stem has materially stronger ownership. Synthetic CI publishes a repeatable `mir_eval` precision/recall/F1/overlap baseline; it does not claim accuracy on arbitrary commercial songs.
 
@@ -76,7 +77,7 @@ Drums are semantic events, never pitched Basic Pitch notes. The external [`profi
 
 ## Runtime, cache and packaging
 
-The Studio GUI imports no Torch, Demucs, torchcrepe, Transkun, Beat This!, MT3 or RoFormer. Heavy engines run sequentially in separate managed Python 3.11 environments. Demucs and torchcrepe share a matched PyTorch 2.11 environment, while other model stacks and Basic Pitch remain isolated. The pinned uv bootstrap archive is checked against its SHA-256 before use.
+The Studio GUI imports no Torch, Demucs, torchcrepe, Transkun, Beat This!, MT3, MuScriptor or RoFormer. Heavy engines run sequentially in separate managed Python 3.11 environments. Demucs and torchcrepe share a matched PyTorch 2.11 environment, while MuScriptor gets its own NumPy 2 environment and the other model stacks and Basic Pitch remain isolated. On Windows the MuScriptor runtime is binary-only, so Studio will fail cleanly rather than invoke a local compiler. The pinned uv bootstrap archive is checked against its SHA-256 before use.
 
 On Windows, Transkun 2.0.1's unpinned `ncls` dependency is resolved through a generated uv constraint containing `ncls==0.0.68`, the release that provides a CPython 3.11 x64 Windows wheel. Studio also passes `--only-binary ncls`; if that compatible wheel ever becomes unavailable, setup fails clearly instead of trying to compile C code or asking the user to install MSVC. `transkun`, `ncls` and their exact versions are verified before the piano runtime receives a ready manifest.
 
@@ -100,12 +101,13 @@ Idle jobs expire after 14 days or when the 20 GB job cache budget is exceeded; a
 | Transkun V2 | [Yujia Yan, MIT](https://github.com/Yujia-Yan/Transkun); separate runtime, pretrained files supplied by its package |
 | Beat This! | [CPJKU, MIT](https://github.com/CPJKU/beat_this); separate checkpoint download |
 | MR-MT3 | [Official implementation, MIT](https://github.com/gudgud96/MR-MT3); [mt3-infer wrapper](https://github.com/openmirlab/mt3-infer) selects `mr_mt3` explicitly |
+| MuScriptor | [MIT code](https://github.com/muscriptor/muscriptor); Medium/Large weights are gated on Hugging Face and licensed CC BY-NC 4.0, so Auto never downloads them without existing accepted access |
 | BS-RoFormer | [audio-separator, MIT wrapper](https://github.com/nomadkaraoke/python-audio-separator); fixed vocal checkpoint downloaded separately |
 | ADTOF | [Original project, CC BY-NC-SA 4.0](https://github.com/MZehren/ADTOF); [PyTorch port](https://github.com/xavriley/ADTOF-pytorch) has no declared repository license; never bundled or automatically installed |
 | uv | [Astral, MIT / Apache-2.0](https://github.com/astral-sh/uv); separately downloaded runtime manager |
 | tkinterdnd2 | [MIT wrapper and included TkDND notices](https://github.com/pmgagne/tkinterdnd2); Studio-only file drop support |
 
-Code licenses do not establish redistribution rights for every model weight or for music content. No optional AI weights are committed to this repository. Users who have an appropriate ADTOF installation may provide it in `runtime/drums` with `adtof_pytorch.transcribe_to_midi`; Studio detects this optional environment.
+Code licenses do not establish redistribution rights for every model weight or for music content. No optional AI weights are committed to this repository. MuScriptor accepts an existing Hugging Face login/`HF_TOKEN`, or a local licensed checkpoint through `BPSR_MUSCRIPTOR_WEIGHTS`. Users who have an appropriate ADTOF installation may provide it in `runtime/drums` with `adtof_pytorch.transcribe_to_midi`; Studio detects this optional environment. Aria-AMT and DrumSep/MDX23C remain future opt-in adapters rather than automatic installs because their current checkpoint/runtime delivery is not yet deterministic for clean Windows users.
 
 See `STUDIO_THIRD_PARTY_NOTICES.md` for runtime/tool notices including spotDL, yt-dlp, Deno and FFmpeg.
 

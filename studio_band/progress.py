@@ -19,10 +19,11 @@ PIPELINE_STAGES = OrderedDict(
         ("guitar", (62.0, 69.0, "Transcribing Guitar")),
         ("bass", (69.0, 76.0, "Transcribing Bass")),
         ("other", (76.0, 81.0, "Transcribing other musical material")),
-        ("drums", (81.0, 87.0, "Detecting Drums")),
-        ("cross_check", (87.0, 93.0, "Cross-checking musical evidence")),
-        ("fusion", (93.0, 96.0, "Building musical map")),
-        ("arrange", (96.0, 99.0, "Arranging for BPSR")),
+        ("drums", (81.0, 86.0, "Detecting Drums")),
+        ("global_model", (86.0, 90.0, "Running global music model")),
+        ("cross_check", (90.0, 94.0, "Cross-checking low-confidence evidence")),
+        ("fusion", (94.0, 97.0, "Building musical map")),
+        ("arrange", (97.0, 99.0, "Arranging for BPSR")),
         ("export", (99.0, 100.0, "Exporting MIDI")),
     )
 )

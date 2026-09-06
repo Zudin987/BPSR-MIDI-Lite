@@ -99,7 +99,7 @@ def test_progress_is_weighted_monotonic_and_names_real_pipeline_stages(tmp_path)
     assert overall[0] == 18 and overall[-1] == 100
     stage_ids = {update.stage_id for update in structured}
     assert set(("prepare_audio", "separate", "beat", "piano", "guitar", "bass",
-                "drums", "cross_check", "fusion", "arrange", "export")) <= stage_ids
+                "drums", "global_model", "cross_check", "fusion", "arrange", "export")) <= stage_ids
     assert any(update.phase == "Analyzing song" and update.activity == "cpu" for update in structured)
 
 
@@ -114,7 +114,7 @@ def test_disabled_cross_check_never_claims_cross_check_is_running(tmp_path):
     cross_check = [update for update in structured if update.stage_id == "cross_check"]
     assert len(cross_check) == 1
     assert cross_check[0].message == "Musical cross-check disabled"
-    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 93
+    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 94
     assert not any("Cross-checking musical evidence" in update for update in structured)
     assert not any(provider == "mr_mt3" for provider, _source in FixtureClient.calls)
 
@@ -136,7 +136,7 @@ def test_auto_cross_check_without_cuda_skips_before_runtime_or_worker(tmp_path, 
         if isinstance(update, ProgressEvent) and update.stage_id == "cross_check"
     ]
     assert len(cross_check) == 1
-    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 93
+    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 94
     assert cross_check[0].message == "Independent cross-check needs CUDA — continuing without it"
 
 
@@ -190,7 +190,35 @@ def test_gpu_cross_check_failure_skips_without_hidden_cpu_retry(tmp_path, monkey
     ]
     assert cross_check[-1].activity == "skipped"
     assert cross_check[-1].message == "Independent cross-check unavailable — continuing without it"
-    assert cross_check[-1].overall == 93
+    assert cross_check[-1].overall == 94
+
+
+def test_opted_in_muscriptor_runs_before_targeted_repair_and_adds_global_evidence(tmp_path, monkeypatch):
+    source = tmp_path / "song.wav"
+    source.write_bytes(b"synthetic")
+    converter = pipeline(tmp_path)
+    monkeypatch.setattr(
+        "studio_band.pipeline.detect_hardware",
+        lambda: Hardware(cuda=True, vram_gb=16, ram_gb=32, gpu="Synthetic NVIDIA GPU"),
+    )
+    updates = []
+
+    output = converter.convert(
+        source,
+        ConversionSettings(device="auto", cross_check=False, global_model="medium"),
+        progress=updates.append,
+    )
+    record = read_json(output)
+
+    assert any(provider == "muscriptor" for provider, _source in FixtureClient.calls)
+    assert record["providers"]["global_model"]["actual"] == "medium"
+    assert record["providers"]["global_model"]["events"] == 1
+    global_updates = [
+        update for update in updates
+        if isinstance(update, ProgressEvent) and update.stage_id == "global_model"
+    ]
+    assert global_updates[0].overall == 86
+    assert global_updates[-1].overall == 90 and global_updates[-1].activity == "complete"
 
 
 def test_separator_failure_is_actionable_and_does_not_fake_stems(tmp_path):
