@@ -54,7 +54,7 @@ Subprocess exit, missing worker response and dead background-job conditions rest
 | Audio preparation | Bundled FFmpeg; stereo 44.1 kHz floating-point WAV | Clear error for unreadable audio |
 | Standard separation | Demucs `htdemucs_6s` plus mixture-consistent spectral ownership | CPU retry after a CUDA failure; repair runtime if unavailable |
 | Auto CUDA separation | `htdemucs_6s` + fine-tuned `htdemucs_ft` evidence ensemble, then cross-stem leakage resolution | `htdemucs_6s` plus spectral ownership on CPU |
-| HQ separation | BS-RoFormer vocals/instrumental, then Demucs instrumental stems | Standard six-stem separation |
+| HQ separation | BS-RoFormer vocals/instrumental on matched PyTorch 2.11/CUDA 12.8, then Demucs instrumental stems | Standard six-stem separation |
 | Beat/downbeat | Beat This! `final0` | Low-confidence spectral tempo estimate; no invented downbeats |
 | Vocal melody | Basic Pitch ONNX plus torchcrepe periodicity/pitch validation and monophonic cleanup | Basic Pitch evidence remains available |
 | Piano | Transkun V2 | Basic Pitch with a piano register |

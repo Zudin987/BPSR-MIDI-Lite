@@ -5,6 +5,7 @@ import importlib.metadata
 import inspect
 import math
 import os
+import shutil
 import statistics
 import threading
 import time
@@ -23,6 +24,8 @@ GM_DRUMS = {
     51: "RIDE", 53: "RIDE", 59: "RIDE",
     41: "TOM", 43: "TOM", 45: "TOM", 47: "TOM", 48: "TOM", 50: "TOM",
 }
+
+MR_MT3_SHA256 = "b8a3807ed265059abd25ad7f68142c06c35e8f6144dcaa45bd55946a3745398f"
 
 
 def _report(report, message: str, *, activity: str = "processing",
@@ -530,6 +533,40 @@ def transkun(payload: dict, report) -> dict:
             "model_files": [str(weight), str(config)]}
 
 
+def _prepare_mr_mt3_checkpoint(report) -> Path:
+    """Download through huggingface_hub with retries and verify upstream hash."""
+    from huggingface_hub import hf_hub_download
+
+    target = Path(os.environ["MT3_CHECKPOINT_DIR"]) / "mr_mt3" / "mt3.pth"
+    if target.is_file() and file_hash(target) == MR_MT3_SHA256:
+        return target
+    if target.exists():
+        target.unlink()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    errors = []
+    for attempt, delay in enumerate((0, 3, 8), 1):
+        if delay:
+            _report(report, f"Model host is busy; retrying MR-MT3 download in {delay} seconds…",
+                    activity="waiting", stage_fraction=0.03)
+            time.sleep(delay)
+        try:
+            _report(report, f"Downloading the MR-MT3 model (attempt {attempt}/3)…",
+                    activity="download", stage_fraction=0.04)
+            downloaded = Path(hf_hub_download(
+                repo_id="gudgud1014/MR-MT3", filename="mt3.pth",
+                local_dir=str(target.parent),
+            ))
+            if downloaded.resolve() != target.resolve():
+                shutil.copy2(downloaded, target)
+            if file_hash(target) != MR_MT3_SHA256:
+                target.unlink(missing_ok=True)
+                raise RuntimeError("downloaded checkpoint checksum did not match the pinned MR-MT3 model")
+            return target
+        except Exception as exc:
+            errors.append(f"attempt {attempt}: {type(exc).__name__}: {exc}")
+    raise RuntimeError("Could not download the verified MR-MT3 model after 3 attempts. " + " | ".join(errors))
+
+
 def mr_mt3(payload: dict, report) -> dict:
     import soxr
     from mt3_infer import load_model
@@ -543,7 +580,8 @@ def mr_mt3(payload: dict, report) -> dict:
             "Independent musical cross-check could not start GPU acceleration. "
             "It was stopped instead of falling back to a very slow CPU run. " + str(exc)
         ) from exc
-    weights = list(Path(os.environ["MT3_CHECKPOINT_DIR"]).rglob("mt3.pth"))
+    checkpoint = Path(os.environ["MT3_CHECKPOINT_DIR"]) / "mr_mt3" / "mt3.pth"
+    weights = [checkpoint] if checkpoint.is_file() else []
     load_message = (
         "Loading the independent musical cross-check…" if weights else
         "Downloading the independent musical cross-check model…"
@@ -551,7 +589,8 @@ def mr_mt3(payload: dict, report) -> dict:
     with _working_heartbeat(
         report, load_message, activity=device if weights else "download", stage_fraction=0.05,
     ):
-        model = load_model("mr_mt3", device=device, auto_download=True)
+        checkpoint = _prepare_mr_mt3_checkpoint(report)
+        model = load_model("mr_mt3", checkpoint_path=str(checkpoint), device=device, auto_download=False)
     audio, sr = _audio(payload["audio"])
     audio = audio.mean(axis=1)
     if sr != 16000:

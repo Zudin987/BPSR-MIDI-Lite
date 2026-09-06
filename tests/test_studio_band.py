@@ -479,6 +479,10 @@ def test_mt3_reports_real_preprocess_inference_and_decode_boundaries(tmp_path, m
     monkeypatch.setattr(providers, "_audio", lambda _path: (FakeStereoAudio(), 16000))
     monkeypatch.setattr(providers, "_events_from_midi", lambda *_args: [])
     monkeypatch.setenv("MT3_CHECKPOINT_DIR", str(tmp_path / "models"))
+    checkpoint = tmp_path / "models" / "mr_mt3" / "mt3.pth"
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"verified model fixture")
+    monkeypatch.setattr(providers, "_prepare_mr_mt3_checkpoint", lambda _report: checkpoint)
     updates = []
 
     result = providers.mr_mt3(

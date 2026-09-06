@@ -33,8 +33,8 @@ RUNTIMES = {
     # mt3-infer 0.2.0 supports torch >=2.4. Pin the matched 2.11 wheel family:
     # unlike the early 2.7.1 cu128 Windows build, it can execute on current
     # Blackwell/RTX 50-series GPUs as well as earlier supported NVIDIA devices.
-    "mt3": ["mt3-infer==0.2.0", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "transformers==4.57.1", "numpy==1.26.4"],
-    "hq": ["audio-separator[cpu]==0.30.2", "torch==2.5.1", "torchaudio==2.5.1", "numpy==1.26.4", "soundfile==0.13.1"],
+    "mt3": ["mt3-infer==0.2.0", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "transformers==4.57.1", "huggingface-hub==0.36.2", "numpy==1.26.4"],
+    "hq": ["audio-separator[cpu]==0.30.2", "torch==2.11.0", "torchaudio==2.11.0", "torchvision==0.26.0", "numpy==1.26.4", "soundfile==0.13.1"],
 }
 
 # Transkun 2.0.1 declares ``ncls`` without a version. ncls 0.0.70 has no
@@ -50,6 +50,7 @@ WINDOWS_BINARY_ONLY = {"piano": ("ncls",)}
 RUNTIME_TORCH_BACKENDS = {
     "separator": {"cpu": "cpu", "cuda": "cu128"},
     "mt3": {"cpu": "cpu", "cuda": "cu128"},
+    "hq": {"cpu": "cpu", "cuda": "cu128"},
 }
 RUNTIME_LABELS = {
     "separator": "separation and pitch-evidence",
@@ -78,14 +79,23 @@ RUNTIME_VALIDATION = {
     "beat": "import beat_this, torch, torchaudio",
     "mt3": (
         "import importlib.metadata as metadata\n"
-        "import mt3_infer, torch, torchaudio, torchvision, transformers\n"
+        "import mt3_infer, torch, torchaudio, torchvision, transformers, huggingface_hub\n"
         "expected = {'mt3-infer': '0.2.0', 'torch': '2.11.0', "
-        "'torchaudio': '2.11.0', 'torchvision': '0.26.0', 'transformers': '4.57.1'}\n"
+        "'torchaudio': '2.11.0', 'torchvision': '0.26.0', 'transformers': '4.57.1', "
+        "'huggingface-hub': '0.36.2'}\n"
         "for package, version in expected.items():\n"
         "    actual = metadata.version(package).partition('+')[0]\n"
         "    assert actual == version, f'Expected {package} {version}, found {actual}'"
     ),
-    "hq": "import audio_separator, torch, torchaudio",
+    "hq": (
+        "import importlib.metadata as metadata\n"
+        "import audio_separator, torch, torchaudio, torchvision\n"
+        "expected = {'audio-separator': '0.30.2', 'torch': '2.11.0', "
+        "'torchaudio': '2.11.0', 'torchvision': '0.26.0'}\n"
+        "for package, version in expected.items():\n"
+        "    actual = metadata.version(package).partition('+')[0]\n"
+        "    assert actual == version, f'Expected {package} {version}, found {actual}'"
+    ),
 }
 PROVIDER_RUNTIME = {"demucs": "separator", "torchcrepe": "separator", "roformer": "hq", "transkun": "piano",
                     "beat_this": "beat", "mr_mt3": "mt3", "adtof": "drums"}
