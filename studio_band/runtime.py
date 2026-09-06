@@ -1,25 +1,32 @@
-"""beta.8 runtime compatibility layer for the stronger separation ensemble.
+"""beta.9 runtime compatibility layer for the stronger separation ensemble.
 
-The established runtime implementation is kept in ``runtime_legacy`` so this
-follow-up can stay small and low-risk while upgrading only the HQ separator.
+The established runtime implementation is kept in ``runtime_legacy`` so quality
+hotfixes can stay small while preserving the already-tested runtime manager.
 """
 from __future__ import annotations
 
 from . import runtime_legacy as _legacy
 
 AUDIO_SEPARATOR_VERSION = "0.47.0"
+HQ_NUMPY_VERSION = "2.3.3"
 HQ_SIX_STEM_MODEL = "BS-Roformer-SW.ckpt"
 
 # audio-separator 0.47 adds maintained multi-stem RoFormer output support,
-# including BS-Roformer-SW. Keep the existing isolated HQ environment and its
-# tested Torch family; changing the requirement forces RuntimeManager to repair
-# an older 0.30.2 HQ environment on first HQ use.
+# including BS-Roformer-SW. Its published 0.47 metadata requires NumPy >=2, so
+# the old beta.8 NumPy 1.26 pin made HQ installation unsatisfiable. Keep HQ in
+# its own isolated environment and pin a reproducible NumPy 2 build.
 _legacy.RUNTIMES["hq"] = [
-    requirement.replace("audio-separator[cpu]==0.30.2", f"audio-separator[cpu]=={AUDIO_SEPARATOR_VERSION}")
+    requirement
+    .replace("audio-separator[cpu]==0.30.2", f"audio-separator[cpu]=={AUDIO_SEPARATOR_VERSION}")
+    .replace("numpy==1.26.4", f"numpy=={HQ_NUMPY_VERSION}")
     for requirement in _legacy.RUNTIMES["hq"]
 ]
 _legacy.RUNTIME_VALIDATION["hq"] = _legacy.RUNTIME_VALIDATION["hq"].replace(
     "'audio-separator': '0.30.2'", f"'audio-separator': '{AUDIO_SEPARATOR_VERSION}'"
+)
+_legacy.RUNTIME_VALIDATION["hq"] += (
+    f"\nassert metadata.version('numpy') == '{HQ_NUMPY_VERSION}', "
+    "f'Expected NumPy {metadata.version(\"numpy\")}'"
 )
 
 # Fingerprints describe the maximum provider capability. The provider records
@@ -47,7 +54,18 @@ class RuntimeManager(_legacy.RuntimeManager):
             name, device=device, cancel=cancel, progress=progress, repair=repair
         )
 
+    def statuses(self) -> list[dict]:
+        rows = super().statuses()
+        for row in rows:
+            if row.get("runtime") == "drums":
+                row["status"] = (
+                    "ready (ADTOF + built-in DSP)" if self.available("drums")
+                    else "ready (built-in DSP; ADTOF is optional/manual)"
+                )
+        return rows
+
 
 # New constants are intentionally exported by this compatibility module.
 AUDIO_SEPARATOR_VERSION = "0.47.0"
+HQ_NUMPY_VERSION = "2.3.3"
 HQ_SIX_STEM_MODEL = "BS-Roformer-SW.ckpt"

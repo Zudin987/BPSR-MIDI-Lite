@@ -39,6 +39,7 @@ from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
 from studio_audio_latency import install_studio_audio_latency
+from studio_band_advanced_setup import install_advanced_model_setup
 from studio_band_responsive import install_responsive_band_audio
 from studio_band_ui import install_band_audio
 from studio_band_worker_isolation import install_external_worker_isolation
@@ -103,6 +104,7 @@ install_spotdl_band_audio()
 install_spotdl_ytdlp_fallback()
 install_responsive_band_audio()
 install_band_audio(app)
+install_advanced_model_setup()
 install_full_ui_overhaul(app)
 install_compact_toolbar_patch()
 install_band_responsive_patch()
