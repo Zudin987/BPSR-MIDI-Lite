@@ -152,7 +152,7 @@ class BandPipeline:
                 cancel=cancel,
                 progress=lambda value, label=label, index=index: flow.setup(label, index, total, value),
             )
-        flow.setup_ready("First-time transcription setup complete")
+        flow.setup_ready("First-time transcription setup complete", first_time=True)
 
     def convert(self, source: Path, settings: ConversionSettings | None = None, *, cancel=None, progress=None,
                 source_metadata: dict | None = None) -> Path:
@@ -288,11 +288,13 @@ class BandPipeline:
                 drum_backend = drum_result.get("provenance", {}).get("provider", drum_backend)
                 flow.complete("drums")
 
-                flow.stage("cross_check", activity=provider_activity("mr_mt3"))
                 if settings.cross_check:
+                    flow.stage("cross_check", activity=provider_activity("mr_mt3"))
                     add(attempt("mr_mt3", prepared, "cross_check"), target=reference)
+                    flow.complete("cross_check")
                 else:
                     warnings.append("Musical cross-check was disabled in Advanced.")
+                    flow.skip("cross_check", "Musical cross-check disabled")
                 reference_drums = [e for e in reference if e.source == "drums"]
                 if drum_backend == "drums_dsp" and reference_drums:
                     # Dedicated spectral attacks validate MT3's richer semantic
@@ -303,7 +305,6 @@ class BandPipeline:
                 else:
                     add(drum_result)
                     provenance["drum_backend"] = drum_backend
-                flow.complete("cross_check")
                 flow.stage("fusion", activity="cpu")
                 master = build_master(digest, duration, beats, primary, reference, provenance, warnings)
                 atomic_json(job / "analysis" / "master.json", master.to_dict())

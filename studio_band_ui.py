@@ -548,8 +548,8 @@ class BandAudioTab:
         self.cancel_button.configure(command=self.request_cancel, state="normal")
         if task == "conversion":
             self._accept_progress(ProgressEvent(
-                "Checking runtime components", stage_id="runtime_setup", phase="First-time setup",
-                activity="install", overall=0, stage_fraction=0.0, indeterminate=True,
+                "Checking runtime components", stage_id="runtime_setup", phase="Preparing conversion",
+                activity="check", overall=0, stage_fraction=0.0, indeterminate=True,
             ))
         else:
             self._accept_progress(ProgressEvent(

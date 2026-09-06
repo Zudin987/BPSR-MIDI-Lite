@@ -36,6 +36,35 @@ def test_indeterminate_stage_holds_weighted_boundary_until_real_completion():
     assert updates[-1].overall == 40 and updates[-1].indeterminate is False
 
 
+def test_cached_runtime_check_does_not_claim_first_time_setup():
+    updates = []
+    PipelineProgress(updates.append).setup_ready("Runtime and transcription components ready")
+    event = updates[-1]
+    assert event.phase == "Preparing conversion"
+    assert event.activity == "cache"
+    assert "First-time setup" not in progress_context(event)
+
+
+def test_actual_model_download_is_identified_as_first_time_setup():
+    updates = []
+    flow = PipelineProgress(updates.append)
+    flow.stage("piano", activity="cpu")
+    flow.detail("piano", ProgressEvent("Downloading Transkun model", activity="download"))
+    event = updates[-1]
+    assert event.phase == "First-time setup"
+    assert "cached for future songs" in progress_context(event)
+
+
+def test_skipped_stage_advances_without_claiming_it_ran():
+    updates = []
+    flow = PipelineProgress(updates.append)
+    flow.skip("cross_check", "Musical cross-check disabled")
+    event = updates[-1]
+    assert event.overall == 93
+    assert event.activity == "skipped"
+    assert "Cross-checking musical evidence" not in event
+
+
 def test_weighted_progress_never_moves_backwards_on_retry_messages():
     updates = []
     flow = PipelineProgress(updates.append)

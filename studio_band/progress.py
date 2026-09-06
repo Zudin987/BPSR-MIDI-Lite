@@ -170,13 +170,18 @@ class PipelineProgress:
             )
         )
 
-    def setup_ready(self, message: str = "Transcription runtime ready") -> ProgressEvent:
+    def setup_ready(
+        self,
+        message: str = "Transcription runtime ready",
+        *,
+        first_time: bool = False,
+    ) -> ProgressEvent:
         return self._send(
             ProgressEvent(
                 message,
                 stage_id="runtime_setup",
-                phase="First-time setup",
-                activity="cache",
+                phase="First-time setup" if first_time else "Preparing conversion",
+                activity="install" if first_time else "cache",
                 overall=SETUP_END,
                 stage_fraction=1.0,
                 indeterminate=False,
@@ -218,13 +223,28 @@ class PipelineProgress:
             ProgressEvent(
                 message,
                 stage_id=stage_id,
-                phase="Analyzing song",
+                phase="First-time setup" if resolved_activity == "download" else "Analyzing song",
                 activity=resolved_activity,
                 overall=overall,
                 stage_fraction=event.stage_fraction,
                 indeterminate=event.indeterminate,
                 bytes_done=event.bytes_done,
                 bytes_total=event.bytes_total,
+            )
+        )
+
+    def skip(self, stage_id: str, message: str) -> ProgressEvent:
+        """Advance past a disabled stage without claiming that it ran."""
+        _start, end, _default = PIPELINE_STAGES[stage_id]
+        return self._send(
+            ProgressEvent(
+                message,
+                stage_id=stage_id,
+                phase="Analyzing song",
+                activity="skipped",
+                overall=end,
+                stage_fraction=1.0,
+                indeterminate=False,
             )
         )
 
@@ -283,6 +303,8 @@ def progress_context(event: ProgressEvent) -> str:
         "waiting": "Waiting; checking worker health",
         "cache": "Using cached components",
         "disk": "Writing files",
+        "check": "Checking local components",
+        "skipped": "Skipped by your settings",
         "complete": "Stage complete",
         "processing": "Processing",
     }.get(event.activity, event.activity.replace("_", " ").title() if event.activity else "Processing")

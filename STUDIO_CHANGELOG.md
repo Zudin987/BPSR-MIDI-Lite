@@ -9,6 +9,7 @@
 - Captures subprocess stdout and stderr separately for **Details**, detects non-zero exits or a dead background job, stops progress animation and restores Convert/Search/Cancel controls. Normal UI copy remains concise instead of displaying dependency warning floods.
 - Strengthens Windows CI so the real-audio smoke starts from a fresh Studio data root, installs the same external Transkun runtime used by a clean user machine, proves the `ncls==0.0.68` binary-only policy, imports both packages and completes real Transkun inference.
 - Keeps local MP3/WAV/FLAC/M4A/OGG input as a first-class path and keeps the progress panel visible at 1280×720 and 640×480.
+- Keeps cached conversions out of the **First-time setup** state, labels actual model downloads as first-time cached work, and reports a disabled musical cross-check as skipped without briefly claiming that cross-check inference started.
 
 ## 0.5.0-band-accurate-beta.7
 

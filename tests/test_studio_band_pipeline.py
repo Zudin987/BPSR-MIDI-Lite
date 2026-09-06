@@ -101,6 +101,22 @@ def test_progress_is_weighted_monotonic_and_names_real_pipeline_stages(tmp_path)
     assert any(update.phase == "Analyzing song" and update.activity == "cpu" for update in structured)
 
 
+def test_disabled_cross_check_never_claims_cross_check_is_running(tmp_path):
+    source = tmp_path / "song.mp3"
+    source.write_bytes(b"legal synthetic fixture")
+    updates = []
+    converter = pipeline(tmp_path)
+    converter.convert(source, ConversionSettings(cross_check=False), progress=updates.append)
+
+    structured = [update for update in updates if isinstance(update, ProgressEvent)]
+    cross_check = [update for update in structured if update.stage_id == "cross_check"]
+    assert len(cross_check) == 1
+    assert cross_check[0].message == "Musical cross-check disabled"
+    assert cross_check[0].activity == "skipped" and cross_check[0].overall == 93
+    assert not any("Cross-checking musical evidence" in update for update in structured)
+    assert not any(provider == "mr_mt3" for provider, _source in FixtureClient.calls)
+
+
 def test_provider_metadata_names_output_without_exposing_cached_filename(tmp_path):
     source = tmp_path / ("a" * 64 + ".flac")
     source.write_bytes(b"legal synthetic fixture")
