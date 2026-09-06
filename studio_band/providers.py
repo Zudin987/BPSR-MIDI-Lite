@@ -17,6 +17,46 @@ _STEM_NAMES = ("vocals", "piano", "guitar", "bass", "drums", "other")
 _ORIGINAL_OWNERSHIP_RESOLVER = _legacy._resolve_spectral_ownership
 _ACTIVE_ROFORMER_EVIDENCE = None
 
+# Underscore helpers were public-by-convention before the compatibility split.
+# Re-expose them and route legacy calls through these names so existing focused
+# tests/debug integrations can still monkeypatch the provider facade.
+_audio = _legacy._audio
+_events_from_midi = _legacy._events_from_midi
+_prepare_mr_mt3_checkpoint = _legacy._prepare_mr_mt3_checkpoint
+device_for = _legacy.device_for
+_LEGACY_MR_MT3 = _legacy.mr_mt3
+_LEGACY_MUSCRIPTOR = _legacy.muscriptor
+
+
+def _call_legacy_compat(function, payload: dict, report):
+    original = (
+        _legacy._audio,
+        _legacy._events_from_midi,
+        _legacy._prepare_mr_mt3_checkpoint,
+        _legacy.device_for,
+    )
+    _legacy._audio = _audio
+    _legacy._events_from_midi = _events_from_midi
+    _legacy._prepare_mr_mt3_checkpoint = _prepare_mr_mt3_checkpoint
+    _legacy.device_for = device_for
+    try:
+        return function(payload, report)
+    finally:
+        (
+            _legacy._audio,
+            _legacy._events_from_midi,
+            _legacy._prepare_mr_mt3_checkpoint,
+            _legacy.device_for,
+        ) = original
+
+
+def mr_mt3(payload: dict, report) -> dict:
+    return _call_legacy_compat(_LEGACY_MR_MT3, payload, report)
+
+
+def muscriptor(payload: dict, report) -> dict:
+    return _call_legacy_compat(_LEGACY_MUSCRIPTOR, payload, report)
+
 
 def _path_from_separator(output, target: Path) -> Path:
     path = Path(output)
@@ -201,11 +241,13 @@ def demucs(payload: dict, report) -> dict:
 
 
 # Patch the backing module used by its existing run_provider() dispatcher. All
-# other providers (Basic Pitch, torchcrepe, Transkun, ADTOF, MuScriptor, MR-MT3,
-# Beat This and DSP fallbacks) remain byte-for-byte the beta.8 implementations.
+# other providers remain the established implementations; wrappers preserve the
+# pre-split monkeypatch/debug surface for MR-MT3 and MuScriptor.
 _legacy._resolve_spectral_ownership = _ownership_with_roformer
 _legacy.PROVIDERS["roformer"] = roformer
 _legacy.PROVIDERS["demucs"] = demucs
+_legacy.PROVIDERS["mr_mt3"] = mr_mt3
+_legacy.PROVIDERS["muscriptor"] = muscriptor
 PROVIDERS = _legacy.PROVIDERS
 DISTRIBUTIONS = _legacy.DISTRIBUTIONS
 run_provider = _legacy.run_provider

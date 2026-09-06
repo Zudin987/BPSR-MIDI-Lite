@@ -27,10 +27,26 @@ _legacy.RUNTIME_VALIDATION["hq"] = _legacy.RUNTIME_VALIDATION["hq"].replace(
 _legacy.PROVIDER_MODEL["roformer"] = f"{_legacy.HQ_MODEL}+optional-{HQ_SIX_STEM_MODEL}"
 _legacy.PROVIDER_MODEL["demucs"] = "htdemucs_6s+htdemucs_ft+optional-BS-Roformer-SW"
 
-# Re-export the established API after mutating the backing module globals. Its
-# classes/functions resolve RUNTIMES/PROVIDER_MODEL in runtime_legacy, so these
-# small overrides are also seen internally by RuntimeManager.
+# Re-export the established API after mutating the backing module globals.
 from .runtime_legacy import *  # noqa: F401,F403,E402
+
+# Keep the public compatibility module monkeypatchable. A few focused tests and
+# downstream integrations replace runtime.run_process; the legacy class resolves
+# globals in runtime_legacy, so synchronize that hook immediately before the
+# inherited installer runs.
+run_process = _legacy.run_process
+emit_progress = _legacy.emit_progress
+
+
+class RuntimeManager(_legacy.RuntimeManager):
+    def install(self, name: str, *, device: str = "cpu", cancel=None, progress=None,
+                repair: bool = False) -> None:
+        _legacy.run_process = run_process
+        _legacy.emit_progress = emit_progress
+        return super().install(
+            name, device=device, cancel=cancel, progress=progress, repair=repair
+        )
+
 
 # New constants are intentionally exported by this compatibility module.
 AUDIO_SEPARATOR_VERSION = "0.47.0"
