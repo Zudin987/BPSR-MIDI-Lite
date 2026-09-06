@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v3.4.0 | Out-Null
+          gh release view v3.4.0 --repo ${{ github.repository }} | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "Release v3.4.0 does not exist" }
           gh release upload v3.4.0 `
             release-studio/BPSR-MIDI-Studio-beta.8-Windows.zip `
@@ -55,7 +55,7 @@ jobs:
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
             release-studio/STUDIO_BAND_ACCURATE.md `
             release-studio/FFMPEG_BUILD_INFO.txt `
-            --clobber
+            --clobber --repo ${{ github.repository }}
           if ($LASTEXITCODE -ne 0) { throw "Studio beta.8 release upload failed" }
 
       - name: Verify published assets byte for byte
@@ -74,7 +74,7 @@ jobs:
             "FFMPEG_BUILD_INFO.txt"
           )
           foreach ($name in $names) {
-            gh release download v3.4.0 --dir $verifyDir --pattern $name
+            gh release download v3.4.0 --repo ${{ github.repository }} --dir $verifyDir --pattern $name
             if ($LASTEXITCODE -ne 0) { throw "Could not download published asset $name" }
             $localHash = (Get-FileHash (Join-Path "release-studio" $name) -Algorithm SHA256).Hash.ToLower()
             $remoteHash = (Get-FileHash (Join-Path $verifyDir $name) -Algorithm SHA256).Hash.ToLower()
