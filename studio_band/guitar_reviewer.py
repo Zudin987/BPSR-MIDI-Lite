@@ -97,7 +97,7 @@ def _features(audio_path: Path):
             y=mono, sr=sr, hop_length=hop, fmin=fmin * harmonic,
             n_bins=bins, bins_per_octave=bpo, gamma=gamma,
         )
-        value = librosa.amplitude_to_db(abs(value), ref="max")
+        value = librosa.amplitude_to_db(abs(value), ref=np.max)
         hcqt.append(np.asarray(value, dtype="float32"))
     frames = min(value.shape[-1] for value in hcqt)
     hcqt = np.stack([value[:, :frames] for value in hcqt], axis=0)
@@ -106,7 +106,7 @@ def _features(audio_path: Path):
         y=mono, sr=sr, n_mels=256, n_fft=2048, hop_length=hop,
         win_length=None, center=True, htk=False,
     )
-    mel = librosa.power_to_db(mel, ref="max").astype("float32")[None, :, :frames]
+    mel = librosa.power_to_db(mel, ref=np.max).astype("float32")[None, :, :frames]
     frames = min(frames, mel.shape[-1])
     return hcqt[..., :frames], mel[..., :frames], sr, hop
 
