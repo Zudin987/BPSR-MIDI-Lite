@@ -13,6 +13,7 @@ if __name__ == "__main__" and len(sys.argv) > 1 and sys.argv[1] == "--studio-ext
 
 import app
 from band_arranger_identity import install_band_arranger_identity
+from band_audit_hardening import install_band_audit_hardening
 from band_cloudflare import install_cloudflare_band_transport
 from band_lineup import install_band_lineup
 from band_musical_sharing import install_shared_band_arrangement
@@ -38,6 +39,7 @@ from playback_calibration_provenance import install_calibration_provenance
 from playback_calibration_ui import install_calibration_lab
 from playback_evidence_refinements import install_evidence_refinements
 from playback_overhaul import install_playback_overhaul
+from studio_audit_hardening import install_studio_audit_hardening
 from studio_audio_latency import install_studio_audio_latency
 from studio_band_advanced_setup import install_advanced_model_setup
 from studio_band.precision_judges import install_precision_setup_ui
@@ -118,6 +120,8 @@ install_video_audit_compat()
 install_video_audit_round2()
 install_video_audit_round3()
 install_detached_band_window()
+install_band_audit_hardening()
+install_studio_audit_hardening()
 
 
 if __name__ == "__main__":
