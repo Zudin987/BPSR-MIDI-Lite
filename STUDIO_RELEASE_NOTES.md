@@ -39,4 +39,4 @@ The Guitar specialist is the only new precision runtime prepared by the normal C
 
 ## Validation
 
-Focused tests cover removal of a weak audio-grounded tonal orphan, preservation of same-onset chords, preservation of a chromatic note with strong source audio, the normal fast separator policy, the hard targeted-review audio budget and the new Advanced UI wording. Standard Windows Studio/Lite CI remains the release gate.
+Focused tests cover removal of a weak audio-grounded tonal orphan, preservation of same-onset chords, preservation of a chromatic note with strong source audio, the normal fast separator policy, the hard targeted-review audio budget and the new Advanced UI wording. Before merge, PR #41 passed the Windows Studio test suite, Studio single-EXE build, responsive-UI checks, frozen-worker smoke, Lite build, repository hygiene and the standard real-audio inference smoke.
