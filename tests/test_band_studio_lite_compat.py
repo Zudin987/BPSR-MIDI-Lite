@@ -22,7 +22,7 @@ def _client(product_version: str):
 
 
 def test_studio_and_lite_share_the_same_band_compatibility_token() -> None:
-    lite = _client("3.4.0")
+    lite = _client("3.5.0")
     studio = _client("Studio 0.5.0-band-accurate-beta.9")
 
     lite_token = band_runtime_hardening._band_compatibility_version(lite)
@@ -34,11 +34,11 @@ def test_studio_and_lite_share_the_same_band_compatibility_token() -> None:
         f"-arr-{band_arranger.BAND_ARRANGEMENT_VERSION}"
     )
     assert "Studio" not in lite_token
-    assert "3.4.0" not in lite_token
+    assert "3.5.0" not in lite_token
 
 
 def test_lite_host_and_studio_client_pass_room_compatibility() -> None:
-    lite = _client("3.4.0")
+    lite = _client("3.5.0")
     studio = _client("Studio 0.5.0-band-accurate-beta.9")
     token = band_runtime_hardening._band_compatibility_version(lite)
     assert token == band_runtime_hardening._band_compatibility_version(studio)
@@ -90,7 +90,7 @@ def test_lite_host_and_studio_client_pass_room_compatibility() -> None:
 
 
 def test_cross_edition_start_payload_uses_shared_band_token() -> None:
-    lite = _client("3.4.0")
+    lite = _client("3.5.0")
     studio = _client("Studio 0.5.0-band-accurate-beta.9")
     token = band_runtime_hardening._band_compatibility_version(lite)
     assert token == band_runtime_hardening._band_compatibility_version(studio)
