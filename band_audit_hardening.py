@@ -8,10 +8,42 @@ from typing import Any
 AUDIT_RELEASE = "v3.4.0-post-hotfix6"
 _INSTALLED = False
 
+# In-game calibration capture (2026-09-07): only these C4-B5 transport
+# positions actually produced Drum-instrument audio. Keep Band Mode off the
+# remaining silent keyboard slots even when importing arbitrary GM percussion.
+CALIBRATED_DRUM_PITCHES = (62, 63, 65, 69, 72, 74, 76, 77, 79, 81)
+_GM_DRUM_TO_BPSR = {
+    35: 65, 36: 65,                    # kick
+    37: 72, 38: 72, 39: 72, 40: 72,    # snare / clap
+    41: 69, 43: 69,                    # low toms
+    45: 74, 47: 74,                    # mid toms
+    48: 76, 50: 76,                    # high toms
+    42: 62, 44: 62,                    # closed/pedal hat
+    46: 79, 54: 79,                    # open hat / tambourine-like fallback
+    49: 81, 52: 81, 55: 81, 57: 81, 58: 81,  # crash/effect cymbals
+    51: 77, 53: 77, 59: 77,            # ride
+    56: 76,                             # cowbell-like fallback -> audible high percussion
+}
+
 
 def anonymous_band_name() -> str:
     """Return a non-identifying default; users may still edit the room name."""
     return f"Player-{secrets.token_hex(2).upper()}"
+
+
+def calibrated_drum_pitch(pitch: int) -> int:
+    """Map percussion onto only BPSR Drum keys confirmed to make sound."""
+    value = int(pitch)
+    if value in CALIBRATED_DRUM_PITCHES:
+        return value
+    mapped = _GM_DRUM_TO_BPSR.get(value)
+    if mapped is not None:
+        return mapped
+    # Preserve the old deterministic 24-slot transport shape for unusual notes,
+    # then snap the result to the nearest confirmed-audible pad. This guarantees
+    # a Drum part never intentionally presses one of the silent BPSR keys.
+    wrapped = 60 + ((value - 35) % 24)
+    return min(CALIBRATED_DRUM_PITCHES, key=lambda item: (abs(item - wrapped), item))
 
 
 def _patch_band_identity() -> None:
@@ -75,10 +107,25 @@ def _patch_band_roster() -> None:
     band_sync.BandRoster.apply = apply
 
 
+def _patch_drum_transport() -> None:
+    import band_arranger
+
+    current = band_arranger.normalize_drum_pitch
+    if getattr(current, "_bpsr_calibrated_drums", False):
+        return
+
+    def normalize_drum_pitch(pitch: int) -> int:
+        return calibrated_drum_pitch(pitch)
+
+    normalize_drum_pitch._bpsr_calibrated_drums = True
+    band_arranger.normalize_drum_pitch = normalize_drum_pitch
+
+
 def install_band_audit_hardening() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
     _patch_band_identity()
     _patch_band_roster()
+    _patch_drum_transport()
     _INSTALLED = True
