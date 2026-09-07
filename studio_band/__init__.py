@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import os
 
-VERSION = "0.5.0-beta.9-hotfix3"
-PIPELINE_VERSION = "band-accurate-5"
+VERSION = "0.5.0-beta.9-hotfix4"
+PIPELINE_VERSION = "band-accurate-6"
 
 # beta.9 is an additive quality layer over the proven beta.8 implementation.
 # External model workers need only provider/runtime registration. Keeping the
@@ -19,6 +19,8 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
 else:
     from .beta9 import apply_beta9
     from .pitch_guard import apply_pitch_guard
+    from .final_audio_note_guard import apply_final_audio_note_guard
 
     apply_beta9()
     apply_pitch_guard()
+    apply_final_audio_note_guard()
