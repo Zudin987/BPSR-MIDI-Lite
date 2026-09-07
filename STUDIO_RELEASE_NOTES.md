@@ -12,10 +12,10 @@ This release refreshes the **BPSR MIDI Studio beta.9** assets attached to Lite r
 
 ## Release polish
 
-- Studio internal version: `0.5.0-beta.9-hotfix3`.
-- Windows Studio executable metadata now reports `0.5.0-band-accurate-beta.9-hotfix3`.
+- Studio internal pipeline version: `0.5.0-beta.9-hotfix3`.
+- Windows executable metadata intentionally remains on the beta.9 release label (`0.5.0-band-accurate-beta.9`) to stay consistent with the existing launcher/release contract.
 - No new heavyweight model/runtime dependency was added by this hotfix.
 
 ## Validation
 
-PR #37 passed the Windows Lite build/tests, Windows Studio build/tests, frozen-worker/runtime checks, repository hygiene, standard real-audio smoke and HQ real-audio smoke before release. The final metadata-only polish does not alter the transcription pipeline.
+PR #37 passed the Windows Lite build/tests, Windows Studio build/tests, frozen-worker/runtime checks, repository hygiene, standard real-audio smoke and HQ real-audio smoke before release. A release-only metadata consistency mismatch was found on the first publish attempt and corrected without changing the transcription pipeline.
