@@ -5,6 +5,7 @@ import math
 import secrets
 from typing import Any
 
+AUDIT_RELEASE = "v3.4.0-post-hotfix6"
 _INSTALLED = False
 
 
