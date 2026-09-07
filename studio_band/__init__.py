@@ -30,9 +30,11 @@ else:
     from .final_audio_note_guard import apply_final_audio_note_guard
     from .precision_judges import apply_precision_judges
     from .fast_precision import apply_fast_precision
+    from .gameplay_clarity_patch import apply_gameplay_clarity
 
     apply_beta9()
     apply_pitch_guard()
     apply_final_audio_note_guard()
     apply_precision_judges()
     apply_fast_precision()
+    apply_gameplay_clarity()
