@@ -13,17 +13,14 @@ PIPELINE_VERSION = "band-accurate-6"
 if os.environ.get("BPSR_STUDIO_WORKER") == "1":
     from . import providers, runtime
     from .beta9 import _patch_providers, _patch_runtimes
-    from .provider_note_guard import patch_provider_note_guard
 
     _patch_runtimes(runtime)
     _patch_providers(providers)
-    patch_provider_note_guard(providers)
 else:
     from .beta9 import apply_beta9
     from .pitch_guard import apply_pitch_guard
-    from .provider_note_guard import patch_provider_note_guard
-    from . import providers
+    from .final_audio_note_guard import apply_final_audio_note_guard
 
     apply_beta9()
     apply_pitch_guard()
-    patch_provider_note_guard(providers)
+    apply_final_audio_note_guard()
