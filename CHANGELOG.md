@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.5.0
+
+- Promoted the shared Band Mode stack into the normal Lite/Studio release line, including room creation/joining, lineup validation, synchronized Start, MIDI sharing, clock/speed/hash checks, network hardening, and calibrated BPSR Drum transport.
+- Locked Studio ↔ Lite interoperability to the shared Band protocol + arrangement contract instead of visible product-version strings, so Lite v3.5.0 and the Studio beta.9 build attached to the same release can host/join each other.
+- Improved Studio Audio → Band precision with a rhythm-aware guard that removes attackless off-rhythm Piano/Guitar retriggers only when both the separated source and original mixture lack a real local re-attack.
+- Added conservative audio-grounded onset refinement that can move a clearly mistimed Piano/Guitar note to a stronger nearby real attack within ±90 ms, while preserving genuine syncopation/human timing and never blindly quantizing to the beat grid.
+- Bumped the Studio analysis cache contract to `band-accurate-9` so older cached musical maps regenerate once and receive the new v3.5 rhythm/onset cleanup.
+- Kept Studio's fast-precision default path and specialist protections, preserving real chords, strongly-supported chromatic notes and humanized phrases instead of making the pipeline globally more aggressive.
+- Updated Lite Windows/product metadata to 3.5.0 and added release regressions covering version consistency plus cross-edition Band compatibility.
+
 ## v3.4.0
 
 - Overhauled the main product UI around the real playback workflow: permanent MIDI Library, primary BPSR Instrument/Category setup, compact Song Check metrics, Live MIDI preview, and always-visible playback controls.

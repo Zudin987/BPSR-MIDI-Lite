@@ -5,7 +5,7 @@ import math
 import secrets
 from typing import Any
 
-AUDIT_RELEASE = "v3.4.0-post-hotfix6"
+AUDIT_RELEASE = "v3.5.0"
 _INSTALLED = False
 
 # In-game calibration capture (2026-09-07): only these C4-B5 transport
