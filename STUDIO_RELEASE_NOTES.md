@@ -1,41 +1,42 @@
-# Studio beta.9 hotfix5
+# Studio beta.9 hotfix6
 
 This release refreshes the **BPSR MIDI Studio beta.9** assets attached to Lite release `v3.4.0`.
 
-## Audio → Band precision-review upgrade
+## Fast precision mode
 
-- Keeps the hotfix4 final audio-grounded Piano/Guitar validation and adds three optional **review-only** specialists aimed at the remaining random/wrong notes.
-- Adds a dedicated six-fold HCQT+Mel **GuitarSet specialist reviewer**. It scores only guitar notes Basic Pitch already proposed; it cannot create or delete notes by itself.
-- Adds **YourMT3+** as CUDA-only independent evidence on a small number of uncertain regions. Its MIDI is reference evidence for fusion, not a replacement transcription.
-- Adds **MVSep Mega 53 Stems** as a high-VRAM ownership judge for ambiguous Piano/Guitar notes. It runs only on uncertain regions and only with at least 14 GB detected NVIDIA VRAM.
-- Mega53 is used to answer questions such as “does this pitch belong to piano or guitar?”; its 53 stems never replace the main Demucs/BS-RoFormer song stems.
-- The precision reviewers remain independent of MR-MT3: if MR-MT3 itself fails, YourMT3+/Mega53 can still review the same uncertain windows when their runtimes are available.
-- Strong specialist agreement protects credible notes from later conservative guards; specialist conflicts reduce confidence so existing fusion/audio checks can remove weak hallucinations.
-- Bumps the analysis cache contract to `band-accurate-7`, so prior hotfix4 analysis is not reused.
+Real-song testing showed that full-song HQ separation plus the complete Extra quality stack could take roughly four times longer while only slightly cleaning the stems, and the same isolated Piano/Guitar wrong notes could still survive. Hotfix6 moves the default strategy from **more full-song compute** to **targeted wrong-note proof**.
 
-## Runtime and safety policy
+- The normal Audio → Band path now uses the fast Demucs separation route. Auto conversion no longer silently promotes an installed HQ runtime into a full-song BS-RoFormer job.
+- The normal Stem Quality selector is removed from the main workspace. The user sees **Separation: Auto (fast)** instead.
+- Full-song BS-RoFormer is retained as **Deep separation** inside Advanced for unusually difficult recordings or diagnostics; it is no longer presented as the recommended normal quality mode.
+- The old Extra quality control is relabeled **Deep diagnostic model review** and remains off by default.
+- Existing HQ, MR-MT3, Mega53 and other heavyweight code is not deleted; it is preserved for explicit diagnostics rather than charged to every normal conversion.
 
-- Guitar reviewer supports CPU/CUDA in its own isolated runtime; the one-click recommended path installs it only for CUDA extra-quality analysis.
-- YourMT3+ is never silently retried as a CPU workload.
-- Mega53 is never installed/run below the 14 GB VRAM gate, avoiding hidden out-of-memory attempts.
-- All three additions are non-blocking quality reviewers: if one cannot install or run, normal specialist/fusion processing continues.
-- YourMT3+ upstream GPL-3.0 source is downloaded at runtime instead of being vendored into the Studio executable. Its hosted checkpoint repository declares Apache-2.0.
-- Guitar-Transcription and its published weight repository are MIT-licensed. Mega53 uses the MIT-licensed `ZFTurbo/Music-Source-Separation-Training` source and checksum-pinned v1.0.21 release assets.
+## Wrong-note suppression without a 40-minute run
 
-## In-app performance guidance
+- Adds an always-on **fast precision sieve** after the existing fusion, rhythm guard and audio-grounded note validator.
+- The sieve combines exact note-local audio support, original-mixture support, cross-stem ownership, local pitch classes, nearby phrase register, repetition and beat-grid context.
+- Key/scale context is never allowed to delete a note by itself. A chromatic/borrowed note needs additional audio, phrase or rhythm disagreement before rejection.
+- Real same-onset Piano/Guitar chords are never dismantled by the tonal-orphan rule.
+- Strong independent model support remains protected unless the note simultaneously fails audio, phrase and rhythm checks.
 
-- Advanced → Model setup now includes an **Expected time & PC requirements** section based on the selected quality mode and detected CUDA hardware.
-- It gives broad planning ranges for a typical 3–5 minute song, including Standard, Auto/HQ, Extra quality and CPU fallback.
-- It explains that first use takes longer because model/runtime downloads are not included in the conversion-time estimate.
-- It shows practical RAM guidance (16 GB normal recommendation; 24–32 GB for Extra quality), disk-space guidance, NVIDIA/CUDA guidance and the existing 14 GB VRAM Mega53 requirement.
-- The text explicitly labels these as planning estimates rather than benchmark guarantees because song complexity, hardware and cache state vary significantly.
+### Targeted specialist budgets
 
-## Release polish
+Normal CUDA conversion spends specialist work only around suspicious notes:
 
-- Studio internal pipeline version: `0.5.0-beta.9-hotfix5`.
-- Windows executable metadata intentionally remains on the beta.9 release label (`0.5.0-band-accurate-beta.9`) to stay consistent with the existing launcher/release contract.
-- Existing beta.9 asset names remain unchanged so the v3.4.0 release workflow can replace them in place.
+- Guitar specialist: at most **18 candidates / 3 regions / 12 seconds** of audio. Candidate neighborhoods are cropped and concatenated before HCQT+Mel extraction, so the six-fold model no longer analyzes the full song.
+- Aria-AMT: reused only when already installed, at most **2 regions / 8 seconds**.
+- YourMT3+: reused only when already installed and only for high-risk candidates, at most **2 regions / 6 seconds**.
+- Mega53 and the full deep cross-check stack remain diagnostic-only because their model-loading cost is not justified for normal songs.
+
+The Guitar specialist is the only new precision runtime prepared by the normal CUDA setup. Aria/YourMT3+/Mega53 are not silently installed by the fast path.
+
+## Runtime / cache
+
+- Studio internal pipeline version: `0.5.0-beta.9-hotfix6`.
+- Analysis cache contract: `band-accurate-8`; older hotfix5 musical maps are intentionally not reused.
+- Windows executable metadata remains on the established beta.9 release label for compatibility with the existing launcher/release workflow.
 
 ## Validation
 
-PR #39 passed the full Windows Studio unit/UI suite, single-EXE build, frozen-worker smoke, repository hygiene, Lite build, real-audio provider inference, and HQ separation/timeline smoke before merge. PR #40 then passed the Windows Studio build/tests, frozen-worker/UI checks, Lite build and repository hygiene for the new performance-guidance UI. Heavyweight optional Guitar/YourMT3+/Mega53 model downloads remain first-use runtime paths rather than multi-GB CI fixtures.
+Focused tests cover removal of a weak audio-grounded tonal orphan, preservation of same-onset chords, preservation of a chromatic note with strong source audio, the normal fast separator policy, the hard targeted-review audio budget and the new Advanced UI wording. Standard Windows Studio/Lite CI remains the release gate.
