@@ -20,6 +20,7 @@ def _collapse_other_duplicates(master: Any, result: dict) -> int:
     if not other_ids:
         return 0
 
+    melody_owner = result.get("melody_assignment", {}).get("part")
     occurrences: dict[str, list[tuple[str, Any]]] = defaultdict(list)
     for part in ("piano", "guitar", "bass"):
         for event in result.get("parts", {}).get(part, []):
@@ -32,9 +33,20 @@ def _collapse_other_duplicates(master: Any, result: dict) -> int:
         if len(targets) <= 1:
             continue
         reference = max((event for _, event in copies), key=lambda event: event.confidence)
+        accompaniment = reference.role in {"HARMONY", "RHYTHM", "DECORATION"}
         if "bass" in targets and reference.pitch is not None and reference.pitch <= 50:
             owner = "bass"
-        elif "guitar" in targets and reference.role in {"HARMONY", "RHYTHM", "DECORATION"}:
+        elif accompaniment and {"piano", "guitar"} <= targets:
+            # Keep accompaniment away from the foreground owner when possible.
+            # This produces a clearer real band and avoids two players doubling
+            # one ambiguous phrase at BPSR's effectively full digital volume.
+            if melody_owner == "piano":
+                owner = "guitar"
+            elif melody_owner == "guitar":
+                owner = "piano"
+            else:
+                owner = "guitar"
+        elif "guitar" in targets and accompaniment:
             owner = "guitar"
         elif "piano" in targets:
             owner = "piano"
