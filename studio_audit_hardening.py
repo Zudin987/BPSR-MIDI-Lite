@@ -125,6 +125,39 @@ def _patch_studio_conversion_cleanup() -> None:
     pipeline.BandPipeline.convert = convert
 
 
+def _patch_calibrated_drum_profile() -> None:
+    import studio_band.arrange as arrange_module
+    import studio_band.pipeline as pipeline_module
+    import studio_band_ui as ui_module
+
+    original = arrange_module.load_drum_profile
+    if getattr(original, "_bpsr_audible_pad_guard", False):
+        return
+
+    def load_drum_profile(path=None):
+        profile = original(path)
+        if profile.get("calibrated"):
+            usable = tuple(int(value) for value in profile.get("usable_pitches", ()))
+            if not usable:
+                raise ValueError("Calibrated drum profile must list usable_pitches")
+            if len(set(usable)) != len(usable) or any(not 60 <= value <= 83 for value in usable):
+                raise ValueError("Calibrated drum profile contains an invalid usable pad")
+            silent = tuple(int(value) for value in profile.get("silent_pitches", ()))
+            if set(usable) & set(silent):
+                raise ValueError("A drum pad cannot be both usable and silent")
+            if set(usable) | set(silent) != set(range(60, 84)):
+                raise ValueError("Calibrated drum profile must classify every C4-B5 pad")
+            if any(int(value) not in usable for value in profile["mapping"].values()):
+                raise ValueError("Drum semantic mapping targets a silent BPSR key")
+        return profile
+
+    load_drum_profile._bpsr_audible_pad_guard = True
+    arrange_module.load_drum_profile = load_drum_profile
+    # Both modules imported the helper by value before this patch layer.
+    pipeline_module.load_drum_profile = load_drum_profile
+    ui_module.load_drum_profile = load_drum_profile
+
+
 def _walk_widgets(widget):
     yield widget
     try:
@@ -172,6 +205,36 @@ def _patch_studio_project_ui() -> None:
         use._bpsr_project_wording = True
         BandAudioTab.use = use
 
+    original_edit_drums = BandAudioTab.edit_drums
+    if not getattr(original_edit_drums, "_bpsr_calibrated_wording", False):
+        def edit_drums(self):
+            before = set(self.app.winfo_children())
+            result = original_edit_drums(self)
+            try:
+                created = [widget for widget in self.app.winfo_children() if widget not in before]
+                for window in created:
+                    if not isinstance(window, tk.Toplevel):
+                        continue
+                    if str(window.title()).startswith("BPSR drum mapping"):
+                        window.title("BPSR drum mapping · calibrated")
+                        for widget in _walk_widgets(window):
+                            try:
+                                text = str(widget.cget("text"))
+                                if text.startswith("Pad range C4-B5 is verified"):
+                                    widget.configure(text=(
+                                        "In-game calibration found 10 audible pads inside C4-B5: "
+                                        "D4, D#4, F4, A4, C5, D5, E5, F5, G5 and A5. "
+                                        "Semantic roles are mapped only to those audible keys."
+                                    ))
+                            except (AttributeError, tk.TclError):
+                                continue
+            except (AttributeError, tk.TclError):
+                pass
+            return result
+
+        edit_drums._bpsr_calibrated_wording = True
+        BandAudioTab.edit_drums = edit_drums
+
     original_init = BandAudioTab.__init__
     if getattr(original_init, "_bpsr_project_wording", False):
         return
@@ -201,5 +264,6 @@ def install_studio_audit_hardening() -> None:
         return
     _patch_studio_export_privacy()
     _patch_studio_conversion_cleanup()
+    _patch_calibrated_drum_profile()
     _patch_studio_project_ui()
     _INSTALLED = True
