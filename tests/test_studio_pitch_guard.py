@@ -71,7 +71,7 @@ def test_pitch_guard_rejects_off_rhythm_piano_singleton_between_strong_chords():
     events = [
         note(60, 0.0, .35, source="piano", confidence=.86, engine="transkun", event_id="a1"),
         note(64, 0.0, .35, source="piano", confidence=.86, engine="transkun", event_id="a2"),
-        note(78, .31, .48, source="piano", confidence=.72, engine="transkun", event_id="bad"),
+        note(67, .31, .48, source="piano", confidence=.72, engine="transkun", event_id="bad"),
         note(62, .5, .85, source="piano", confidence=.86, engine="transkun", event_id="b1"),
         note(65, .5, .85, source="piano", confidence=.86, engine="transkun", event_id="b2"),
     ]

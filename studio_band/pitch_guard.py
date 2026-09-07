@@ -284,11 +284,33 @@ def guard_events(events, beat_map=None):
     return sorted(kept, key=lambda event: (event.start, event.source, event.pitch or 0)), rejected
 
 
+def _patch_optional_beta9_review(beta9) -> None:
+    """Keep targeted Aria review optional in lightweight/test environments."""
+    original = beta9._piano_review_regions
+    if getattr(original, "_bpsr_optional_dependency_guard", False):
+        return
+
+    def safe_piano_review_regions(audio_path, events, metric):
+        try:
+            return original(audio_path, events, metric)
+        except ModuleNotFoundError as exc:
+            # Aria review is additive only. Lite and fixture-only environments do
+            # not ship NumPy/SoundFile and must keep the Transkun result instead.
+            if exc.name in {"numpy", "soundfile"}:
+                return []
+            raise
+
+    safe_piano_review_regions._bpsr_optional_dependency_guard = True
+    beta9._piano_review_regions = safe_piano_review_regions
+
+
 def apply_pitch_guard() -> None:
     global _APPLIED
     if _APPLIED:
         return
-    from . import fusion, pipeline
+    from . import beta9, fusion, pipeline
+
+    _patch_optional_beta9_review(beta9)
 
     # Apply after beta.9 build_master so repeated motifs and instrument-presence
     # decisions are already available as evidence. This is still before BPSR
