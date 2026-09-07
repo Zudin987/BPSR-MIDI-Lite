@@ -164,10 +164,10 @@ def _pitch_window(handle, pitch: int, start: float, end: float) -> dict[str, flo
 
 
 def _attack_evidence(handle, pitch: int, onset: float) -> dict[str, float]:
-    # Keep the pre-window away from the exact onset so separator smearing does
-    # not turn a real attack into an apparently flat signal.
+    # Equal 90 ms windows make a sustained tone measure near 0 dB. The 25 ms
+    # gap before onset also avoids separator smearing hiding a real re-attack.
     pre = _pitch_window(handle, pitch, max(0.0, onset - .115), max(.001, onset - .025))
-    post = _pitch_window(handle, pitch, onset, onset + .115)
+    post = _pitch_window(handle, pitch, onset, onset + .090)
     pitch_attack_db = 10.0 * math.log10((post["signal"] + 1e-18) / (pre["signal"] + 1e-18))
     rms_attack_db = 20.0 * math.log10((post["rms"] + 1e-12) / (pre["rms"] + 1e-12))
     return {
