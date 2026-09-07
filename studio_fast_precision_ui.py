@@ -22,11 +22,11 @@ def _patch_main_ui():
         return
 
     def init(self, app):
-        original_init(self, app)
-        # The Studio launcher installs the Advanced model-setup override before
-        # it creates this tab. Patch that final class method lazily here so the
-        # wrapper cannot be overwritten by installer order.
+        # Advanced has already been installed by the launcher before any tab is
+        # constructed. Wrap it before original_init binds the Advanced button,
+        # otherwise Tk would keep the old bound method forever.
         _patch_advanced_ui()
+        original_init(self, app)
         self.deep_separation = tk.BooleanVar(app, value=False)
         self.quality.set("Standard")
         quality_label = None
