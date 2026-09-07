@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.5.1
+
+- Added a Studio-only final **BPSR in-game clarity** pass after normal musical reduction and physical mapping so Audio → Band is optimized for real digital-key audibility instead of only desktop MIDI preview fidelity.
+- Removed duplicated ambiguous accompaniment across Band parts, giving shared `other` material one primary audible owner and preferring accompaniment away from the main melody owner when Piano/Guitar are both plausible.
+- Reduced busy Piano/Guitar accompaniment more aggressively while protecting `MAIN_MELODY`, `MELODY`, `RIFF`, and `BASS`; sparse passages remain unchanged.
+- Piano now begins density-aware chord thinning around 5.5 local attacks/second, with roughly three-note moderate and two-note very-busy caps; Guitar uses a two-note busy-section cap from roughly the same pressure.
+- Added priority removal of expendable `DECORATION`, selective skipping of overly close soft Harmony/Decoration-only attacks, and shorter accompaniment tails (about 240 ms at 5.5+, 180 ms at 7.5+, 140 ms at 9+ attacks/second).
+- Kept the Studio analysis cache at `band-accurate-9` because this hotfix is arrangement-only; existing v3.5 musical maps can be rearranged without repeating model-heavy transcription.
+- Advanced the bundled Studio internal label to `0.5.0-beta.9-hotfix8`, kept Lite/Studio Band interoperability unchanged, and bumped Lite Windows/product metadata to 3.5.1.
+
 ## v3.5.0
 
 - Promoted the shared Band Mode stack into the normal Lite/Studio release line, including room creation/joining, lineup validation, synchronized Start, MIDI sharing, clock/speed/hash checks, network hardening, and calibrated BPSR Drum transport.
