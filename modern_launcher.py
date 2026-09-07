@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import app
 from band_arranger_identity import install_band_arranger_identity
+from band_audit_hardening import install_band_audit_hardening
 from band_cloudflare import install_cloudflare_band_transport
 from band_lineup import install_band_lineup
 from band_musical_sharing import install_shared_band_arrangement
@@ -64,6 +65,7 @@ install_band_midi_sharing(app)
 install_band_network_hardening(app)
 install_cloudflare_band_transport(app)
 install_band_room_registry(app)
+install_band_audit_hardening()
 
 
 if __name__ == "__main__":
