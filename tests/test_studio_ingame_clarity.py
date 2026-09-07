@@ -50,6 +50,39 @@ def test_dense_piano_chords_reduce_accompaniment_but_keep_melody() -> None:
     assert len(middle) <= 2
 
 
+def test_moderately_busy_background_drops_decoration_before_harmony() -> None:
+    events = []
+    for index in range(10):
+        start = index * 0.14
+        events.extend([
+            event(60 + index % 3, start, role="HARMONY", event_id=f"h{index}"),
+            event(72 + index % 2, start, role="DECORATION", velocity=70, event_id=f"d{index}"),
+        ])
+
+    kept, removed, metrics = clarify_part(events, "piano", 4)
+
+    assert metrics["ingame_clarity_removed"] > 0
+    assert any(item["reason"] == "ingame_background_detail" for item in removed)
+    middle = [item for item in kept if 0.40 <= item.start <= 0.90]
+    assert any(item.role == "HARMONY" for item in middle)
+    assert sum(item.role == "DECORATION" for item in middle) < sum(
+        item.role == "HARMONY" for item in middle
+    )
+
+
+def test_extreme_soft_background_pressure_can_remove_whole_attacks() -> None:
+    events = [
+        event(60 + index % 4, index * 0.07, role="HARMONY", velocity=82, event_id=f"h{index}")
+        for index in range(16)
+    ]
+
+    kept, removed, metrics = clarify_part(events, "piano", 4)
+
+    assert len(kept) < len(events)
+    assert metrics["ingame_clarity_removed"] == len(events) - len(kept)
+    assert any(item["reason"] == "ingame_accompaniment_attack_pressure" for item in removed)
+
+
 def test_dense_rhythm_tails_are_gated_before_the_next_attack() -> None:
     events = [
         event(60 + index % 4, index * 0.10, role="RHYTHM", end=index * 0.10 + 0.50,
@@ -63,7 +96,7 @@ def test_dense_rhythm_tails_are_gated_before_the_next_attack() -> None:
     assert any("ingame_clarity_gated" in item.tags for item in kept)
     dense = [item for item in kept if 0.35 <= item.start <= 0.75]
     assert dense
-    assert max(item.end - item.start for item in dense) <= 0.205
+    assert max(item.end - item.start for item in dense) <= 0.185
 
 
 def test_sparse_passage_is_not_flattened() -> None:
