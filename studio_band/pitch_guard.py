@@ -164,7 +164,7 @@ def _rhythm_orphan(event, current_group, context, beat_map) -> bool:
         )
 
     # Basic Pitch guitar/other false positives are commonly brief single-engine
-    # activations.  Keep strong sustained notes even when played ahead/behind.
+    # activations. Keep strong sustained notes even when played ahead/behind.
     if event.engine == "basic_pitch":
         return event.confidence < .82 and (raw < .72 or duration < .36 or spectral < .58)
     return event.confidence < .76 and (duration < .28 or spectral < .55)
@@ -249,22 +249,26 @@ def guard_events(events, beat_map=None):
             if context and len(current_group) == 1 and not supported:
                 previous_pitch = context["previous_pitch"]
                 next_pitch = context["next_pitch"]
+                local_anchor = None
+                local_distance = 0.0
                 if previous_pitch is not None and next_pitch is not None and abs(previous_pitch - next_pitch) <= 7:
-                    anchor = (previous_pitch + next_pitch) / 2.0
-                    distance = abs(event.pitch - anchor)
-                    if distance >= 11 and event.confidence < .82 and (duration < .40 or raw < .72):
+                    local_anchor = (previous_pitch + next_pitch) / 2.0
+                    local_distance = abs(event.pitch - local_anchor)
+                    if local_distance >= 11 and event.confidence < .82 and (duration < .40 or raw < .72):
                         rejected.append(_reject(event, "isolated_polyphonic_pitch_outlier"))
                         continue
 
                 # A weak singleton foreign to both neighboring chords is a
-                # likely bleed/harmonic when it is also short or rhythmically off.
+                # likely bleed/harmonic only when pitch or rhythm also disagrees.
+                # This explicitly preserves legitimate on-grid passing tones.
                 previous_pcs = _group_pitch_classes(context["previous"])
                 next_pcs = _group_pitch_classes(context["next"])
                 neighbor_pcs = previous_pcs | next_pcs
                 grid = _beat_grid_context(beat_map, event.start)
                 chord_context = len(previous_pcs) >= 2 and len(next_pcs) >= 2
+                extra_disagreement = bool(grid and grid["off_grid"]) or local_distance >= 8
                 if (
-                    chord_context and event.pitch % 12 not in neighbor_pcs and
+                    chord_context and event.pitch % 12 not in neighbor_pcs and extra_disagreement and
                     event.confidence < .80 and
                     (duration < .34 or raw < .68 or (grid and grid["off_grid"]))
                 ):
@@ -287,7 +291,7 @@ def apply_pitch_guard() -> None:
     from . import fusion, pipeline
 
     # Apply after beta.9 build_master so repeated motifs and instrument-presence
-    # decisions are already available as evidence.  This is still before BPSR
+    # decisions are already available as evidence. This is still before BPSR
     # range fitting, so a hallucinated note cannot be made plausible by octave
     # remapping later in the arranger.
     original_build_master = fusion.build_master
