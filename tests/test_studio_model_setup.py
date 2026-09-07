@@ -31,3 +31,15 @@ def test_clear_advanced_setup_is_installed_by_studio_launcher() -> None:
     assert "Processing device" in setup
     assert "HQ separation" in setup
     assert "BPSR playability limits" in setup
+
+
+def test_advanced_setup_explains_time_memory_storage_and_gpu_expectations() -> None:
+    setup = Path("studio_band_advanced_setup.py").read_text(encoding="utf-8")
+
+    assert "Expected time & PC requirements" in setup
+    assert "Typical 3–5 minute song" in setup
+    assert "16 GB is the practical recommendation" in setup
+    assert "32 GB gives more headroom" in setup
+    assert "14 GB VRAM" in setup
+    assert "25 GB+" in setup
+    assert "Planning estimate only" in setup

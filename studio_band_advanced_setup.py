@@ -82,11 +82,60 @@ def _component_status(tab, key: str, hardware) -> str:
     return "Optional"
 
 
+def _performance_guide(tab, hardware) -> tuple[str, str, str]:
+    """Return conservative planning guidance, not a benchmark promise."""
+    device = _effective_device(tab, hardware)
+    quality = tab.quality.get().strip().lower()
+    cross_check = bool(tab.cross_check.get())
+
+    if device == "cuda":
+        if cross_check:
+            time_text = (
+                "Typical 3–5 minute song on a gaming NVIDIA GPU: roughly 10–40+ minutes with Extra quality cross-check. "
+                "YourMT3+/MR-MT3/Aria and high-VRAM ownership review can make difficult songs take longer."
+            )
+        elif quality == "standard":
+            time_text = (
+                "Typical 3–5 minute song on a gaming NVIDIA GPU: roughly 2–8 minutes in Standard mode."
+            )
+        else:
+            time_text = (
+                "Typical 3–5 minute song on a gaming NVIDIA GPU: roughly 4–15 minutes in Auto/HQ mode."
+            )
+        mega = (
+            "Mega53 piano/guitar ownership review is available on this GPU when Extra quality is enabled."
+            if hardware.vram_gb >= 14.0 else
+            "Mega53 ownership review will stay off on this GPU because it requires at least 14 GB VRAM."
+        )
+        pc_text = (
+            f"GPU: {hardware.vram_gb:.1f} GB VRAM detected. 6 GB can handle many normal CUDA stages; 8 GB+ is the better target. {mega}"
+        )
+    else:
+        time_text = (
+            "Typical 3–5 minute song on CPU: roughly 15–60+ minutes for Standard processing. "
+            "HQ and Extra quality can take substantially longer; CPU is best treated as a compatibility/fallback path."
+        )
+        pc_text = (
+            "GPU: no usable NVIDIA CUDA device detected. Core processing still works on CPU, but Aria-AMT, YourMT3+ and Mega53 quality review require NVIDIA CUDA."
+        )
+
+    memory_text = (
+        "RAM / disk: 8 GB RAM can work for Standard, but 16 GB is the practical recommendation. "
+        "For Extra quality, 24 GB+ is recommended and 32 GB gives more headroom. Keep about 15 GB free for normal first-use runtimes/cache, "
+        "or 25 GB+ if you plan to install all optional reviewers."
+    )
+    note_text = (
+        "Planning estimate only — actual time depends on song length/complexity, GPU/CPU speed, model cache and disk speed. "
+        "First use is longer because several GB of runtimes/models may download; download time is not included above."
+    )
+    return time_text, pc_text + " " + memory_text, note_text
+
+
 def _advanced(self: BandAudioTab):
     window = tk.Toplevel(self.workspace)
     window.title("Audio → Band · Model setup")
     window.transient(self.workspace)
-    _fit_toplevel(window, 820, 690, 560, 430)
+    _fit_toplevel(window, 820, 720, 560, 430)
     window._scroll_canvas, content, window._scrollbar = _scrollable_body(window, padding=14)
 
     hardware = detect_hardware()
@@ -197,7 +246,23 @@ def _advanced(self: BandAudioTab):
         setup, text="Set up recommended for this PC", command=setup_recommended,
     ).pack(anchor="w")
 
-    components = ttk.LabelFrame(content, text="3 · Component status", padding=10)
+    performance = ttk.LabelFrame(content, text="3 · Expected time & PC requirements", padding=10)
+    performance.pack(fill="x", pady=(0, 10))
+    time_text, pc_text, estimate_note = _performance_guide(self, hardware)
+    time_label = ttk.Label(
+        performance, text=time_text, justify="left", wraplength=720,
+    )
+    time_label.pack(anchor="w", fill="x")
+    pc_label = ttk.Label(
+        performance, text=pc_text, justify="left", wraplength=720,
+    )
+    pc_label.pack(anchor="w", fill="x", pady=(5, 0))
+    estimate_label = ttk.Label(
+        performance, text=estimate_note, style="Hint.TLabel", justify="left", wraplength=720,
+    )
+    estimate_label.pack(anchor="w", fill="x", pady=(5, 0))
+
+    components = ttk.LabelFrame(content, text="4 · Component status", padding=10)
     components.pack(fill="x", pady=(0, 10))
     tree = ttk.Treeview(
         components, columns=("status", "kind", "purpose"), show="tree headings",
@@ -286,7 +351,7 @@ def _advanced(self: BandAudioTab):
 
     ttk.Button(repair_box, text="Install / repair selected", command=repair_selected).pack(side="left", padx=(7, 0))
 
-    playability = ttk.LabelFrame(content, text="4 · BPSR playability limits", padding=10)
+    playability = ttk.LabelFrame(content, text="5 · BPSR playability limits", padding=10)
     playability.pack(fill="x", pady=(0, 8))
     ttk.Label(
         playability,
@@ -323,6 +388,9 @@ def _advanced(self: BandAudioTab):
         intro.configure(wraplength=width)
         judge_note.configure(wraplength=width)
         plan_label.configure(wraplength=width)
+        time_label.configure(wraplength=width)
+        pc_label.configure(wraplength=width)
+        estimate_label.configure(wraplength=width)
         drum_note.configure(wraplength=width)
         footer.configure(wraplength=width)
 
