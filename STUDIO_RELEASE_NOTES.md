@@ -30,4 +30,4 @@ This release refreshes the **BPSR MIDI Studio beta.9** assets attached to Lite r
 
 ## Validation
 
-The change includes focused unit coverage proving that the guitar and Mega53 reviewers only reweight/annotate existing notes and that the new runtimes are isolated and cache-invalidating. Standard repository/Windows Studio CI remains the release gate; heavyweight external model inference is intentionally not performed in ordinary CI.
+PR #39 passed the full Windows Studio unit/UI suite, single-EXE build, frozen-worker smoke, repository hygiene, Lite build, real-audio provider inference, and HQ separation/timeline smoke before merge. Heavyweight optional Guitar/YourMT3+/Mega53 model downloads remain first-use runtime paths rather than multi-GB CI fixtures.
