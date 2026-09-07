@@ -22,6 +22,14 @@ This release refreshes the **BPSR MIDI Studio beta.9** assets attached to Lite r
 - YourMT3+ upstream GPL-3.0 source is downloaded at runtime instead of being vendored into the Studio executable. Its hosted checkpoint repository declares Apache-2.0.
 - Guitar-Transcription and its published weight repository are MIT-licensed. Mega53 uses the MIT-licensed `ZFTurbo/Music-Source-Separation-Training` source and checksum-pinned v1.0.21 release assets.
 
+## In-app performance guidance
+
+- Advanced → Model setup now includes an **Expected time & PC requirements** section based on the selected quality mode and detected CUDA hardware.
+- It gives broad planning ranges for a typical 3–5 minute song, including Standard, Auto/HQ, Extra quality and CPU fallback.
+- It explains that first use takes longer because model/runtime downloads are not included in the conversion-time estimate.
+- It shows practical RAM guidance (16 GB normal recommendation; 24–32 GB for Extra quality), disk-space guidance, NVIDIA/CUDA guidance and the existing 14 GB VRAM Mega53 requirement.
+- The text explicitly labels these as planning estimates rather than benchmark guarantees because song complexity, hardware and cache state vary significantly.
+
 ## Release polish
 
 - Studio internal pipeline version: `0.5.0-beta.9-hotfix5`.
@@ -30,4 +38,4 @@ This release refreshes the **BPSR MIDI Studio beta.9** assets attached to Lite r
 
 ## Validation
 
-PR #39 passed the full Windows Studio unit/UI suite, single-EXE build, frozen-worker smoke, repository hygiene, Lite build, real-audio provider inference, and HQ separation/timeline smoke before merge. Heavyweight optional Guitar/YourMT3+/Mega53 model downloads remain first-use runtime paths rather than multi-GB CI fixtures.
+PR #39 passed the full Windows Studio unit/UI suite, single-EXE build, frozen-worker smoke, repository hygiene, Lite build, real-audio provider inference, and HQ separation/timeline smoke before merge. PR #40 then passed the Windows Studio build/tests, frozen-worker/UI checks, Lite build and repository hygiene for the new performance-guidance UI. Heavyweight optional Guitar/YourMT3+/Mega53 model downloads remain first-use runtime paths rather than multi-GB CI fixtures.
