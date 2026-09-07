@@ -9,6 +9,7 @@ from .guitar_reviewer import review_guitar_candidates
 from .external_judges import yourmt3_review, mega53_ownership
 
 _APPLIED = False
+_UI_PATCHED = False
 _STATE = threading.local()
 
 GUITAR_RUNTIME = ["torch==2.11.0", "numpy==2.3.3", "librosa==0.11.0", "soundfile==0.13.1", "soxr==1.0.0"]
@@ -272,11 +273,23 @@ def _patch_audio_guard(audio_guard) -> None:
     audio_guard._strong_support = strong_support
 
 
-def _patch_setup_ui() -> None:
+def _patch_setup_ui() -> bool:
+    """Patch Advanced only after that module has finished importing.
+
+    `studio_band_advanced_setup` imports `studio_band.runtime`, which initializes
+    this package.  Trying to mutate Advanced during that import creates a circular
+    import.  Core precision behavior is therefore installed first and the launcher
+    invokes this small UI hook after Advanced itself is fully defined.
+    """
+    global _UI_PATCHED
+    if _UI_PATCHED:
+        return True
     try:
         import studio_band_advanced_setup as setup
     except ImportError:
-        return
+        return False
+    if not all(hasattr(setup, name) for name in ("_COMPONENTS", "_recommended_plan", "_component_status", "_effective_device")):
+        return False
     setup._COMPONENTS.update({
         "guitar_review": ("Guitar specialist", "Six-fold GuitarSet HCQT+Mel reviewer; proves existing guitar notes only", "Quality"),
         "yourmt3": ("Targeted music judge", "YourMT3+ on uncertain sections; independent reference evidence only", "Max quality"),
@@ -304,11 +317,17 @@ def _patch_setup_ui() -> None:
             return original_status(tab, key, hardware)
         component_status._bpsr_precision_setup = True
         setup._component_status = component_status
+    _UI_PATCHED = True
+    return True
+
+
+def install_precision_setup_ui() -> None:
+    _patch_setup_ui()
 
 
 def apply_precision_judges() -> None:
     global _APPLIED
     if _APPLIED: return
     from . import audio_note_guard, pipeline, providers, runtime
-    _patch_runtimes(runtime); _patch_providers(providers); _patch_audio_guard(audio_note_guard); _patch_pipeline(pipeline); _patch_setup_ui()
+    _patch_runtimes(runtime); _patch_providers(providers); _patch_audio_guard(audio_note_guard); _patch_pipeline(pipeline)
     _APPLIED = True
