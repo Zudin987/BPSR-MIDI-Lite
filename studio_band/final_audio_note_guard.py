@@ -23,11 +23,10 @@ def _clear_context() -> None:
             pass
 
 
-def _skip(master, key: str, reason: str) -> None:
+def _skip(master, key: str, reason: str, **counts) -> None:
     master.provenance[key] = {
         "version": 1,
-        "checked": 0,
-        "removed": 0,
+        **(counts or {"checked": 0, "removed": 0}),
         "skipped": reason,
     }
 
@@ -39,6 +38,7 @@ def apply_final_audio_note_guard() -> None:
 
     from . import fusion, pipeline
     from .audio_note_guard import validate_master_notes
+    from .audio_onset_refiner import refine_audio_onsets
     from .rhythm_attack_guard import validate_rhythm_attacks
 
     original_stage = pipeline.BandPipeline._stage
@@ -73,6 +73,7 @@ def apply_final_audio_note_guard() -> None:
             if not (stems and mixture and Path(mixture).is_file()):
                 reason = "resolved stems or prepared mixture unavailable"
                 _skip(master, "audio_note_guard", reason)
+                _skip(master, "audio_onset_refiner", reason, considered=0, candidates=0, refined=0)
                 _skip(master, "rhythm_attack_guard", reason)
                 return master
 
@@ -85,7 +86,16 @@ def apply_final_audio_note_guard() -> None:
                 _skip(master, "audio_note_guard", str(exc))
 
             try:
-                # This second pass solves the narrower case where a pitch really
+                # Repair a narrow timing error before the rhythm guard decides
+                # whether an off-grid singleton is a fake re-trigger. This uses
+                # the real pitch attack in source + mixture, never beat snapping.
+                refine_audio_onsets(master, stems, Path(mixture))
+            except (ImportError, ModuleNotFoundError, OSError, RuntimeError, ValueError) as exc:
+                master.warnings.append(f"Final audio onset refinement was skipped: {exc}")
+                _skip(master, "audio_onset_refiner", str(exc), considered=0, candidates=0, refined=0)
+
+            try:
+                # This final pass solves the narrower case where a pitch really
                 # exists in the audio, but the decoder invented a new off-rhythm
                 # re-trigger on top of a sustained harmonic.
                 validate_rhythm_attacks(master, stems, Path(mixture))
