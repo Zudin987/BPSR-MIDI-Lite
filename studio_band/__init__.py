@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 
-VERSION = "0.5.0-beta.9-hotfix7"
+VERSION = "0.5.0-beta.9-hotfix8"
 PIPELINE_VERSION = "band-accurate-9"
 
 # beta.9 is an additive quality layer over the proven beta.8 implementation.
