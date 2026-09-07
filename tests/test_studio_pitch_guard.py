@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from studio_band.music import MusicEvent
+from studio_band.music import BeatMap, MusicEvent
 from studio_band.pitch_guard import guard_events
 
 
@@ -9,6 +9,10 @@ def note(pitch, start, end, *, source="guitar", confidence=.7, engine="basic_pit
         source, "BASS" if source == "bass" else "MAIN_MELODY" if source == "vocals" else "HARMONY",
         start, end, pitch, 80, confidence, engine, event_id=event_id,
     )
+
+
+def beat_map():
+    return BeatMap(120, [0, .5, 1.0, 1.5, 2.0], [0, 2.0], "test", .9)
 
 
 def test_pitch_guard_rejects_unsupported_weak_basic_pitch_note():
@@ -60,4 +64,42 @@ def test_pitch_guard_does_not_delete_wide_chord():
     ]
     kept, rejected = guard_events(events)
     assert {"c1", "c2", "c3"}.issubset({event.event_id for event in kept})
+    assert not rejected
+
+
+def test_pitch_guard_rejects_off_rhythm_piano_singleton_between_strong_chords():
+    events = [
+        note(60, 0.0, .35, source="piano", confidence=.86, engine="transkun", event_id="a1"),
+        note(64, 0.0, .35, source="piano", confidence=.86, engine="transkun", event_id="a2"),
+        note(78, .31, .48, source="piano", confidence=.72, engine="transkun", event_id="bad"),
+        note(62, .5, .85, source="piano", confidence=.86, engine="transkun", event_id="b1"),
+        note(65, .5, .85, source="piano", confidence=.86, engine="transkun", event_id="b2"),
+    ]
+    kept, rejected = guard_events(events, beat_map())
+    assert "bad" not in {event.event_id for event in kept}
+    assert any(item["reason"] in {"unsupported_harmonic_orphan", "off_rhythm_singleton"} for item in rejected)
+
+
+def test_pitch_guard_keeps_normal_sixteenth_syncopation():
+    events = [
+        note(60, 0.0, .30, source="guitar", confidence=.86, event_id="a1"),
+        note(64, 0.0, .30, source="guitar", confidence=.86, event_id="a2"),
+        note(67, .375, .62, source="guitar", confidence=.74, event_id="sync"),
+        note(62, .5, .80, source="guitar", confidence=.86, event_id="b1"),
+        note(65, .5, .80, source="guitar", confidence=.86, event_id="b2"),
+    ]
+    kept, rejected = guard_events(events, beat_map())
+    assert "sync" in {event.event_id for event in kept}
+    assert not any(item["event"]["event_id"] == "sync" for item in rejected)
+
+
+def test_pitch_guard_never_removes_repeated_motif_event_for_rhythm_only():
+    events = [
+        note(60, 0.0, .30, source="guitar", confidence=.86, event_id="a"),
+        note(67, .31, .55, source="guitar", confidence=.62, event_id="riff"),
+        note(62, .5, .80, source="guitar", confidence=.86, event_id="b"),
+    ]
+    events[1].tags.add("repeated_motif")
+    kept, rejected = guard_events(events, beat_map())
+    assert "riff" in {event.event_id for event in kept}
     assert not rejected

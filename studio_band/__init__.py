@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import os
 
-VERSION = "0.5.0-beta.9-hotfix2"
-PIPELINE_VERSION = "band-accurate-4"
+VERSION = "0.5.0-beta.9-hotfix3"
+PIPELINE_VERSION = "band-accurate-5"
 
 # beta.9 is an additive quality layer over the proven beta.8 implementation.
 # External model workers need only provider/runtime registration. Keeping the
