@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from . import audio_note_guard
 from .audio_note_guard import _pitch_evidence, _spectrum
 from .music import MasterSong, MusicEvent
 
@@ -28,9 +29,8 @@ def _raw_confidence(event: MusicEvent) -> float:
 
 
 def _strong_support(event: MusicEvent) -> bool:
-    if event.tags & {"independent_agreement", "targeted_repair"}:
-        return True
-    return any(event.evidence.get(key) for key in ("beta9_support_engines", "agreement_engines"))
+    """Use the live audio-guard support policy, including later judge patches."""
+    return bool(audio_note_guard._strong_support(event))
 
 
 def _onset_groups(events: list[MusicEvent], tolerance: float = .045) -> list[list[MusicEvent]]:
