@@ -93,6 +93,36 @@ Code license: MIT. Published model weights are gated and licensed CC BY-NC 4.0.
 
 Studio installs pinned `muscriptor==0.3.0` only into its isolated NumPy 2 runtime. The weights are not bundled. Auto uses the model only when CUDA and previously accepted/cached, local, or authenticated Hugging Face access are available; Medium/Large are explicit Advanced choices.
 
+## Guitar-Transcription specialist reviewer
+
+Projects: `ErenReyhanlioglu/Guitar-Transcription` and `ErenReyhanlioglu/Guitar-Transcription-Weights`.
+
+Purpose: optional HCQT+Mel six-fold GuitarSet reviewer used to corroborate or weaken guitar notes that Basic Pitch already proposed. It never creates additional notes.
+
+License: MIT for the source project and the published weights repository.
+
+Studio does not bundle the six model files. When the extra-quality review path is enabled, the isolated reviewer runtime downloads the six pinned `model_best.pt` files, verifies their exact Git blob identities and sizes, and caches them under Studio's model directory.
+
+## YourMT3+ targeted judge
+
+Project: `mimbres/YourMT3`.
+
+Purpose: optional CUDA-only multi-instrument evidence on a small number of uncertain song regions. Its output is reference evidence for confidence fusion and is not promoted wholesale into the arrangement.
+
+Upstream source-code license: GNU GPL v3. The checkpoint repository `mimbres/YourMT3` on Hugging Face declares Apache License 2.0 for the hosted model checkpoint files.
+
+Studio does **not** vendor or redistribute the YourMT3+ source tree or checkpoint. When this optional reviewer is used, the isolated runtime downloads a pinned subset of the upstream Hugging Face Space source plus the pinned checkpoint into Studio's local model cache. This keeps the GPL-covered upstream program separate from the Studio executable while still allowing the user to run it locally as an external model process.
+
+## MVSep Mega 53 Stems ownership judge
+
+Project: `ZFTurbo/Music-Source-Separation-Training`.
+
+Purpose: optional 53-stem BS-RoFormer evidence used only on uncertain regions to decide whether an existing piano/guitar note is more plausibly owned by piano or guitar. It does not replace Studio's main song stems and does not create notes.
+
+Source license: MIT.
+
+Studio downloads the pinned v1.0.21 configuration and checkpoint only when this reviewer is requested on a CUDA system with at least 14 GB detected VRAM. Both release assets are checksum-pinned; the ~1.4 GB checkpoint is also size-checked before use.
+
 ## Other dependencies
 
 Studio Audio → Band uses the MIT-licensed tkinterdnd2 wrapper with its included
