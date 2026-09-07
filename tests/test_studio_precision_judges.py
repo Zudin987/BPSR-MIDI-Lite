@@ -58,8 +58,8 @@ def test_mega53_ownership_only_reweights_existing_event():
     assert "mega53_ownership_conflict" in guarded[0].tags
 
 
-def test_precision_judges_are_isolated_review_runtimes_and_invalidate_old_cache():
-    assert VERSION.endswith("hotfix7")
+def test_precision_judges_are_isolated_review_runtimes_and_keep_analysis_cache_contract():
+    assert VERSION.endswith("hotfix8")
     assert PIPELINE_VERSION == "band-accurate-9"
     assert PROVIDER_RUNTIME["guitar_review"] == "guitar_review"
     assert PROVIDER_RUNTIME["yourmt3"] == "yourmt3"
