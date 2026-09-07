@@ -66,8 +66,8 @@ from ui_video_audit_round2_2026 import install_video_audit_round2
 from ui_video_audit_round3_2026 import install_video_audit_round3
 
 
-# Studio remains a separate experimental build target and inherits Lite v3.4's
-# evidence-driven arranger/UI layer plus optional WASAPI response diagnostics.
+# Studio remains a separate experimental build target and inherits Lite v3.5's
+# shared playback, Band Mode and UI layer plus the Audio -> Band toolchain.
 app.APP_VERSION = "Studio 0.5.0-band-accurate-beta.9"
 
 install_core_transcription()
