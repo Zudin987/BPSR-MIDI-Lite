@@ -1,6 +1,6 @@
 # Studio Audio → Band beta
 
-Studio **0.5.0-band-accurate-beta.8** converts a local song or an automatically acquired song into Piano, Guitar, Bass and Drums. This branch builds on the Band Mode v4 development branch (PR #35); it remains a beta for evaluation, not a stable release.
+Studio’s experimental **Audio → Band** workspace converts local or automatically acquired audio into Piano, Guitar, Bass and Drums. It is included in Studio builds on the [BPSR MIDI release page](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest). Audio transcription remains beta even when the accompanying Lite release is stable.
 
 ## Use
 
@@ -117,4 +117,4 @@ Run `python -m pytest -q` for regression tests. The Studio build workflow execut
 
 Downloader unit coverage validates result normalization, fallback scoring/selection, URL validation and shell-free command construction. Live downloader CI verifies public search results only and deliberately does not download copyrighted music.
 
-Windows CI builds both applications and checks that Lite's archive has no AI, ONNX, FFmpeg or Studio payload. Builds from this development PR remain beta artifacts; they do not publish a stable release or merge the Band Mode branch.
+Windows CI builds both applications and checks that Lite's archive has no AI, ONNX, FFmpeg or Studio payload. Studio’s audio transcription remains experimental; check the selected release notes for the included Studio build.

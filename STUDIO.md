@@ -4,6 +4,8 @@ BPSR MIDI Studio is the heavier experimental companion build of **BPSR MIDI Lite
 
 Studio reuses the same BPSR MIDI planner/player, then adds a YouTube-to-MIDI workflow for users who do not want to manually download audio or MIDI files. Lite keeps the AI/YouTube stack out of its build; the Local MIDI browser is the shared UI feature.
 
+This guide covers the **YouTube** transcription tab. For local audio, automatic song acquisition and four-part arrangements, see the [Audio → Band guide](STUDIO_BAND_ACCURATE.md).
+
 ## Download and run
 
 Studio is distributed as one self-contained EXE named **`BPSR-MIDI-Studio-Experimental-Beta.exe`** on the **same GitHub release page as BPSR MIDI Lite**. No Studio ZIP or `_internal` folder is required.
