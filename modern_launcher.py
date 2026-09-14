@@ -33,7 +33,8 @@ from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
 # v3.5.2 fixes Audio-to-Band drum transcription and dense Drum playback while
-# keeping Lite free of Studio-only AI/audio runtimes.
+# keeping Lite free of Studio-only AI/audio runtimes. Release metadata and
+# regression contracts are synchronized to 3.5.2.
 app.APP_VERSION = "3.5.2"
 
 install_online_search_bridge()

@@ -28,4 +28,4 @@ The analysis cache is now `band-accurate-10`. Existing `band-accurate-9` Audio-t
 
 ## Validation
 
-The v3.5.2 candidate passed the Lite test/build workflow, Studio test/build workflow, repository hygiene, Studio responsive/frozen-worker validation, clean first-use real model inference, and HQ separation/original-timeline smoke checks before release.
+The v3.5.2 candidate passed the Lite test/build workflow, Studio test/build workflow, repository hygiene, Studio responsive/frozen-worker validation, clean first-use real model inference, and HQ separation/original-timeline smoke checks before release. Release-trigger metadata was refreshed after synchronizing the remaining 3.5.2 regression assertions.
