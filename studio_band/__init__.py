@@ -14,6 +14,7 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
     from . import providers, runtime
     from .beta9 import _patch_providers, _patch_runtimes
     from .drum_transcription import _patch_providers as _patch_drum_providers
+    from .drumsep_hat_patch import _patch_provider as _patch_drumsep_hats
     from .precision_judges import (
         _patch_providers as _patch_precision_providers,
         _patch_runtimes as _patch_precision_runtimes,
@@ -23,12 +24,14 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
     _patch_runtimes(runtime)
     _patch_providers(providers)
     _patch_drum_providers(providers, runtime)
+    _patch_drumsep_hats(providers)
     _patch_precision_runtimes(runtime)
     _patch_precision_providers(providers)
     _patch_fast_precision_providers(providers)
 else:
     from .beta9 import apply_beta9
     from .drum_transcription import apply_drum_transcription
+    from .drumsep_hat_patch import apply_drumsep_hat_patch
     from .pitch_guard import apply_pitch_guard
     from .final_audio_note_guard import apply_final_audio_note_guard
     from .precision_judges import apply_precision_judges
@@ -37,6 +40,7 @@ else:
 
     apply_beta9()
     apply_drum_transcription()
+    apply_drumsep_hat_patch()
     apply_pitch_guard()
     apply_final_audio_note_guard()
     apply_precision_judges()
