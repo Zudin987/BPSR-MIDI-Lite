@@ -1,6 +1,9 @@
 import json
 
+import band_arranger
 import band_audit_hardening as hardening
+import midi_engine as me
+import playback_adaptive as adaptive
 import studio_band.arrange as drum_arrange
 import studio_band.pipeline as drum_pipeline
 from band_audit_hardening import CALIBRATED_DRUM_PITCHES, calibrated_drum_pitch
@@ -88,3 +91,50 @@ def test_custom_user_drum_profile_is_not_overwritten(tmp_path):
     assert profile["version"] == "bpsr-drums-provisional-1"
     assert profile["mapping"]["KICK"] == 65
     assert profile["mapping"]["SNARE"] == 63
+
+
+def _planned_hat(start: float, serial: int) -> me.PlannedNote:
+    return me.PlannedNote(
+        source_start=start,
+        source_end=start + 0.070,
+        start=start,
+        end=start + 0.070,
+        pitch=62,
+        page=1,
+        octave=0,
+        key="s",
+        velocity=90,
+        serial=serial,
+    )
+
+
+def test_drum_playback_uses_literal_short_attack_timing():
+    hardening._patch_drum_timing()
+    options = band_arranger._drum_plan_options(
+        band_arranger.BandPlanOptions(band_enabled=True, band_part="drums")
+    )
+
+    assert options.adaptive_auto is False
+    assert options.articulation_mode == "raw"
+    assert options.minimum_note_ms == hardening.DRUM_HARD_FLOOR_MS == 24
+    assert options.hard_press_floor_ms == 24
+    assert options.repeated_release_gap_ms == hardening.DRUM_RELEASE_GAP_MS == 8
+    assert options.short_note_tail_ms == 1
+    assert options.attack_cluster_ms == hardening.DRUM_ATTACK_CLUSTER_MS == 5
+    assert options.chord_stagger_ms == 0
+
+
+def test_cleaned_50ms_hat_retriggers_are_not_merged_by_keyboard_safety_rules():
+    hardening._patch_drum_timing()
+    options = band_arranger._drum_plan_options(
+        band_arranger.BandPlanOptions(band_enabled=True, band_part="drums")
+    )
+    notes = [_planned_hat(0.000, 1), _planned_hat(0.050, 2), _planned_hat(0.100, 3)]
+
+    resolved, merged, dropped = adaptive._adaptive_resolve_retrigger_conflicts(notes, options)
+
+    assert [round(note.start, 3) for note in resolved] == [0.000, 0.050, 0.100]
+    assert len(resolved) == 3
+    assert merged == 0
+    assert dropped == 0
+    assert resolved[0].end <= 0.050 - hardening.DRUM_RELEASE_GAP_MS / 1000.0 + 1e-9
