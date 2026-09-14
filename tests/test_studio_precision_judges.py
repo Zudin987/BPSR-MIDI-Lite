@@ -1,74 +1,57 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from studio_band import PIPELINE_VERSION, VERSION
+from studio_band import precision_judges
 from studio_band.music import MusicEvent
-from studio_band.precision_judges import (
-    _STATE,
-    _annotate_guitar,
-    _annotate_mega53,
-    _annotate_yourmt3,
-)
 from studio_band.runtime import PROVIDER_RUNTIME, RUNTIMES
 
 
-def _event(source: str, pitch: int = 64, confidence: float = .78) -> MusicEvent:
-    return MusicEvent(
-        source=source,
-        role="HARMONY",
-        start=1.0,
-        end=1.4,
-        pitch=pitch,
-        velocity=82,
-        confidence=confidence,
-        engine="basic_pitch",
-        tags=set(),
-        evidence={},
-    )
+def _guitar_event(confidence: float = .72) -> dict:
+    return {
+        "source": "guitar", "role": "HARMONY", "start": 1.0, "end": 1.30,
+        "pitch": 64, "velocity": 80, "confidence": confidence,
+        "engine": "basic_pitch", "tags": [], "event_id": "g1",
+        "original_confidence": confidence, "evidence": {},
+    }
 
 
-def test_guitar_reviewer_disagreement_is_annotated_not_replaced():
-    event = _event("guitar", 64)
-    _STATE.guitar_review = [{
-        "start": .99,
-        "end": 1.42,
-        "pitch": 65,
-        "confidence": .82,
+def test_guitar_reviewer_only_annotates_existing_notes():
+    result = {"events": [_guitar_event()]}
+    review = {
+        "support": [{"source": "guitar", "pitch": 64, "start": 1.01, "end": 1.3, "support": .84}],
+        "model": "test reviewer", "source_revision": "src", "weights_revision": "weights",
+    }
+    guarded = precision_judges._annotate_guitar_result(result, review)
+    assert len(guarded["events"]) == 1
+    assert guarded["events"][0]["pitch"] == 64
+    assert "guitar_specialist_support" in guarded["events"][0]["tags"]
+    assert guarded["events"][0]["confidence"] > .72
+
+
+def test_guitar_reviewer_conflict_downweights_but_does_not_generate_or_delete():
+    result = {"events": [_guitar_event(.70)]}
+    review = {
+        "support": [{"source": "guitar", "pitch": 64, "start": 1.0, "end": 1.3, "support": .08}],
+        "model": "test reviewer",
+    }
+    guarded = precision_judges._annotate_guitar_result(result, review)
+    assert len(guarded["events"]) == 1
+    assert guarded["events"][0]["confidence"] < .70
+    assert "guitar_specialist_conflict" in guarded["events"][0]["tags"]
+
+
+def test_mega53_ownership_only_reweights_existing_event():
+    event = MusicEvent.from_dict(_guitar_event(.66))
+    precision_judges._STATE.mega53_ownership = [{
+        "source": "guitar", "pitch": 64, "start": 1.0, "end": 1.3,
+        "preferred": "piano", "guitar_vs_piano_db": -8.0,
     }]
     try:
-        guarded = _annotate_guitar([event])
+        guarded = precision_judges._annotate_mega53([event])
     finally:
-        delattr(_STATE, "guitar_review")
-    assert len(guarded) == 1
-    assert guarded[0].pitch == 64
-    assert guarded[0].confidence < event.confidence
-    assert "guitar_review_disagreement" in guarded[0].tags
-
-
-def test_yourmt3_disagreement_is_annotated_not_replaced():
-    event = _event("piano", 64)
-    _STATE.yourmt3_events = [{
-        "source": "piano", "start": .99, "end": 1.42, "pitch": 65,
-        "confidence": .86,
-    }]
-    try:
-        guarded = _annotate_yourmt3([event])
-    finally:
-        delattr(_STATE, "yourmt3_events")
-    assert len(guarded) == 1
-    assert guarded[0].pitch == 64
-    assert guarded[0].confidence < event.confidence
-    assert "yourmt3_pitch_conflict" in guarded[0].tags
-
-
-def test_mega53_ownership_conflict_is_annotated_not_reassigned():
-    event = _event("piano", 64)
-    _STATE.mega53_ownership = [{
-        "start": .98, "end": 1.43, "pitch": 64, "source": "guitar", "confidence": .9,
-    }]
-    try:
-        guarded = _annotate_mega53([event])
-    finally:
-        delattr(_STATE, "mega53_ownership")
+        delattr(precision_judges._STATE, "mega53_ownership")
     assert len(guarded) == 1
     assert guarded[0].pitch == 64
     assert guarded[0].confidence < event.confidence
