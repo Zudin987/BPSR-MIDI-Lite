@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import secrets
 import sys
+from dataclasses import replace
 from typing import Any
 
 AUDIT_RELEASE = "v3.5.0"
@@ -41,6 +42,16 @@ _LEGACY_PROVISIONAL_DRUM_MAPPING = {
     "TOM": 70,
     "PERCUSSION": 64,
 }
+
+# Drums are one-shot attacks, not sustained keyboard notes. The Studio drum
+# cleaner already removes impossible same-role retriggers below 50 ms, so the
+# playback layer must not apply the normal keyboard 40 ms hold + 24 ms release
+# cycle on top of that. A 24 ms press with an 8 ms release gap stays above the
+# engine's 20 ms physical press floor while preserving every cleaned 50-60 ms
+# hat/repeat in the exported arrangement.
+DRUM_HARD_FLOOR_MS = 24
+DRUM_RELEASE_GAP_MS = 8
+DRUM_ATTACK_CLUSTER_MS = 5
 
 
 def anonymous_band_name() -> str:
@@ -147,6 +158,34 @@ def _patch_drum_transport() -> None:
     band_arranger.normalize_drum_pitch = normalize_drum_pitch
 
 
+def _patch_drum_timing() -> None:
+    """Keep Studio/Band drum attacks literal instead of using piano timing."""
+    import band_arranger
+
+    original = band_arranger._drum_plan_options
+    if getattr(original, "_bpsr_literal_drum_timing", False):
+        return
+
+    def drum_plan_options(options):
+        effective = original(options)
+        return replace(
+            effective,
+            # Drum MIDI exported by Studio is already cleaned and range-mapped.
+            # Do not let keyboard adaptive shaping merge or move its attacks.
+            adaptive_auto=False,
+            articulation_mode="raw",
+            minimum_note_ms=DRUM_HARD_FLOOR_MS,
+            hard_press_floor_ms=DRUM_HARD_FLOOR_MS,
+            repeated_release_gap_ms=DRUM_RELEASE_GAP_MS,
+            short_note_tail_ms=1,
+            attack_cluster_ms=DRUM_ATTACK_CLUSTER_MS,
+            chord_stagger_ms=0,
+        )
+
+    drum_plan_options._bpsr_literal_drum_timing = True
+    band_arranger._drum_plan_options = drum_plan_options
+
+
 def _patch_studio_drum_profile() -> None:
     """Ignore the obsolete shipped Studio override while preserving custom maps.
 
@@ -190,5 +229,6 @@ def install_band_audit_hardening() -> None:
     _patch_band_identity()
     _patch_band_roster()
     _patch_drum_transport()
+    _patch_drum_timing()
     _patch_studio_drum_profile()
     _INSTALLED = True
