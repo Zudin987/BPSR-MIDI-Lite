@@ -19,6 +19,7 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
     )
     from .fast_precision import _patch_providers as _patch_fast_precision_providers
     from .drum_quality import _patch_providers as _patch_drum_quality_providers
+    from .drum_hat_articulation import _patch_drumsep_hat_articulation
 
     _patch_runtimes(runtime)
     _patch_providers(providers)
@@ -26,6 +27,7 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
     _patch_precision_providers(providers)
     _patch_fast_precision_providers(providers)
     _patch_drum_quality_providers(providers)
+    _patch_drumsep_hat_articulation(providers)
 else:
     from .beta9 import apply_beta9
     from .pitch_guard import apply_pitch_guard
