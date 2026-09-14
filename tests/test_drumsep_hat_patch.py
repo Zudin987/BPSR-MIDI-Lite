@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
+import pytest
+
+np = pytest.importorskip("numpy")
 
 from studio_band.drumsep_hat_patch import _hat_sustain_ratio
 
 
-def _hat_wave(tail_level: float) -> np.ndarray:
-    sample_rate = 1000
+def _hat_wave(tail_level: float):
     audio = np.zeros(500, dtype="float32")
     audio[100:125] = 1.0
     audio[140:240] = tail_level
