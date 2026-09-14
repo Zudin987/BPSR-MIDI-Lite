@@ -32,9 +32,9 @@ from ui_persistent_library import install_persistent_library
 from ui_product_overhaul_v34 import install_product_ui_overhaul
 
 
-# v3.5.1 is the first in-game clarity hotfix on the shared v3.5 Band/runtime
-# base while keeping Lite free of Studio-only AI/audio runtimes.
-app.APP_VERSION = "3.5.1"
+# v3.5.2 fixes Audio-to-Band drum transcription and dense Drum playback while
+# keeping Lite free of Studio-only AI/audio runtimes.
+app.APP_VERSION = "3.5.2"
 
 install_online_search_bridge()
 install_modern_ui(app)

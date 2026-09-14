@@ -1,37 +1,31 @@
-# Studio beta.9 hotfix8 — bundled with Lite v3.5.1
+# Studio beta.9 hotfix9 - bundled with Lite v3.5.2
 
-This Studio build is attached to the **BPSR MIDI Lite v3.5.1** GitHub release. It keeps the established beta.9 executable label while advancing the internal Studio build to `0.5.0-beta.9-hotfix8`. The analysis cache contract remains `band-accurate-9` because this hotfix changes final BPSR arrangement behavior rather than stem separation or transcription.
+This Studio build is attached to the **BPSR MIDI Lite v3.5.2** GitHub release. The visible Studio product remains beta.9 while the internal build advances to `0.5.0-beta.9-hotfix9` and the analysis cache contract advances to `band-accurate-10` because drum transcription itself changed.
 
-## BPSR in-game clarity
+## Audio-to-Band Drum overhaul
 
-- Adds a final BPSR-audibility arrangement layer after normal musical reduction and physical key mapping. The goal is to optimize for what the real BPSR instruments sound like, not just what looks correct in a desktop MIDI preview.
-- Collapses duplicated ambiguous `other` accompaniment so the same musical event is not reinforced by multiple Band players at effectively full digital-key volume.
-- When Piano and Guitar are both plausible owners for ambiguous accompaniment, the backing material prefers the part opposite the main melody owner when possible, separating foreground and accompaniment.
-- Protects `MAIN_MELODY`, `MELODY`, `RIFF`, and `BASS` from density-only removal. Sparse passages are intentionally left unchanged.
+- Normal Auto/CUDA conversions now prefer DrumSep six-kit transcription even when the optional Cross-check switch is off.
+- DrumSep separates kick, snare, toms, hi-hat, ride and crash before onset detection instead of relying on the previous coarse three-role fallback.
+- The isolated hi-hat stem is now checked for post-attack decay so sustained hits can become `OPEN_HAT` while short attacks remain `CLOSED_HAT`.
+- CPU conversion and DrumSep failures remain non-blocking, but the fallback is upgraded from kick/snare/closed-hat only to multi-band detection for kick, snare, tom, closed/open hat, ride and crash.
+- New drum events continue through the calibrated BPSR drum-pad map introduced by the previous hotfixes.
 
-## Lower-density accompaniment
+## Drum playback fixes retained
 
-- Piano begins dynamic chord thinning at roughly 5.5 local attacks/second: busy accompaniment is capped around three notes, and very busy passages around two notes.
-- Guitar uses a two-note busy-section cap from roughly 5.5 local attacks/second.
-- Expendable `DECORATION` notes can be removed before useful Harmony/Rhythm material once accompaniment becomes moderately busy.
-- Very dense, soft Harmony/Decoration-only attacks may be skipped entirely when repeated too closely; the allowed spacing becomes stricter as local attack pressure rises.
-- Accompaniment tails are shortened during busy passages (approximately 240 ms at 5.5+ attacks/s, 180 ms at 7.5+, and 140 ms at 9+) so held notes do not pile up under later BPSR key presses.
-- Retained notes continue to prioritize musical role, transcription confidence, chord identity, and non-duplicated pitch classes; MIDI velocity is treated only as a weak hint because it cannot be trusted as an in-game mixing control.
+- Keeps the calibrated audible BPSR pad mapping instead of obsolete provisional/silent pad assignments.
+- Keeps literal short drum timing: 24 ms press, 8 ms release gap, Raw articulation, zero chord stagger and a 5 ms attack cluster.
+- Dense 50-60 ms hi-hat/retrigger patterns are preserved instead of being merged by Piano timing rules.
+
+## Cache behavior
+
+The analysis cache is now `band-accurate-10`. Existing `band-accurate-9` Audio-to-Band results should be reconverted when accurate drums matter, because the new build changes the drum transcription stage itself rather than only rearranging an existing musical map.
 
 ## Existing v3.5 precision improvements retained
 
-- Keeps the rhythm-aware Piano/Guitar attack guard that removes attackless off-rhythm retriggers only when the instrument stem and original mixture lack a real local re-attack.
-- Keeps conservative audio-grounded onset refinement within a small ±90 ms neighborhood, preserving genuine syncopation and human timing rather than blindly beat-quantizing notes.
-- Keeps specialist-supported notes, real chords, strongly supported chromatic notes, and the fast-precision default path.
-
-## Cache and rearrangement
-
-The analysis cache remains `band-accurate-9`. Existing v3.5 Studio musical maps do **not** need another expensive AI pass: saved MasterSong/arrangement data can be rearranged with the new in-game clarity layer and receive the density changes directly.
-
-## Band Mode / Lite interoperability
-
-Studio and Lite continue to share the same Band protocol, room transport, lineup, MIDI sharing, synchronized Start, clock/speed/hash checks, network hardening, and calibrated Drum transport. Compatibility remains based on the shared Band protocol + arrangement contract instead of the visible Lite/Studio product version.
+- Keeps the final BPSR-audibility arrangement layer, accompaniment density controls, rhythm-aware Piano/Guitar attack guard and conservative onset refinement.
+- Keeps specialist-supported notes, real chords, strongly supported chromatic notes and the fast-precision default path.
+- Studio and Lite continue to share the same Band protocol, room transport, lineup, MIDI sharing, synchronized Start, clock/speed/hash checks and network hardening.
 
 ## Validation
 
-The v3.5.1 release candidate must pass the normal Lite test/build workflow, Studio test/build workflow, repository hygiene checks, Studio responsive/frozen-worker validation, and the existing real-audio smoke path before release assets are published.
+The v3.5.2 candidate passed the Lite test/build workflow, Studio test/build workflow, repository hygiene, Studio responsive/frozen-worker validation, clean first-use real model inference, and HQ separation/original-timeline smoke checks before release.
