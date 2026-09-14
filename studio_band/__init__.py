@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import os
 
-VERSION = "0.5.0-beta.9-hotfix8"
-PIPELINE_VERSION = "band-accurate-9"
+VERSION = "0.5.0-beta.9-hotfix9"
+PIPELINE_VERSION = "band-accurate-10"
 
 # beta.9 is an additive quality layer over the proven beta.8 implementation.
 # External model workers need only provider/runtime registration. Keeping the
@@ -18,12 +18,14 @@ if os.environ.get("BPSR_STUDIO_WORKER") == "1":
         _patch_runtimes as _patch_precision_runtimes,
     )
     from .fast_precision import _patch_providers as _patch_fast_precision_providers
+    from .drum_quality import _patch_providers as _patch_drum_quality_providers
 
     _patch_runtimes(runtime)
     _patch_providers(providers)
     _patch_precision_runtimes(runtime)
     _patch_precision_providers(providers)
     _patch_fast_precision_providers(providers)
+    _patch_drum_quality_providers(providers)
 else:
     from .beta9 import apply_beta9
     from .pitch_guard import apply_pitch_guard
@@ -31,6 +33,7 @@ else:
     from .precision_judges import apply_precision_judges
     from .fast_precision import apply_fast_precision
     from .gameplay_clarity_patch import apply_gameplay_clarity
+    from .drum_quality import apply_drum_quality
 
     apply_beta9()
     apply_pitch_guard()
@@ -38,3 +41,4 @@ else:
     apply_precision_judges()
     apply_fast_precision()
     apply_gameplay_clarity()
+    apply_drum_quality()
