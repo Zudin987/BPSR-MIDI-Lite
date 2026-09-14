@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import secrets
+import sys
 from typing import Any
 
 AUDIT_RELEASE = "v3.5.0"
@@ -25,6 +26,22 @@ _GM_DRUM_TO_BPSR = {
     56: 76,                             # cowbell-like fallback -> audible high percussion
 }
 
+# Studio beta versions before the in-game calibration stored this default in
+# the persistent user-data profile. That file survives application upgrades and
+# used to override the corrected bundled profile forever. It targets several
+# slots now confirmed to be silent (notably kick=61 and closed_hat=67).
+_LEGACY_PROVISIONAL_DRUM_VERSION = "bpsr-drums-provisional-1"
+_LEGACY_PROVISIONAL_DRUM_MAPPING = {
+    "KICK": 61,
+    "SNARE": 63,
+    "CLOSED_HAT": 67,
+    "OPEN_HAT": 71,
+    "CRASH": 74,
+    "RIDE": 76,
+    "TOM": 70,
+    "PERCUSSION": 64,
+}
+
 
 def anonymous_band_name() -> str:
     """Return a non-identifying default; users may still edit the room name."""
@@ -44,6 +61,15 @@ def calibrated_drum_pitch(pitch: int) -> int:
     # a Drum part never intentionally presses one of the silent BPSR keys.
     wrapped = 60 + ((value - 35) % 24)
     return min(CALIBRATED_DRUM_PITCHES, key=lambda item: (abs(item - wrapped), item))
+
+
+def _is_legacy_provisional_studio_profile(profile: dict[str, Any]) -> bool:
+    """Recognize only the shipped obsolete default, never a user-custom map."""
+    return (
+        profile.get("version") == _LEGACY_PROVISIONAL_DRUM_VERSION
+        and profile.get("calibrated") is False
+        and profile.get("mapping") == _LEGACY_PROVISIONAL_DRUM_MAPPING
+    )
 
 
 def _patch_band_identity() -> None:
@@ -121,6 +147,42 @@ def _patch_drum_transport() -> None:
     band_arranger.normalize_drum_pitch = normalize_drum_pitch
 
 
+def _patch_studio_drum_profile() -> None:
+    """Ignore the obsolete shipped Studio override while preserving custom maps.
+
+    Studio imports ``load_drum_profile`` into both the pipeline and UI modules,
+    so update those already-loaded aliases as well as the arrange module. Lite
+    does not import the Studio pipeline, so this adds no Studio dependency to
+    normal Lite startup.
+    """
+    studio_arrange = sys.modules.get("studio_band.arrange")
+    if studio_arrange is None:
+        return
+
+    original = studio_arrange.load_drum_profile
+    if getattr(original, "_bpsr_stale_drum_profile_fix", False):
+        return
+
+    def load_drum_profile(path=None):
+        profile = original(path)
+        if path is not None and _is_legacy_provisional_studio_profile(profile):
+            # The bundled profile is the calibrated in-game capture. Do not
+            # delete/overwrite user data here: exact legacy defaults are simply
+            # superseded, while any genuinely edited custom mapping is retained.
+            return original(None)
+        return profile
+
+    load_drum_profile._bpsr_stale_drum_profile_fix = True
+    studio_arrange.load_drum_profile = load_drum_profile
+
+    studio_pipeline = sys.modules.get("studio_band.pipeline")
+    if studio_pipeline is not None:
+        studio_pipeline.load_drum_profile = load_drum_profile
+    studio_ui = sys.modules.get("studio_band_ui")
+    if studio_ui is not None:
+        studio_ui.load_drum_profile = load_drum_profile
+
+
 def install_band_audit_hardening() -> None:
     global _INSTALLED
     if _INSTALLED:
@@ -128,4 +190,5 @@ def install_band_audit_hardening() -> None:
     _patch_band_identity()
     _patch_band_roster()
     _patch_drum_transport()
+    _patch_studio_drum_profile()
     _INSTALLED = True
