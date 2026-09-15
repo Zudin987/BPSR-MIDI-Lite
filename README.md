@@ -4,6 +4,18 @@ Windows MIDI player for **Blue Protocol: Star Resonance** instruments, with solo
 
 [Download latest release](https://github.com/Zudin987/BPSR-MIDI-Lite/releases/latest) · [Project website](https://zudin987.github.io/projects/bpsr-midi/) · [Report an issue](https://github.com/Zudin987/BPSR-MIDI-Lite/issues)
 
+<p align="center">
+  <img src="docs/images/MIDI-Lite.png" alt="BPSR MIDI Lite main window with MIDI library, song check and live MIDI preview" width="900">
+  <br>
+  <em>BPSR MIDI Lite - MIDI playback</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/MIDI-Studio.png" alt="BPSR MIDI Studio main window with Audio tools and arrangement preview" width="900">
+  <br>
+  <em>BPSR MIDI Studio - experimental audio-to-MIDI tools</em>
+</p>
+
 ## Choose an edition
 
 | Edition | Use it for | Release executable |
