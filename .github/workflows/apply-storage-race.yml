@@ -1,0 +1,37 @@
+name: Apply Cloud Band cleanup race fix once
+
+on:
+  push:
+    branches:
+      - fix/review-security-reliability-20260916
+    paths:
+      - .github/workflows/apply-storage-race.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch expiry cleanup with verified anchors
+        run: python tools/patch_storage_race.py
+      - name: Validate source and storage regressions
+        run: |
+          node --check cloudflare-band/src/index.js
+          node --test cloudflare-band/test-security.cjs
+          git diff --check
+      - name: Commit only application code and tests
+        run: |
+          rm tools/patch_storage_race.py
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cloudflare-band/src/index.js cloudflare-band/test-security.cjs tools/patch_storage_race.py
+          git commit -m 'fix: serialize MIDI expiry cleanup and preserve replacement metadata'
+          git push origin HEAD:fix/review-security-reliability-20260916
