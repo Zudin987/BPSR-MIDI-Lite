@@ -179,14 +179,23 @@ export class BandRoom extends DurableObject {
   }
 
   async deleteMidi(meta = this.midiMeta) {
-    if (!meta) return;
-    const chunks = Math.max(0, Math.min(16, Number(meta.chunks || 0)));
-    const token = String(meta.token || "");
-    for (let index = 0; index < chunks; index += 1) {
-      await this.ctx.storage.delete(`midi:${token}:${index}`);
+    if (!meta || this.uploadInProgress) return;
+    // The same lock covers writes and expiry/corruption cleanup. Never remove
+    // a newer upload's metadata while deleting an expired, superseded token.
+    this.uploadInProgress = true;
+    try {
+      const chunks = Math.max(0, Math.min(16, Number(meta.chunks || 0)));
+      const token = String(meta.token || "");
+      for (let index = 0; index < chunks; index += 1) {
+        await this.ctx.storage.delete(`midi:${token}:${index}`);
+      }
+      if (this.midiMeta && this.midiMeta.token === token) {
+        await this.ctx.storage.delete("midi_meta");
+        this.midiMeta = null;
+      }
+    } finally {
+      this.uploadInProgress = false;
     }
-    await this.ctx.storage.delete("midi_meta");
-    if (this.midiMeta && this.midiMeta.token === token) this.midiMeta = null;
   }
 
   async storeMidi(request, token) {

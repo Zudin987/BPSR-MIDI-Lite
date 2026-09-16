@@ -119,4 +119,8 @@ test('guest uploads fail and failed replacements retain the previous MIDI', asyn
   assert.equal(replaced.status, 200);
   assert.equal(values.get('midi_meta').token, second);
   assert.equal((await room.loadMidi(second)).status, 200);
+  // A delayed expiry/corruption cleanup must never remove newer metadata.
+  await room.deleteMidi({ token: first, chunks: 1 });
+  assert.equal(values.get('midi_meta').token, second);
+  assert.equal((await room.loadMidi(second)).status, 200);
 });
