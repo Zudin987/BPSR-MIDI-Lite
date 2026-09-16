@@ -5,6 +5,7 @@ import threading
 import time
 from collections.abc import Callable
 
+from game_process import is_bpsr_process
 from midi_engine import MidiPlan, PlannedEvent
 from win_input import WindowsKeySender, foreground_process_id
 
@@ -160,6 +161,13 @@ class MidiPlayer:
             raise RuntimeError(
                 "BPSR was not focused when the countdown ended. Press Play again "
                 "and switch to the game before the countdown reaches zero."
+            )
+        if not is_bpsr_process(process_id):
+            raise RuntimeError(
+                "BPSR game window was not focused when the countdown ended. "
+                "Focus the game before the countdown reaches zero. If this "
+                "regional executable is unrecognized, set BPSR_GAME_EXECUTABLES "
+                "to its exact .exe name."
             )
         self._target_process_id = process_id
         self._last_focus_check_at = time.perf_counter()
