@@ -14,7 +14,12 @@ changes = {
         ("ProductVersion', u'3.5.2'", "ProductVersion', u'3.5.3'"),
     ],
     'tests/test_release_version_consistency.py': [
-        ('3.5.2', '3.5.3'), ('(3, 5, 2, 0)', '(3, 5, 3, 0)'),
+        ('app.APP_VERSION = "3.5.2"', 'app.APP_VERSION = "3.5.3"'),
+        ('filevers=(3, 5, 2, 0)', 'filevers=(3, 5, 3, 0)'),
+        ('prodvers=(3, 5, 2, 0)', 'prodvers=(3, 5, 3, 0)'),
+        ("FileVersion', u'3.5.2'", "FileVersion', u'3.5.3'"),
+        ("ProductVersion', u'3.5.2'", "ProductVersion', u'3.5.3'"),
+        ('set VERSION=3.5.2', 'set VERSION=3.5.3'),
     ],
     'tests/test_v303_regressions.py': [('set VERSION=3.5.2', 'set VERSION=3.5.3')],
     'tests/test_ui_contract.py': [('app.APP_VERSION = "3.5.2"', 'app.APP_VERSION = "3.5.3"')],
