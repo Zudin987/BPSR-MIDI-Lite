@@ -34,7 +34,9 @@ jobs:
 
       - name: JavaScript syntax check
         working-directory: cloudflare-band
-        run: node --check src/index.js
+        run: |
+          node --check src/index.js
+          node --check smoke-live.mjs
 
       - name: Host authorization and MIDI storage regression tests
         working-directory: cloudflare-band
