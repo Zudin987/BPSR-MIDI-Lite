@@ -1,0 +1,38 @@
+name: Apply reviewed fixes once
+
+on:
+  push:
+    branches:
+      - fix/review-security-reliability-20260916
+    paths:
+      - .github/workflows/apply-review-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply exact-match source edits
+        run: python tools/run_review_fixes.py
+      - name: Validate Python and JavaScript syntax and whitespace
+        run: |
+          python -m compileall -q band_cloudflare.py band_room_registry.py tests/test_band_cloudflare.py
+          node --check cloudflare-band/src/index.js
+          git diff --check
+          git diff --stat
+      - name: Remove one-time migration and commit reviewed source
+        run: |
+          rm tools/apply_review_fixes.py tools/run_review_fixes.py .github/workflows/apply-review-fixes.yml
+          git config user.name github-actions\[bot\]
+          git config user.email 41898282+github-actions\[bot\]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: authenticate Band hosts and harden uploads, sockets, releases"
+          git push origin HEAD:fix/review-security-reliability-20260916
