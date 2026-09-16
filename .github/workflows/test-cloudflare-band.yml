@@ -36,6 +36,10 @@ jobs:
         working-directory: cloudflare-band
         run: node --check src/index.js
 
+      - name: Host authorization and MIDI storage regression tests
+        working-directory: cloudflare-band
+        run: node --test test-security.cjs
+
       - name: Wrangler dry deploy
         working-directory: cloudflare-band
         run: npx wrangler deploy --dry-run --outdir .wrangler-dry-run
