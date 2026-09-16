@@ -13,6 +13,7 @@ on:
       - "gaming_*.py"
       - "ui_*.py"
       - "band_*.py"
+      - "cloudflare-band/**"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
@@ -41,6 +42,7 @@ on:
       - "gaming_*.py"
       - "ui_*.py"
       - "band_*.py"
+      - "cloudflare-band/**"
       - "BPSR-MIDI-Studio.spec"
       - "requirements-studio*.txt"
       - "STUDIO*.md"
@@ -245,15 +247,17 @@ jobs:
             Start-Sleep -Seconds 15
           }
 
-          gh release delete-asset $tag BPSR-MIDI-Studio-beta.8-Windows.zip -y 2>$null | Out-Null
+          $releaseTarget = gh release view $tag --json targetCommitish --jq .targetCommitish
+          if ($LASTEXITCODE -ne 0 -or $releaseTarget.Trim() -ne $env:GITHUB_SHA) {
+            throw "Studio source commit does not match the Lite release commit for $tag"
+          }
           gh release upload $tag `
             release-studio/BPSR-MIDI-Studio-beta.9-Windows.zip `
             release-studio/BPSR-MIDI-Studio-Experimental-Beta.exe `
             release-studio/SHA256SUMS-STUDIO.txt `
             release-studio/STUDIO_THIRD_PARTY_NOTICES.md `
             release-studio/STUDIO_BAND_ACCURATE.md `
-            release-studio/FFMPEG_BUILD_INFO.txt `
-            --clobber
+            release-studio/FFMPEG_BUILD_INFO.txt
           if ($LASTEXITCODE -ne 0) { throw "Studio release asset upload failed" }
 
           $verifyDir = Join-Path $env:RUNNER_TEMP "bpsr-studio-release-verify"
@@ -276,7 +280,7 @@ jobs:
             $localHash = (Get-FileHash $local -Algorithm SHA256).Hash.ToLower()
             $remoteHash = (Get-FileHash $remote -Algorithm SHA256).Hash.ToLower()
             if ($localHash -ne $remoteHash) {
-              throw "Published Studio asset hash mismatch for $name"
+              throw "Published asset hash mismatch for $name"
             }
           }
           Write-Host "Published Studio release assets match the validated workflow outputs byte-for-byte."
