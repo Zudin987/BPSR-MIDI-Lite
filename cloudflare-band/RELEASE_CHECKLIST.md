@@ -1,13 +1,23 @@
-# Cloud Band security release checklist
+# v3.5.3 / Cloud Band security release checklist
 
-This Worker upgrade changes host authentication. The old v3.5.2 clients cannot host rooms on the upgraded Worker: **do not deploy it without making updated Lite and Studio builds available at the same time.** Guests must recreate any room made before the upgrade, because it lacks a host credential. Leave this checklist unchecked until the steps actually happen.
+**Release candidate, not deployed or published.** This Worker upgrade requires a host credential issued only to the client that creates a room. Current v3.5.2 clients cannot host on the upgraded backend. Existing rooms must be recreated after rollout. Do not claim production deployment based on Wrangler `--dry-run` or CI tests alone.
 
-- [ ] Review PR #56, verify all required GitHub Actions checks are green on the final commit, and test playback against a real BPSR window on Windows. Confirm the known executable is recognized, focus loss stops playback, guests can join, and the authenticated host can start/share MIDI.
-- [ ] Build a new version (not v3.5.2). Verify both Lite and Studio binaries were built from the same reviewed source commit and include the new host authentication. Do not overwrite older GitHub release assets or reuse an existing tag.
-- [ ] Communicate the client update to users before switching the backend. New host clients require a `host_token` from room creation; legacy hosts receive a host-authentication error. Rooms made before deployment must be recreated.
-- [ ] With the **correct Cloudflare account authenticated** in Wrangler, run `cd cloudflare-band && npm install && npx wrangler deploy` from the reviewed release commit. This updates the existing `bpsr-midi-band` Worker/Durable Object; it does not require recreating the Durable Object class.
-- [ ] From the same checkout run `node cloudflare-band/smoke-live.mjs`. It creates one random test room and validates health, room creation, host token, guest upload denial, authenticated MIDI download, WebSocket identity, and host-only start. **Do not print or share the returned host credential.**
-- [ ] Release the matching Lite and Studio artifacts through the repository's approved GitHub release workflow with a fresh version and verify its SHA-256 comparisons, then test host/guest with the published binaries.
-- [ ] If the Worker deployment fails, do not publish incompatible client binaries. If a post-deploy smoke test fails, roll back the Worker to the previous reviewed commit, noting that reverting also reopens the earlier host-authorization vulnerability; disable Band Mode publicly until a patched Worker can be deployed instead of presenting an insecure rollback as a safe long-term fix.
+## Before merging the release candidate
 
-The repository has no authenticated Cloudflare deployment connection exposed to the GitHub review integration. A successful Wrangler `--dry-run` is **not** evidence that production was deployed. Keep PR #56 unmerged or unreleased until the production deployment and compatibility steps have been handled.
+- [ ] Check PR #56 final-head CI: Cloudflare security tests, Wrangler dry run, repository hygiene, Lite full Windows test/build, and Studio full Windows test/build.
+- [ ] Test with actual BPSR on Windows: known game process names are recognized; pressing Play with Discord/browser focused fails closed; focus loss releases held keys; host/guest join, MIDI sharing, synchronized Start, and reconnect work. For any unrecognized regional game binary use `BPSR_GAME_EXECUTABLES` with the **exact** `.exe` basename, then test again.
+- [ ] Confirm v3.5.3 Lite and Studio beta.9 hotfix10 binaries are built from the same reviewed source commit. Do not reuse v3.5.2 tags or overwrite release assets. Announce the mandatory client upgrade and room recreation.
+
+## Coordinated production deployment
+
+- [ ] Configure GitHub Actions repository secrets `CLOUDFLARE_API_TOKEN` (scoped permission to deploy the existing Worker) and `CLOUDFLARE_ACCOUNT_ID` for the correct Cloudflare account. Do not paste credentials into issues, commits, workflow inputs or chat.
+- [ ] Merge the reviewed PR into `main` **only after CI and game checks pass**, making `.github/workflows/deploy-cloud-band.yml` available on the default branch. Merging alone does not deploy the Worker or publish an EXE.
+- [ ] In GitHub Actions choose **Deploy Cloud Band production** → **Run workflow** on `main`, enter `DEPLOY-BAND-AUTH`, and approve the `production` environment if one is configured to require approval. The workflow tests, dry-runs, deploys via Wrangler and runs `node cloudflare-band/smoke-live.mjs` against production. A missing Cloudflare secret causes an explicit failure before deployment.
+- [ ] If deployment succeeds and the live smoke and an actual updated-host/updated-guest test pass, trigger a new v3.5.3 GitHub release from the **same reviewed commit** via the existing release workflow (or an audited `[release v3.5.3]` commit after the code and backend are ready). The Lite workflow creates a new release; Studio only attaches its assets if its source matches the Lite release. Inspect SHA-256 verification results and published binaries.
+- [ ] Verify normal users can install and host/join using the published Lite and Studio binaries, and ask existing room hosts to recreate their rooms.
+
+## Failure or rollback
+
+- [ ] If the Cloudflare deployment fails, do not publish incompatible clients. If the post-deploy smoke fails, stop the rollout and disable/publicly warn about Band Mode while correcting the backend. Reverting to the previously vulnerable Worker reintroduces the host-authorization flaw, so don't treat an insecure rollback as a long-term fix.
+
+The GitHub review connector cannot set Cloudflare secrets, dispatch this workflow, observe the user's game window, or attest a live deployment. The manual production workflow exists so the repository owner can perform these authenticated steps without exposing credentials here.
