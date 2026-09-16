@@ -1,0 +1,36 @@
+name: Apply Band reconnect hardening once
+
+on:
+  push:
+    branches:
+      - fix/review-security-reliability-20260916
+    paths:
+      - .github/workflows/apply-band-final-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/review-security-reliability-20260916
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch and validate Worker
+        run: |
+          python3 tools/patch_band_reconnect_alarm.py
+          node --check cloudflare-band/src/index.js
+          node --test cloudflare-band/test-security.cjs
+      - name: Commit tested source only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add cloudflare-band/src/index.js cloudflare-band/test-security.cjs
+          git diff --cached --check
+          git commit -m 'fix: serialize room creation and prevent host reconnect and expiry races'
+          git push origin HEAD:fix/review-security-reliability-20260916
