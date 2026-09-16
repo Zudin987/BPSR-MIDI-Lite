@@ -1,5 +1,15 @@
 # Changelog
 
+## v3.5.3 (release candidate; not published)
+
+- Fixed Cloud Band host identity spoofing, bound participant identity to a connection, and required an unbroadcast private host credential for host commands and temporary MIDI uploads.
+- Preserved existing MIDI on replacement failures and serialized expiry cleanup so a stale file cannot delete new room metadata.
+- Fixed coalesced WebSocket handshake frames, bounded fragmented messages, and made room-creation UI errors safe for deferred callbacks.
+- Restricted Windows keyboard injection to recognized game executables (or explicitly configured regional names), retaining existing focus-loss cleanup.
+- Prevented GitHub release asset replacement, added authorization/storage regressions, a live deployment smoke, and a gated production deployment workflow.
+- Studio beta.9 internal hotfix10 includes the shared Band safety fixes; its audio analysis cache contract is unchanged.
+- Requires a coordinated client/Worker upgrade and recreation of existing rooms. Production Cloudflare deployment and real-game verification are separate required release gates.
+
 ## v3.5.1
 
 - Added a Studio-only final **BPSR in-game clarity** pass after normal musical reduction and physical mapping so Audio → Band is optimized for real digital-key audibility instead of only desktop MIDI preview fidelity.

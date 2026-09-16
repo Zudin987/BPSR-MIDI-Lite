@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import tkinter as tk
 import urllib.error
@@ -23,7 +24,7 @@ def _room_endpoint(room_code: str, action: str) -> str:
     return f"{band_cloudflare.service_origin()}/api/rooms/{code}/{action}"
 
 
-def _request_room_create(room_code: str) -> str:
+def _request_room_create(room_code: str) -> tuple[str, str]:
     code = band_sync.normalize_room_code(room_code)
     request = urllib.request.Request(
         _room_endpoint(code, "create"),
@@ -33,12 +34,17 @@ def _request_room_create(room_code: str) -> str:
     )
     try:
         with urllib.request.urlopen(request, timeout=_ROOM_LOOKUP_TIMEOUT_SECONDS) as response:
-            response.read(4096)
+            data = json.loads(response.read(4096).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise OSError("Cloud Band returned invalid room credentials") from exc
     except urllib.error.HTTPError as exc:
         if exc.code == 409:
             raise FileExistsError("Band room code already exists") from exc
         raise OSError(f"Cloud Band room creation failed: HTTP {exc.code}") from exc
-    return code
+    token = str(data.get("host_token", "")) if isinstance(data, dict) else ""
+    if len(token) != 64 or any(char not in "0123456789abcdef" for char in token):
+        raise OSError("Cloud Band did not return a valid host credential")
+    return code, token
 
 
 def _request_room_exists(room_code: str) -> bool:
@@ -90,11 +96,12 @@ def _connect_room(app: Any, *, host: bool) -> None:
 
     def worker() -> None:
         selected_code = original_code
+        host_token = ""
         try:
             if host:
                 for attempt in range(_CREATE_COLLISION_RETRIES):
                     try:
-                        selected_code = _request_room_create(selected_code)
+                        selected_code, host_token = _request_room_create(selected_code)
                         break
                     except FileExistsError:
                         if attempt + 1 >= _CREATE_COLLISION_RETRIES:
@@ -121,6 +128,8 @@ def _connect_room(app: Any, *, host: bool) -> None:
                 try:
                     if str(app._band_room_code_var.get()) != selected_code:
                         app._band_room_code_var.set(selected_code)
+                    if host:
+                        band_cloudflare.register_host_token(selected_code, host_token)
                     _original_connect_room(app, host=host)
                 except tk.TclError:
                     return
@@ -130,10 +139,11 @@ def _connect_room(app: Any, *, host: bool) -> None:
             except tk.TclError:
                 pass
         except (OSError, FileExistsError, ValueError) as exc:
+            error_message = str(exc)
             def failed() -> None:
                 _finish_lookup(app)
                 try:
-                    app._band_room_status_var.set(f"Cloud Band: {exc}")
+                    app._band_room_status_var.set(f"Cloud Band: {error_message}")
                 except tk.TclError:
                     pass
             try:

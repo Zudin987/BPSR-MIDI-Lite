@@ -34,14 +34,25 @@ def test_release_workflows_do_not_add_marker_or_publisher_files():
     assert "publisher" not in workflow_text.lower()
 
 
-def test_studio_ci_builds_beta8_zip_and_real_audio_uses_clean_runtime():
+def test_studio_ci_builds_beta9_zip_and_real_audio_uses_clean_runtime():
     build = _workflow_text(STUDIO_WORKFLOW)
     smoke = _workflow_text(ROOT / ".github" / "workflows" / "studio-band-smoke.yml")
-    assert "BPSR-MIDI-Studio-beta.8-Windows.zip" in build
+    assert "BPSR-MIDI-Studio-beta.9-Windows.zip" in build
     assert "Compress-Archive" in build
     assert 'BPSR_STUDIO_CLEAN_RUNTIME: "1"' in smoke
     assert "BPSR_STUDIO_BAND_HOME: ${{ runner.temp }}" in smoke
     assert "clean first-use runtime and actual model inference" in smoke
+
+
+def test_release_assets_cannot_be_replaced_or_attached_to_another_commit():
+    lite = _workflow_text(LITE_WORKFLOW)
+    studio = _workflow_text(STUDIO_WORKFLOW)
+    assert "--clobber" not in lite + studio
+    assert "gh release delete-asset" not in studio
+    assert "Release $tag already exists" in lite
+    assert "--target $env:GITHUB_SHA" in lite
+    assert "--json targetCommitish" in studio
+    assert "$releaseTarget.Trim() -ne $env:GITHUB_SHA" in studio
 
 
 def test_downloader_smoke_runs_when_shared_runtime_code_changes():

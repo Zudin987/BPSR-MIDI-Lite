@@ -30,6 +30,17 @@ _CONNECT_TIMEOUT_SECONDS = 10.0
 _RECONNECT_MIN_SECONDS = 1.0
 _RECONNECT_MAX_SECONDS = 15.0
 _SOCKET_IDLE_SECONDS = 35.0
+_MAX_WS_MESSAGE_BYTES = 256 * 1024
+
+_HOST_TOKENS: dict[str, str] = {}
+
+
+def register_host_token(room_code: str, token: str) -> None:
+    code = band_sync.normalize_room_code(room_code)
+    if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
+        raise ValueError("Invalid Cloud Band host credential")
+    _HOST_TOKENS[code] = token
+
 
 _original_start_band: Any = None
 _original_validate_attachment_url: Any = None
@@ -90,13 +101,31 @@ def _receive_ws_frame(sock: socket.socket) -> tuple[int, bool, bytes]:
         length = struct.unpack("!H", _read_exact(sock, 2))[0]
     elif length == 127:
         length = struct.unpack("!Q", _read_exact(sock, 8))[0]
-    if length > 16 * 1024 * 1024:
+    if length > _MAX_WS_MESSAGE_BYTES:
         raise OSError("Band WebSocket frame is unexpectedly large")
     mask = _read_exact(sock, 4) if masked else b""
     payload = _read_exact(sock, int(length)) if length else b""
     if masked:
         payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
     return opcode, fin, payload
+
+
+class _BufferedSocket:
+    """Retain a WebSocket frame coalesced with the HTTP 101 response."""
+
+    def __init__(self, sock: socket.socket, buffered: bytes) -> None:
+        self._sock = sock
+        self._buffer = bytearray(buffered)
+
+    def recv(self, size: int) -> bytes:
+        if self._buffer:
+            chunk = bytes(self._buffer[:size])
+            del self._buffer[:size]
+            return chunk
+        return self._sock.recv(size)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._sock, name)
 
 
 def _open_websocket(url: str, *, timeout: float = _CONNECT_TIMEOUT_SECONDS) -> socket.socket:
@@ -154,12 +183,8 @@ def _open_websocket(url: str, *, timeout: float = _CONNECT_TIMEOUT_SECONDS) -> s
     if headers.get("sec-websocket-accept") != expected:
         sock.close()
         raise OSError("Band WebSocket handshake verification failed")
-    if remainder:
-        # Cloudflare should not send application bytes before the 101 headers finish.
-        sock.close()
-        raise OSError("Unexpected bytes after Band WebSocket handshake")
     sock.settimeout(_SOCKET_IDLE_SECONDS)
-    return sock
+    return _BufferedSocket(sock, remainder)
 
 
 class CloudflareBandTransport:
@@ -231,7 +256,13 @@ class CloudflareBandTransport:
     def publish(self, payload: dict[str, Any]) -> None:
         if payload.get("event") == "state":
             self._latest_state = dict(payload)
-        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        outbound = dict(payload)
+        if outbound.get("event") == "state" and outbound.get("host") is True:
+            token = _HOST_TOKENS.get(self.room_code)
+            if not token:
+                raise OSError("Cloud Band host credential missing; recreate the room")
+            outbound["host_token"] = token
+        body = json.dumps(outbound, separators=(",", ":"), sort_keys=True).encode("utf-8")
         with self._socket_lock:
             sock = self._socket
             if sock is None or not self._connected.is_set():
@@ -318,6 +349,8 @@ class CloudflareBandTransport:
                 fragments.extend(payload)
             else:
                 continue
+            if len(fragments) > _MAX_WS_MESSAGE_BYTES:
+                raise OSError("Cloud Band WebSocket message is unexpectedly large")
             if not fin:
                 continue
             if fragment_opcode != 0x1:
@@ -365,6 +398,10 @@ def _cloud_upload_midi_attachment(
     midi_path = Path(path)
     size, digest = band_share._validate_local_midi(midi_path)
     filename = band_share.sanitize_midi_filename(midi_path.name)
+    room_code = band_sync.normalize_room_code(urllib.parse.urlparse(base_url).path.rsplit("/", 1)[-1])
+    host_token = _HOST_TOKENS.get(room_code)
+    if not host_token:
+        raise OSError("Cloud Band host credential missing; recreate the room")
     data = midi_path.read_bytes()
     request = urllib.request.Request(
         f"{base_url.rstrip('/')}/midi",
@@ -375,6 +412,7 @@ def _cloud_upload_midi_attachment(
             "Content-Length": str(size),
             "X-Midi-Filename": filename,
             "X-Midi-Sha256": digest,
+            "X-Band-Host-Token": host_token,
             "User-Agent": f"BPSR-MIDI-Lite-Cloud-Band/{band_sync.BAND_PROTOCOL_VERSION}",
         },
     )

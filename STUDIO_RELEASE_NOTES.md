@@ -1,3 +1,9 @@
+# Studio beta.9 hotfix10 - planned bundle with Lite v3.5.3
+
+This release candidate includes the common Cloud Band host authentication, MIDI storage and WebSocket reliability fixes, plus verified-target keyboard injection. The visible Studio product stays beta.9, the internal package label advances to `0.5.0-beta.9-hotfix10`, and the audio analysis cache remains `band-accurate-10` because transcription has not changed. The v3.5.3 release is **not yet published**; deployment and real-game verification are required first. Existing rooms must be recreated after the coordinated Cloudflare upgrade.
+
+## Previous release history
+
 # Studio beta.9 hotfix9 - bundled with Lite v3.5.2
 
 This Studio build is attached to the **BPSR MIDI Lite v3.5.2** GitHub release. The visible Studio product remains beta.9 while the internal build advances to `0.5.0-beta.9-hotfix9` and the analysis cache contract advances to `band-accurate-10` because drum transcription itself changed.

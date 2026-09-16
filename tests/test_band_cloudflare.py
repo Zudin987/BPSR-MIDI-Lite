@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -36,6 +37,66 @@ def test_cloudflare_attachment_validation_is_same_service_and_room() -> None:
             raise AssertionError(f"unexpectedly accepted {bad}")
 
 
+def test_host_credentials_are_only_added_to_outbound_state(monkeypatch) -> None:
+    code = "ABCDEFGHJKLM"
+    token = "a" * 64
+    band_cloudflare.register_host_token(code, token)
+    transport = band_cloudflare.CloudflareBandTransport(code, lambda _: None)
+    transport._socket = object()
+    transport._connected.set()
+    sent = []
+    monkeypatch.setattr(band_cloudflare, "_send_ws_frame", lambda sock, data, **kwargs: sent.append(json.loads(data)))
+    payload = {"proto": 2, "event": "state", "player_id": "HOST", "host": True}
+    transport.publish(payload)
+    assert sent == [{**payload, "host_token": token}]
+    assert transport._latest_state == payload
+    assert "host_token" not in payload
+
+
+def test_websocket_reader_preserves_frame_coalesced_with_handshake() -> None:
+    class EmptySocket:
+        def recv(self, count):
+            raise AssertionError("Buffered bytes should be read before touching the socket")
+
+    sock = band_cloudflare._BufferedSocket(EmptySocket(), b"\x81\x02OK")
+    opcode, fin, payload = band_cloudflare._receive_ws_frame(sock)
+    assert (opcode, fin, payload) == (1, True, b"OK")
+
+
+def test_cloud_upload_passes_credential_without_exposing_it_in_result(tmp_path, monkeypatch) -> None:
+    code = "ABCDEFGHJKLM"
+    secret = "b" * 64
+    band_cloudflare.register_host_token(code, secret)
+    midi = tmp_path / "song.mid"
+    data = b"MThd\x00\x00\x00\x06"
+    midi.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    base = f"https://bpsr-midi-band.zudinonline.workers.dev/api/rooms/{code}"
+    token = "c" * 64
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, count):
+            return json.dumps({
+                "url": f"{base}/midi/{token}", "size": len(data),
+                "midi_sha256": digest, "expires": 123,
+            }).encode()
+
+    def fake_urlopen(request, timeout):
+        assert request.get_header("X-band-host-token") == secret
+        return Response()
+
+    monkeypatch.setattr(band_cloudflare.urllib.request, "urlopen", fake_urlopen)
+    result = band_cloudflare._cloud_upload_midi_attachment(midi, base_url=base)
+    assert result["midi_sha256"] == digest
+    assert "host_token" not in result
+
+
 def test_launchers_install_cloudflare_after_existing_band_layers() -> None:
     for filename in ("modern_launcher.py", "studio_launcher.py"):
         source = Path(filename).read_text(encoding="utf-8")
@@ -61,7 +122,10 @@ def test_worker_uses_durable_object_websockets_and_sqlite_midi_chunks() -> None:
         'midi_storage: "durable-object-sqlite"',
         'event === "state"',
         '"start", "midi_share", "midi_share_revoke"',
-        "playerId !== this.hostId",
+        "!attachment.host || playerId !== this.hostId",
+        "payload.host_token === this.hostToken",
+        'request.headers.get("x-band-host-token")',
+        "this.uploadInProgress",
         'url.pathname === "/health"',
     ):
         assert text in source

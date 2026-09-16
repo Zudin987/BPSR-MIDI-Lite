@@ -11,6 +11,7 @@ on:
       - "gaming_*.py"
       - "ui_*.py"
       - "band_*.py"
+      - "cloudflare-band/**"
       - "online_*.py"
       - "playback_*.py"
       - "midi_engine.py"
@@ -142,20 +143,15 @@ jobs:
           }
 
           if (gh release view $tag 2>$null) {
-            gh release upload $tag `
-              release/BPSR-MIDI-Lite.exe `
-              release/BPSR-MIDI-Lite-Windows-x64.zip `
-              release/SHA256SUMS.txt `
-              --clobber
-          } else {
-            gh release create $tag `
-              release/BPSR-MIDI-Lite.exe `
-              release/BPSR-MIDI-Lite-Windows-x64.zip `
-              release/SHA256SUMS.txt `
-              --target $env:GITHUB_SHA `
-              --title "BPSR MIDI Lite $tag" `
-              --generate-notes
+            throw "Release $tag already exists. Publish a new version instead of replacing validated binaries."
           }
+          gh release create $tag `
+            release/BPSR-MIDI-Lite.exe `
+            release/BPSR-MIDI-Lite-Windows-x64.zip `
+            release/SHA256SUMS.txt `
+            --target $env:GITHUB_SHA `
+            --title "BPSR MIDI Lite $tag" `
+            --generate-notes
           if ($LASTEXITCODE -ne 0) { throw "GitHub release publish failed" }
 
           $verifyDir = Join-Path $env:RUNNER_TEMP "bpsr-lite-release-verify"
