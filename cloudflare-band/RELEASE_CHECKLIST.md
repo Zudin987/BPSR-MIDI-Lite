@@ -1,0 +1,13 @@
+# Cloud Band security release checklist
+
+This Worker upgrade changes host authentication. The old v3.5.2 clients cannot host rooms on the upgraded Worker: **do not deploy it without making updated Lite and Studio builds available at the same time.** Guests must recreate any room made before the upgrade, because it lacks a host credential. Leave this checklist unchecked until the steps actually happen.
+
+- [ ] Review PR #56, verify all required GitHub Actions checks are green on the final commit, and test playback against a real BPSR window on Windows. Confirm the known executable is recognized, focus loss stops playback, guests can join, and the authenticated host can start/share MIDI.
+- [ ] Build a new version (not v3.5.2). Verify both Lite and Studio binaries were built from the same reviewed source commit and include the new host authentication. Do not overwrite older GitHub release assets or reuse an existing tag.
+- [ ] Communicate the client update to users before switching the backend. New host clients require a `host_token` from room creation; legacy hosts receive a host-authentication error. Rooms made before deployment must be recreated.
+- [ ] With the **correct Cloudflare account authenticated** in Wrangler, run `cd cloudflare-band && npm install && npx wrangler deploy` from the reviewed release commit. This updates the existing `bpsr-midi-band` Worker/Durable Object; it does not require recreating the Durable Object class.
+- [ ] From the same checkout run `node cloudflare-band/smoke-live.mjs`. It creates one random test room and validates health, room creation, host token, guest upload denial, authenticated MIDI download, WebSocket identity, and host-only start. **Do not print or share the returned host credential.**
+- [ ] Release the matching Lite and Studio artifacts through the repository's approved GitHub release workflow with a fresh version and verify its SHA-256 comparisons, then test host/guest with the published binaries.
+- [ ] If the Worker deployment fails, do not publish incompatible client binaries. If a post-deploy smoke test fails, roll back the Worker to the previous reviewed commit, noting that reverting also reopens the earlier host-authorization vulnerability; disable Band Mode publicly until a patched Worker can be deployed instead of presenting an insecure rollback as a safe long-term fix.
+
+The repository has no authenticated Cloudflare deployment connection exposed to the GitHub review integration. A successful Wrangler `--dry-run` is **not** evidence that production was deployed. Keep PR #56 unmerged or unreleased until the production deployment and compatibility steps have been handled.
