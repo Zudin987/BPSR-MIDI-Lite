@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 const PROTOCOL_VERSION = 2;
 const MAX_MIDI_BYTES = 8 * 1024 * 1024;
 const MIDI_CHUNK_BYTES = 1024 * 1024;
+const MAX_CONTROL_CHARS = 64 * 1024;
 const ROOM_IDLE_MS = 6 * 60 * 60 * 1000;
 const MIDI_TTL_MS = 3 * 60 * 60 * 1000;
 const ROOM_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/;
@@ -57,6 +58,8 @@ async function uploadMidi(request, env, room, origin) {
   const sha256 = String(request.headers.get("x-midi-sha256") || "").toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(sha256)) return json({ error: "invalid MIDI hash" }, 400);
 
+  const hostToken = String(request.headers.get("x-band-host-token") || "");
+  if (!/^[0-9a-f]{64}$/.test(hostToken)) return json({ error: "host authorization required" }, 403);
   const token = token64();
   const response = await roomStub(env, room).fetch(`https://internal/midi/${token}`, {
     method: "PUT",
@@ -65,6 +68,7 @@ async function uploadMidi(request, env, room, origin) {
       "content-length": String(length),
       "x-midi-filename": filename,
       "x-midi-sha256": sha256,
+      "x-band-host-token": hostToken,
     },
     body: request.body,
   });
@@ -132,11 +136,14 @@ export class BandRoom extends DurableObject {
     this.ctx = ctx;
     this.env = env;
     this.hostId = null;
+    this.hostToken = null;
+    this.uploadInProgress = false;
     this.midiMeta = null;
     this.createdAt = null;
 
     this.ctx.blockConcurrencyWhile(async () => {
       this.hostId = (await this.ctx.storage.get("host_id")) || null;
+      this.hostToken = (await this.ctx.storage.get("host_token")) || null;
       this.midiMeta = (await this.ctx.storage.get("midi_meta")) || null;
       this.createdAt = (await this.ctx.storage.get("created_at")) || null;
     });
@@ -184,73 +191,64 @@ export class BandRoom extends DurableObject {
 
   async storeMidi(request, token) {
     if (!this.createdAt) return json({ error: "room not found" }, 404);
-
+    const hostToken = String(request.headers.get("x-band-host-token") || "");
+    if (!this.hostToken || hostToken !== this.hostToken) {
+      return json({ error: "host authorization required" }, 403);
+    }
     const expectedSize = Number(request.headers.get("content-length") || "0");
     const expectedHash = String(request.headers.get("x-midi-sha256") || "").toLowerCase();
     const filename = safeFilename(request.headers.get("x-midi-filename"));
-
     if (!/^[0-9a-f]{64}$/i.test(token)) return json({ error: "invalid token" }, 400);
     if (!Number.isFinite(expectedSize) || expectedSize <= 0 || expectedSize > MAX_MIDI_BYTES) {
       return json({ error: "invalid MIDI size" }, 413);
     }
     if (!/^[0-9a-f]{64}$/.test(expectedHash)) return json({ error: "invalid MIDI hash" }, 400);
-
-    const data = await request.arrayBuffer();
-    if (data.byteLength !== expectedSize) return json({ error: "MIDI size changed during upload" }, 400);
-
-    const bytes = new Uint8Array(data);
-    if (
-      bytes.length < 4 ||
-      bytes[0] !== 0x4d ||
-      bytes[1] !== 0x54 ||
-      bytes[2] !== 0x68 ||
-      bytes[3] !== 0x64
-    ) {
-      return json({ error: "not a standard MIDI file" }, 400);
-    }
-
-    const digestBuffer = await crypto.subtle.digest("SHA-256", data);
-    const digest = Array.from(new Uint8Array(digestBuffer))
-      .map((value) => value.toString(16).padStart(2, "0"))
-      .join("");
-    if (digest !== expectedHash) return json({ error: "MIDI SHA-256 mismatch" }, 400);
-
-    if (this.midiMeta) await this.deleteMidi(this.midiMeta);
-
-    const chunks = Math.ceil(data.byteLength / MIDI_CHUNK_BYTES);
-    let written = 0;
+    // Serialize uploads for one room: old metadata must survive a failed replacement.
+    if (this.uploadInProgress) return json({ error: "another MIDI upload is in progress" }, 409);
+    this.uploadInProgress = true;
     try {
-      for (let index = 0; index < chunks; index += 1) {
-        const start = index * MIDI_CHUNK_BYTES;
-        const end = Math.min(data.byteLength, start + MIDI_CHUNK_BYTES);
-        await this.ctx.storage.put(`midi:${token}:${index}`, data.slice(start, end));
-        written += 1;
+      const data = await request.arrayBuffer();
+      if (data.byteLength !== expectedSize) return json({ error: "MIDI size changed during upload" }, 400);
+      const bytes = new Uint8Array(data);
+      if (bytes.length < 4 || bytes[0] !== 0x4d || bytes[1] !== 0x54 || bytes[2] !== 0x68 || bytes[3] !== 0x64) {
+        return json({ error: "not a standard MIDI file" }, 400);
       }
-    } catch (error) {
-      for (let index = 0; index < written; index += 1) {
-        try { await this.ctx.storage.delete(`midi:${token}:${index}`); } catch (_) {}
+      const digestBuffer = await crypto.subtle.digest("SHA-256", data);
+      const digest = Array.from(new Uint8Array(digestBuffer))
+        .map((value) => value.toString(16).padStart(2, "0")).join("");
+      if (digest !== expectedHash) return json({ error: "MIDI SHA-256 mismatch" }, 400);
+      const previous = this.midiMeta;
+      const chunks = Math.ceil(data.byteLength / MIDI_CHUNK_BYTES);
+      const nextMeta = { token, filename, size: data.byteLength, sha256: digest,
+        expires: Date.now() + MIDI_TTL_MS, chunks };
+      let written = 0;
+      try {
+        for (let index = 0; index < chunks; index += 1) {
+          const start = index * MIDI_CHUNK_BYTES;
+          await this.ctx.storage.put(`midi:${token}:${index}`,
+            data.slice(start, Math.min(data.byteLength, start + MIDI_CHUNK_BYTES)));
+          written += 1;
+        }
+        // Commit the new metadata only when every chunk is safely stored.
+        await this.ctx.storage.put("midi_meta", nextMeta);
+      } catch (error) {
+        for (let index = 0; index < written; index += 1) {
+          try { await this.ctx.storage.delete(`midi:${token}:${index}`); } catch (_) {}
+        }
+        throw error;
       }
-      throw error;
+      this.midiMeta = nextMeta;
+      // A failed deletion must never invalidate an already committed replacement.
+      if (previous) {
+        for (let index = 0; index < Math.min(16, Number(previous.chunks || 0)); index += 1) {
+          try { await this.ctx.storage.delete(`midi:${previous.token}:${index}`); } catch (_) {}
+        }
+      }
+      await this.touch();
+      return json({ filename, size: data.byteLength, expires: nextMeta.expires, midi_sha256: digest });
+    } finally {
+      this.uploadInProgress = false;
     }
-
-    const expires = Date.now() + MIDI_TTL_MS;
-    this.midiMeta = {
-      token,
-      filename,
-      size: data.byteLength,
-      sha256: digest,
-      expires,
-      chunks,
-    };
-    await this.ctx.storage.put("midi_meta", this.midiMeta);
-    await this.touch();
-
-    return json({
-      filename,
-      size: data.byteLength,
-      expires,
-      midi_sha256: digest,
-    });
   }
 
   async loadMidi(token) {
@@ -306,10 +304,14 @@ export class BandRoom extends DurableObject {
     if (url.hostname === "internal") {
       if (url.pathname === "/room-create" && request.method === "POST") {
         if (this.createdAt) return json({ error: "room already exists" }, 409);
-        this.createdAt = Date.now();
-        await this.ctx.storage.put("created_at", this.createdAt);
+        const hostToken = token64();
+        const createdAt = Date.now();
+        await this.ctx.storage.put("host_token", hostToken);
+        await this.ctx.storage.put("created_at", createdAt);
+        this.hostToken = hostToken;
+        this.createdAt = createdAt;
         await this.touch();
-        return json({ ok: true, created_at: this.createdAt });
+        return json({ ok: true, created_at: createdAt, host_token: hostToken });
       }
 
       if (url.pathname === "/room-exists" && request.method === "GET") {
@@ -347,52 +349,67 @@ export class BandRoom extends DurableObject {
   }
 
   async webSocketMessage(ws, message) {
-    if (typeof message !== "string") return;
+    if (typeof message !== "string" || message.length > MAX_CONTROL_CHARS) return;
     let payload;
     try { payload = JSON.parse(message); } catch (_) { return; }
-    if (!payload || typeof payload !== "object" || Number(payload.proto) !== PROTOCOL_VERSION) return;
-
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)
+        || Number(payload.proto) !== PROTOCOL_VERSION) return;
     const event = String(payload.event || "");
     const playerId = String(payload.player_id || "").slice(0, 64);
     if (!playerId) return;
-    await this.touch();
-
+    const attachment = ws.deserializeAttachment() || {};
+    // Bind a player ID to the first state received on this exact socket.
+    if (attachment.playerId && attachment.playerId !== playerId) return;
     if (event === "state") {
-      if (!this.hostId && payload.host === true) {
-        this.hostId = playerId;
-        await this.ctx.storage.put("host_id", this.hostId);
+      const claimingHost = payload.host === true;
+      const authorizedHost = claimingHost && !!this.hostToken
+        && payload.host_token === this.hostToken;
+      if (claimingHost && !authorizedHost) {
+        try { ws.send(JSON.stringify({ proto: PROTOCOL_VERSION, event: "error",
+          code: "host_auth", message: "Host credential invalid; recreate the room" })); } catch (_) {}
+        return;
       }
-      payload.host = playerId === this.hostId;
-      ws.serializeAttachment({ playerId, state: payload });
-
+      if (!authorizedHost && playerId === this.hostId) return;
+      // Prevent another socket from stealing any participant's identity.
+      for (const other of this.ctx.getWebSockets()) {
+        if (other === ws) continue;
+        const state = other.deserializeAttachment() || {};
+        if (state.playerId !== playerId) continue;
+        if (!authorizedHost || !state.host) return;
+        // Credential-bearing host reconnects can replace a stale host socket.
+        other.serializeAttachment({ playerId: "", state: null, host: false });
+        try { other.close(1000, "Host reconnected"); } catch (_) {}
+      }
+      if (authorizedHost && this.hostId !== playerId) {
+        this.hostId = playerId;
+        await this.ctx.storage.put("host_id", playerId);
+      }
+      const { host_token: _secret, ...publicState } = payload;
+      publicState.player_id = playerId;
+      publicState.host = authorizedHost;
+      ws.serializeAttachment({ playerId, state: publicState, host: authorizedHost });
+      await this.touch();
       for (const state of this.existingStates(ws)) {
         try { ws.send(JSON.stringify(state)); } catch (_) {}
       }
-      this.broadcast(payload);
+      this.broadcast(publicState);
       return;
     }
-
-    const attachment = ws.deserializeAttachment() || {};
-    if (attachment.playerId && attachment.playerId !== playerId) return;
-
+    // Neither an unregistered socket nor a forged ID may perform an action.
+    if (!attachment.playerId || attachment.playerId !== playerId) return;
     if (event === "leave") {
-      this.broadcast(payload);
-      ws.serializeAttachment({ playerId: "", state: null });
+      this.broadcast(payload, ws);
+      ws.serializeAttachment({ playerId: "", state: null, host: false });
+      await this.touch();
       return;
     }
-
     if (["start", "midi_share", "midi_share_revoke"].includes(event)) {
-      if (playerId !== this.hostId) {
-        try {
-          ws.send(JSON.stringify({
-            proto: PROTOCOL_VERSION,
-            event: "error",
-            code: "host_only",
-            message: "Only the room host can send this event",
-          }));
-        } catch (_) {}
+      if (!attachment.host || playerId !== this.hostId) {
+        try { ws.send(JSON.stringify({ proto: PROTOCOL_VERSION, event: "error",
+          code: "host_only", message: "Only the authenticated host can send this event" })); } catch (_) {}
         return;
       }
+      await this.touch();
       this.broadcast(payload);
     }
   }
@@ -436,6 +453,7 @@ export class BandRoom extends DurableObject {
 
     await this.ctx.storage.deleteAll();
     this.hostId = null;
+    this.hostToken = null;
     this.midiMeta = null;
     this.createdAt = null;
   }

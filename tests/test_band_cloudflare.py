@@ -61,7 +61,10 @@ def test_worker_uses_durable_object_websockets_and_sqlite_midi_chunks() -> None:
         'midi_storage: "durable-object-sqlite"',
         'event === "state"',
         '"start", "midi_share", "midi_share_revoke"',
-        "playerId !== this.hostId",
+        "!attachment.host || playerId !== this.hostId",
+        "payload.host_token === this.hostToken",
+        'request.headers.get("x-band-host-token")',
+        "this.uploadInProgress",
         'url.pathname === "/health"',
     ):
         assert text in source
