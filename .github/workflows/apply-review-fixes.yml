@@ -27,12 +27,12 @@ jobs:
           python -m compileall -q band_cloudflare.py band_room_registry.py tests/test_band_cloudflare.py
           node --check cloudflare-band/src/index.js
           git diff --check
-          git diff --stat
-      - name: Remove one-time migration and commit reviewed source
+      - name: Commit application fixes without workflow edits
         run: |
-          rm tools/apply_review_fixes.py tools/run_review_fixes.py .github/workflows/apply-review-fixes.yml
-          git config user.name github-actions\[bot\]
-          git config user.email 41898282+github-actions\[bot\]@users.noreply.github.com
-          git add -A
-          git commit -m "fix: authenticate Band hosts and harden uploads, sockets, releases"
+          git restore .github/workflows/build-windows.yml .github/workflows/build-studio.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add band_cloudflare.py band_room_registry.py cloudflare-band/src/index.js tests/test_band_cloudflare.py
+          git diff --cached --check
+          git commit -m "fix: authenticate Band hosts and harden uploads and sockets"
           git push origin HEAD:fix/review-security-reliability-20260916
