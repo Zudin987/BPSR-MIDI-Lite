@@ -124,3 +124,52 @@ test('guest uploads fail and failed replacements retain the previous MIDI', asyn
   assert.equal(values.get('midi_meta').token, second);
   assert.equal((await room.loadMidi(second)).status, 200);
 });
+
+
+test('racing room creates issue exactly one host credential', async () => {
+  const { room, ctx } = makeRoom();
+  await ctx.init;
+  const create = () => room.fetch(new Request('https://internal/room-create', { method: 'POST' }));
+  const [first, second] = await Promise.all([create(), create()]);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 409);
+});
+
+test('credentialed host reconnect evicts previous host and a squatting guest', async () => {
+  const { room, sockets, token } = await createdRoom();
+  const host = socket(sockets);
+  const witness = socket(sockets);
+  await room.webSocketMessage(host, state('OLD_HOST', true, { host_token: token }));
+  await room.webSocketMessage(witness, state('WITNESS'));
+  const newHost = socket(sockets);
+  await room.webSocketMessage(newHost, state('NEW_HOST', true, { host_token: token }));
+  assert.equal(host.readyState, 3);
+  assert.equal(room.hostId, 'NEW_HOST');
+  assert.ok(witness.received.some(m => m.event === 'leave' && m.player_id === 'OLD_HOST'));
+  assert.equal(sockets.filter(ws => ws.readyState === 1 && ws.attachment.host).length, 1);
+
+  // A guest can reserve a publicly known ID but must not lock out the owner.
+  const squatter = socket(sockets);
+  await room.webSocketMessage(squatter, state('REJOIN_ID'));
+  const rejoined = socket(sockets);
+  await room.webSocketMessage(rejoined, state('REJOIN_ID', true, { host_token: token }));
+  assert.equal(squatter.readyState, 3);
+  assert.equal(newHost.readyState, 3);
+  assert.equal(room.hostId, 'REJOIN_ID');
+  assert.equal(sockets.filter(ws => ws.readyState === 1 && ws.attachment.host).length, 1);
+});
+
+test('expiry alarm defers while uploads are underway and does not spin', async () => {
+  const { room, ctx, values } = await createdRoom();
+  let nextAlarm = 0;
+  ctx.storage.setAlarm = async at => { nextAlarm = at; };
+  room.midiMeta = { token: 'a'.repeat(64), expires: Date.now() - 1000, chunks: 1 };
+  values.set('midi_meta', room.midiMeta);
+  room.uploadInProgress = true;
+  await room.alarm();
+  assert.ok(nextAlarm > Date.now() + 50_000);
+  assert.equal(values.get('midi_meta').token, 'a'.repeat(64));
+  room.uploadInProgress = false;
+  await room.alarm();
+  assert.equal(values.has('midi_meta'), false);
+});

@@ -138,6 +138,7 @@ export class BandRoom extends DurableObject {
     this.hostId = null;
     this.hostToken = null;
     this.uploadInProgress = false;
+    this.creationInProgress = false;
     this.midiMeta = null;
     this.createdAt = null;
 
@@ -312,15 +313,22 @@ export class BandRoom extends DurableObject {
 
     if (url.hostname === "internal") {
       if (url.pathname === "/room-create" && request.method === "POST") {
-        if (this.createdAt) return json({ error: "room already exists" }, 409);
-        const hostToken = token64();
-        const createdAt = Date.now();
-        await this.ctx.storage.put("host_token", hostToken);
-        await this.ctx.storage.put("created_at", createdAt);
-        this.hostToken = hostToken;
-        this.createdAt = createdAt;
-        await this.touch();
-        return json({ ok: true, created_at: createdAt, host_token: hostToken });
+        if (this.createdAt || this.creationInProgress) {
+          return json({ error: "room already exists or is being created" }, 409);
+        }
+        this.creationInProgress = true;
+        try {
+          const hostToken = token64();
+          const createdAt = Date.now();
+          await this.ctx.storage.put("host_token", hostToken);
+          await this.ctx.storage.put("created_at", createdAt);
+          this.hostToken = hostToken;
+          this.createdAt = createdAt;
+          await this.touch();
+          return json({ ok: true, created_at: createdAt, host_token: hostToken });
+        } finally {
+          this.creationInProgress = false;
+        }
       }
 
       if (url.pathname === "/room-exists" && request.method === "GET") {
@@ -383,11 +391,18 @@ export class BandRoom extends DurableObject {
       for (const other of this.ctx.getWebSockets()) {
         if (other === ws) continue;
         const state = other.deserializeAttachment() || {};
-        if (state.playerId !== playerId) continue;
-        if (!authorizedHost || !state.host) return;
-        // Credential-bearing host reconnects can replace a stale host socket.
-        other.serializeAttachment({ playerId: "", state: null, host: false });
-        try { other.close(1000, "Host reconnected"); } catch (_) {}
+        if (authorizedHost && (state.host || state.playerId === playerId)) {
+          // One credential-bearing host wins, even if their app restarted with
+          // a new player ID or a guest reserved the previous ID during reconnect.
+          if (state.playerId) {
+            this.broadcast({ proto: PROTOCOL_VERSION, event: "leave",
+              player_id: state.playerId }, other);
+          }
+          other.serializeAttachment({ playerId: "", state: null, host: false });
+          try { other.close(1000, "Host reconnected"); } catch (_) {}
+          continue;
+        }
+        if (state.playerId === playerId) return;
       }
       if (authorizedHost && this.hostId !== playerId) {
         this.hostId = playerId;
@@ -445,6 +460,12 @@ export class BandRoom extends DurableObject {
 
   async alarm() {
     const now = Date.now();
+    if (this.uploadInProgress || this.creationInProgress) {
+      // A pending upload cannot be expired or deleted mid-commit. In
+      // particular, do not reschedule an already-past MIDI expiry in a loop.
+      await this.ctx.storage.setAlarm(now + 60_000);
+      return;
+    }
     if (this.midiMeta && Number(this.midiMeta.expires || 0) <= now) {
       await this.deleteMidi(this.midiMeta);
     }
@@ -460,6 +481,10 @@ export class BandRoom extends DurableObject {
       return;
     }
 
+    if (this.uploadInProgress || this.creationInProgress) {
+      await this.ctx.storage.setAlarm(now + 60_000);
+      return;
+    }
     await this.ctx.storage.deleteAll();
     this.hostId = null;
     this.hostToken = null;
